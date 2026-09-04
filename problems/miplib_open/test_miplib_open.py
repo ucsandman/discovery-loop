@@ -172,6 +172,10 @@ def _run(argv, no_publish, tmp):
     import loop
 
     calls = {"n": 0}
+    # Patch, then restore in finally: without the restore, the stubbed call_model leaks into
+    # test_loop.py when pytest runs this file first (seen 2026-09-04, 2 false failures).
+    saved_layout = loop.layout
+    saved = {k: loop.Loop.__dict__[k] for k in ("publish", "evaluate", "update_bests", "write_status", "call_model")}
     setattr(loop, "layout", lambda name: (os.path.join(tmp, "best"), os.path.join(tmp, "runs")))
     setattr(loop.Loop, "publish", lambda self: calls.__setitem__("n", calls["n"] + 1))
     setattr(loop.Loop, "evaluate", lambda self, *_a, **_k: [])
@@ -185,6 +189,9 @@ def _run(argv, no_publish, tmp):
         loop.main()
     finally:
         sys.argv = old
+        loop.layout = saved_layout
+        for k, v in saved.items():
+            setattr(loop.Loop, k, v)
     return calls["n"]
 
 

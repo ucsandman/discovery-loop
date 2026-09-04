@@ -99,6 +99,9 @@ def _run(argv, no_publish, tmp):
 
     calls = {"n": 0}
     # setattr (not direct assignment) so a dead-code scanner does not read these test stubs as unused writes
+    # Restored in finally so the stubs do not leak into test_loop.py (seen 2026-09-04).
+    saved_layout = loop.layout
+    saved = {k: loop.Loop.__dict__[k] for k in ("publish", "evaluate", "update_bests", "write_status", "call_model")}
     setattr(loop, "layout", lambda name: (os.path.join(tmp, "best"), os.path.join(tmp, "runs")))
     setattr(loop.Loop, "publish", lambda self: calls.__setitem__("n", calls["n"] + 1))
     setattr(loop.Loop, "evaluate", lambda self, *_a, **_k: [])  # no solver runs, no network
@@ -114,6 +117,9 @@ def _run(argv, no_publish, tmp):
         loop.main()
     finally:
         sys.argv = old
+        loop.layout = saved_layout
+        for k, v in saved.items():
+            setattr(loop.Loop, k, v)
     return calls["n"]
 
 
