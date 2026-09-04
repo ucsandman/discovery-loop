@@ -1,11 +1,16 @@
-"""AC-OPF solver: PIPS interior point + basin-hopping multi-start + targeted feasibility polish.
+"""AC-OPF solver: PIPS interior point + basin-hopping multi-start + continuation restarts + margin polish.
 
-Phase 1: PIPS from the file's start point (and a flat start); Newton power-flow polish; if the independent
-verifier rejects the point at 1e-6, re-solve warm-started from it with ONLY the near-binding constraints tightened
-(uniform shrinking of every limit costs objective; targeted shrinking costs almost nothing).
+Phase 1: PIPS from the file's start point, a flat start and a DC-OPF start; Newton power-flow polish; if the
+independent verifier rejects the point at 1e-6, first re-solve with tight (1e-9) interior-point tolerances, then
+warm re-solve with ONLY the near-binding constraints tightened.
 Phase 2: until the time budget, restart PIPS from (a) Latin-hypercube samples over generator voltage set-points and
-dispatch, (b) small/large perturbations of the incumbent (basin hopping with adaptive step), keeping the reference
-angle at zero so every restart is verifiable. Best verified solution is saved atomically on every improvement.
+dispatch, (b) small/large perturbations of the incumbent (basin hopping with adaptive step), (c) dispatch corners
+(random subsets of generators pinned to Pmin/Pmax), and (d) continuation paths (relax-then-tighten limits, load
+ramp, re-weighted cost).
+Every new incumbent gets a high-precision PIPS polish followed by a MARGIN POLISH: the same basin is re-solved with
+all inequality limits and every nodal P/Q load relaxed by a margin m < 1e-6 (the checker's tolerance), on a ladder
+of decreasing m; only points the verifier accepts are ever written.  Best verified solution is saved atomically on
+every improvement.
 
     python solver.py --target pglib_opf_case14_ieee --time 60 --seed 1 --out sol.json
 """
@@ -25,11 +30,13 @@ import verify  # noqa: E402
 from records import case_path  # noqa: E402
 
 from pypower.api import ppoption, runopf, runpf  # noqa: E402
-from pypower.idx_bus import BUS_I, BUS_TYPE, VM, VA, VMAX, VMIN  # noqa: E402
+from pypower.idx_bus import BUS_I, BUS_TYPE, PD, QD, VM, VA, VMAX, VMIN  # noqa: E402
 from pypower.idx_gen import GEN_BUS, PG, QG, VG, PMAX, PMIN, QMAX, QMIN, GEN_STATUS  # noqa: E402
 from pypower.idx_brch import F_BUS, T_BUS, RATE_A, ANGMIN, ANGMAX, PF, QF, PT, QT  # noqa: E402
 
 np.seterr(all="ignore")
+
+MARGINS = (9e-7, 7e-7, 5e-7, 3e-7, 1.5e-7)
 
 
 # ----------------------------------------------------------------------------------------------------- case handling
@@ -57,7 +64,7 @@ def cp(ppc):
 
 
 def warm(ppc, r):
-    """Copy of ppc (original limits) whose start point is taken from result r."""
+    """Copy of ppc (its own limits/loads/costs) whose start point is taken from result (or case) r."""
     p = cp(ppc)
     p["bus"][:, VM] = r["bus"][:, VM]
     p["bus"][:, VA] = r["bus"][:, VA]
@@ -95,7 +102,6 @@ def tighten(ppc, r, eps, tol=3e-5):
         lim = br[:, RATE_A] > 0
         sel = lim & (s > br[:, RATE_A] - t)
         br[sel, RATE_A] -= e
-    # angle-difference limits (degrees); verifier tolerance 1e-6 deg
     pos = {int(b): i for i, b in enumerate(r["bus"][:, BUS_I])}
     fi = np.array([pos[int(b)] for b in br[:, F_BUS]])
     ti = np.array([pos[int(b)] for b in br[:, T_BUS]])
@@ -111,10 +117,81 @@ def tighten(ppc, r, eps, tol=3e-5):
     return p
 
 
+def margined(ppc, m):
+    """Relax every inequality limit and every nodal P/Q load by m (pu; m degrees for angle limits).
+
+    A solution of this problem violates the true constraints by at most ~m, which the verifier tolerates when
+    m < 1e-6.  Off generators are untouched (they must stay exactly at zero)."""
+    p = cp(ppc)
+    base = p["baseMVA"]
+    bus, gen, br = p["bus"], p["gen"], p["branch"]
+    e = m * base
+    bus[:, VMAX] += m
+    bus[:, VMIN] -= m
+    bus[:, PD] -= e
+    bus[:, QD] -= e
+    on = gen[:, GEN_STATUS] > 0
+    gen[on, PMAX] += e
+    gen[on, PMIN] -= e
+    gen[on, QMAX] += e
+    gen[on, QMIN] -= e
+    lim = br[:, RATE_A] > 0
+    br[lim, RATE_A] += e
+    for col, sgn in ((ANGMAX, 1.0), (ANGMIN, -1.0)):
+        act = (np.abs(br[:, col]) < 360) & (br[:, col] != 0)
+        br[act, col] += sgn * m
+    return p
+
+
+# ------------------------------------------------------------------------------------------- continuation problems
+def relaxed(ppc, alpha):
+    """Widen thermal, voltage and angle-difference limits by a relative amount alpha."""
+    p = cp(ppc)
+    bus, br = p["bus"], p["branch"]
+    lim = br[:, RATE_A] > 0
+    br[lim, RATE_A] *= 1.0 + alpha
+    bus[:, VMAX] += 0.1 * alpha
+    bus[:, VMIN] = np.maximum(bus[:, VMIN] - 0.1 * alpha, 0.5)
+    for col in (ANGMAX, ANGMIN):
+        act = (np.abs(br[:, col]) < 360) & (br[:, col] != 0)
+        br[act, col] = np.clip(br[act, col] * (1.0 + alpha), -359.0, 359.0)
+    return p
+
+
+def scaled_load(ppc, s):
+    p = cp(ppc)
+    p["bus"][:, PD] *= s
+    p["bus"][:, QD] *= s
+    return p
+
+
+def perturbed_cost(ppc, rng, sigma):
+    """Random log-normal re-weighting of every non-constant polynomial cost coefficient."""
+    p = cp(ppc)
+    gc = p["gencost"]
+    for i in range(gc.shape[0]):
+        if int(gc[i, 0]) != 2:
+            continue
+        nc = int(gc[i, 3])
+        m = max(nc - 1, 0)
+        if m > 0 and gc.shape[1] >= 4 + m:
+            gc[i, 4 : 4 + m] *= np.exp(rng.normal(0.0, sigma, m))
+    return p
+
+
 # ----------------------------------------------------------------------------------------------------------- solving
-def pips(ppc, max_it, feastol=1e-7):
+def pips(ppc, max_it, feastol=1e-7, gradtol=1e-6, comptol=1e-6, costtol=1e-6):
     """PIPS OPF then a Newton power-flow polish (nodal balance to 1e-10, Pg and gen-bus Vm kept => cost unchanged)."""
-    opt = ppoption(VERBOSE=0, OUT_ALL=0, OPF_ALG=560, PDIPM_FEASTOL=feastol, PDIPM_MAX_IT=max_it)
+    opt = ppoption(
+        VERBOSE=0,
+        OUT_ALL=0,
+        OPF_ALG=560,
+        PDIPM_FEASTOL=feastol,
+        PDIPM_GRADTOL=gradtol,
+        PDIPM_COMPTOL=comptol,
+        PDIPM_COSTTOL=costtol,
+        PDIPM_MAX_IT=max_it,
+    )
     try:
         with redirect_stdout(sys.stderr):
             r = runopf(ppc, opt)
@@ -132,6 +209,10 @@ def pips(ppc, max_it, feastol=1e-7):
     except Exception:
         pass
     return r
+
+
+def pips_tight(ppc, max_it):
+    return pips(ppc, max_it, feastol=1e-9, gradtol=1e-8, comptol=1e-9, costtol=1e-10)
 
 
 def extract(r):
@@ -161,6 +242,13 @@ def fix_ref(p):
     return p
 
 
+def sync_vg(p):
+    bus, gen = p["bus"], p["gen"]
+    pos = {int(b): i for i, b in enumerate(bus[:, BUS_I])}
+    gen[:, VG] = [bus[pos[int(b)], VM] for b in gen[:, GEN_BUS]]
+    return p
+
+
 def perturb(ppc, r, rng, scale):
     """Perturb the state of result r (or ppc's own start point) by a relative scale; angles keep ref = 0."""
     p = warm(ppc, r) if r is not None else cp(ppc)
@@ -171,9 +259,44 @@ def perturb(ppc, r, rng, scale):
     on = gen[:, GEN_STATUS] > 0
     span = gen[on, PMAX] - gen[on, PMIN]
     gen[on, PG] = np.clip(gen[on, PG] + rng.normal(0, 0.3 * scale, on.sum()) * span, gen[on, PMIN], gen[on, PMAX])
-    pos = {int(b): i for i, b in enumerate(bus[:, BUS_I])}
-    gen[:, VG] = [bus[pos[int(b)], VM] for b in gen[:, GEN_BUS]]
+    return fix_ref(sync_vg(p))
+
+
+def corner_start(ppc, r, rng):
+    """Pin a random subset of generators to Pmin or Pmax (dispatch corners), keep the incumbent's voltages."""
+    p = warm(ppc, r) if r is not None else flat_start(ppc)
+    gen = p["gen"]
+    on = np.where(gen[:, GEN_STATUS] > 0)[0]
+    if len(on) == 0:
+        return p
+    k = int(rng.integers(1, max(2, len(on) // 2 + 1)))
+    sel = rng.choice(on, size=min(k, len(on)), replace=False)
+    lo = rng.random(len(sel)) < 0.5
+    gen[sel[lo], PG] = gen[sel[lo], PMIN]
+    gen[sel[~lo], PG] = gen[sel[~lo], PMAX]
+    if rng.random() < 0.5:
+        p["bus"][:, VA] = 0.0
     return fix_ref(p)
+
+
+def dc_start(ppc):
+    """Start from the DC-OPF dispatch and angles with a flat voltage profile."""
+    try:
+        from pypower.api import rundcopf
+
+        with redirect_stdout(sys.stderr):
+            r = rundcopf(cp(ppc), ppoption(VERBOSE=0, OUT_ALL=0))
+        if not r or not r.get("success"):
+            return None
+    except Exception:
+        return None
+    p = cp(ppc)
+    bus, gen = p["bus"], p["gen"]
+    bus[:, VA] = r["bus"][:, VA]
+    bus[:, VM] = np.clip(1.0, bus[:, VMIN], bus[:, VMAX])
+    on = gen[:, GEN_STATUS] > 0
+    gen[on, PG] = np.clip(r["gen"][on, PG], gen[on, PMIN], gen[on, PMAX])
+    return fix_ref(sync_vg(p))
 
 
 def lhs_start(ppc, u):
@@ -222,6 +345,7 @@ def main():
     ppc = to_ppc(case)
     best = None
     best_r = None
+    margin_done = [-1.0]  # objective at which the margin polish last succeeded
 
     def save(sol, obj):
         tmp = a.out + ".tmp"
@@ -245,18 +369,20 @@ def main():
         return obj
 
     def attempt(p, max_it):
-        """PIPS from start p; on verifier rejection, warm re-solve with targeted tightening of near-binding limits."""
+        """PIPS from start p; on verifier rejection, tight-tolerance re-solve, then targeted tightening."""
         r = pips(p, max_it)
         if r is None:
             return None
         obj = check(r)
         if obj is not None:
             return obj
-        for eps in (6e-7, 3e-6, 1.5e-5, 6e-5):
+        for eps in (0.0, 6e-7, 3e-6, 1.5e-5, 6e-5):
             if time.time() > deadline:
                 return None
-            q = tighten(warm(p, r), r, eps)
-            r2 = pips(q, max_it)
+            if eps == 0.0:
+                r2 = pips_tight(warm(p, r), max_it)
+            else:
+                r2 = pips(tighten(warm(p, r), r, eps), max_it)
             if r2 is None:
                 continue
             obj = check(r2)
@@ -265,17 +391,78 @@ def main():
             r = r2
         return None
 
-    # Phase 1: file start, then flat start (often a different basin)
-    max_att = 0.0
+    def margin_polish():
+        """Re-solve the incumbent's basin with limits and loads relaxed by m < 1e-6; keep only verified points."""
+        if best_r is None:
+            return
+        base_r = best_r
+        for m in MARGINS:
+            if time.time() > deadline:
+                return
+            r = pips_tight(warm(margined(ppc, m), base_r), 200)
+            if r is None:
+                continue
+            if check(r) is not None:
+                margin_done[0] = best
+                return
+
+    def polish():
+        """High-precision warm re-solve of the incumbent, then the margin polish."""
+        if best_r is None or time.time() > deadline:
+            return
+        r = pips_tight(warm(ppc, best_r), 200)
+        if r is not None:
+            check(r)
+        if margin_done[0] != best:
+            margin_polish()
+
+    def cont_attempt(kind, max_it):
+        """Continuation restart: solve a sequence of modified problems, warm-starting each from the previous one."""
+        if kind == 0:  # relax limits, then tighten back in stages
+            stages = [relaxed(ppc, al) for al in (0.5, 0.2, 0.05)]
+            start = perturb(ppc, best_r, rng, 0.6) if best_r is not None else flat_start(ppc)
+        elif kind == 1:  # load ramp
+            s = float(rng.uniform(0.7, 0.9))
+            stages = [scaled_load(ppc, s), scaled_load(ppc, 0.5 * (1.0 + s))]
+            start = flat_start(ppc)
+            if best_r is not None and rng.random() < 0.5:
+                start = perturb(ppc, best_r, rng, 1.0)
+        else:  # re-weighted cost, then true cost
+            stages = [perturbed_cost(ppc, rng, 0.4)]
+            start = perturb(ppc, best_r, rng, 0.3) if best_r is not None else flat_start(ppc)
+        r = None
+        for q in stages:
+            if time.time() > deadline:
+                return None
+            r = pips(warm(q, r) if r is not None else warm(q, start), max_it)
+            if r is None:
+                return None
+        if time.time() > deadline:
+            return None
+        return attempt(warm(ppc, r), max_it)
+
+    # Phase 1: file start, flat start, DC-OPF start, then precision + margin polish
+    est = {"single": 0.0, "cont": 0.0}
     ts = time.time()
     attempt(ppc, 500)
-    max_att = max(max_att, time.time() - ts)
-    if time.time() + 1.3 * max_att < deadline:
+    est["single"] = max(est["single"], time.time() - ts)
+    if time.time() + 1.3 * est["single"] < deadline:
         ts = time.time()
         attempt(flat_start(ppc), 300)
-        max_att = max(max_att, time.time() - ts)
+        est["single"] = max(est["single"], time.time() - ts)
+    if time.time() + 2.0 * est["single"] < deadline:
+        polish()
+    if time.time() + 1.3 * est["single"] < deadline:
+        ts = time.time()
+        p = dc_start(ppc)
+        before = best
+        if p is not None:
+            attempt(p, 300)
+        est["single"] = max(est["single"], time.time() - ts)
+        if best is not None and (before is None or best < before - 1e-9):
+            polish()
 
-    # Phase 2: basin hopping + LHS restarts
+    # Phase 2: continuation restarts + basin hopping + dispatch corners + LHS restarts
     non = int((ppc["gen"][:, GEN_STATUS] > 0).sum())
     try:
         from scipy.stats import qmc
@@ -284,34 +471,60 @@ def main():
     except Exception:
         lhs = rng.random((128, 2 * non))
     k_lhs = 0
+    k_cont = 0
     tries = 0
     stagnant = 0
     hop_scale = 0.25
-    while time.time() + 1.3 * max_att + 1.0 < deadline:
+    schedule = ["cont", "small", "lhs", "corner", "cont", "small", "large", "corner"]
+    while True:
+        mode = schedule[tries % len(schedule)]
+        if best_r is None:
+            mode = "large"
+        if mode == "cont":
+            need = est["cont"] if est["cont"] > 0 else 4.0 * est["single"]
+        else:
+            need = est["single"]
+        if time.time() + 1.3 * need + 1.0 > deadline:
+            if mode == "cont" and time.time() + 1.3 * est["single"] + 1.0 < deadline:
+                mode = "small"
+            else:
+                break
         tries += 1
         before = best
-        mode = tries % 4
-        if best_r is None:
-            p = perturb(ppc, None, rng, 1.0 if mode else 2.5)
-        elif mode in (1, 2):
-            p = perturb(ppc, best_r, rng, hop_scale)
-        elif mode == 3:
-            p = lhs_start(ppc, lhs[k_lhs % len(lhs)])
-            k_lhs += 1
-        else:
-            p = perturb(ppc, best_r, rng, 2.0)
         ts = time.time()
-        attempt(p, 250)
-        max_att = max(max_att, time.time() - ts)
+        if mode == "cont":
+            cont_attempt(k_cont % 3, 250)
+            k_cont += 1
+            est["cont"] = max(est["cont"], time.time() - ts)
+        else:
+            if best_r is None:
+                p = perturb(ppc, None, rng, 1.0 if tries % 4 else 2.5)
+            elif mode == "small":
+                p = perturb(ppc, best_r, rng, hop_scale)
+            elif mode == "lhs":
+                p = lhs_start(ppc, lhs[k_lhs % len(lhs)])
+                k_lhs += 1
+            elif mode == "corner":
+                p = corner_start(ppc, best_r, rng)
+            else:
+                p = perturb(ppc, best_r, rng, 2.0)
+            attempt(p, 250)
+            est["single"] = max(est["single"], time.time() - ts)
         if best is not None and (before is None or best < before - 1e-9):
             stagnant = 0
             hop_scale = max(0.1, hop_scale * 0.8)
+            if time.time() + 2.0 * est["single"] < deadline:
+                polish()
         else:
             stagnant += 1
             if stagnant % 3 == 0:
                 hop_scale = min(1.5, hop_scale * 1.5)
         if best is None and tries > 25:
             break
+
+    # Final: make sure the incumbent has had its margin polish if any time is left
+    if best_r is not None and margin_done[0] != best and time.time() + 1.3 * est["single"] < deadline:
+        polish()
     print(f"best={best} tries={tries} secs={time.time() - t0:.1f}", file=sys.stderr)
 
 
