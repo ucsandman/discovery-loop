@@ -51,7 +51,7 @@ iterations before the guard stops it (22:00 -> ~00:40). `pglib_opf` then runs 00
 
 Publishing stays enabled for a real night slot. `publish.py` pushes `best-miplib_open/` to GitHub and, for any
 re-verified win, requests an email to `miplibsolutions@zib.de` through the approval seam (Wes approves on
-Telegram, up to a 4 hour window, fail closed). Enabled 2026-09-04. Use `--no-publish` only for isolated
+Telegram, up to a 24 hour window, fail closed). Enabled 2026-09-04. Use `--no-publish` only for isolated
 experiments like the smoke run.
 
 ## One-line apply (human, after review)

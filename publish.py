@@ -23,7 +23,7 @@ CLAWD = os.environ.get("CLAWD_ROOT", os.path.expanduser("~/clawd"))
 INVOKE = os.path.join(CLAWD, "agent-comms", "team", "bin", "invoke-capability.mjs")
 REPO_URL = "https://github.com/ucsandman/discovery-loop"
 COOLDOWN = 12 * 3600  # seconds between emails to a human maintainer
-APPROVAL_WAIT = 4 * 3600  # seconds to wait for Wes's approval
+APPROVAL_WAIT = 24 * 3600  # seconds to wait for Wes's approval (4h -> 24h, Wes 2026-09-04)
 REL_GAIN = 1e-6  # re-submit a target only if it improved by at least this (relative)
 
 
