@@ -1,52 +1,52 @@
 {
  "X-n280-k17": {
-  "value": 34019,
-  "iter": 1,
+  "value": 33605,
+  "iter": 5,
   "record": 33503.0
  },
  "X-n303-k21": {
-  "value": 21984,
-  "iter": 1,
+  "value": 21795,
+  "iter": 3,
   "record": 21736.0
  },
  "X-n327-k20": {
-  "value": 27930,
-  "iter": 1,
+  "value": 27634,
+  "iter": 4,
   "record": 27532.0
  },
  "X-n336-k84": {
-  "value": 140517,
-  "iter": 1,
+  "value": 139858,
+  "iter": 4,
   "record": 139111.0
  },
  "X-n401-k29": {
-  "value": 66634,
-  "iter": 1,
+  "value": 66343,
+  "iter": 4,
   "record": 66154.0
  },
  "X-n411-k19": {
-  "value": 20263,
-  "iter": 1,
+  "value": 19861,
+  "iter": 2,
   "record": 19712.0
  },
  "X-n429-k61": {
-  "value": 65918,
-  "iter": 1,
+  "value": 65643,
+  "iter": 4,
   "record": 65449.0
  },
  "X-n459-k26": {
-  "value": 24563,
-  "iter": 1,
+  "value": 24319,
+  "iter": 4,
   "record": 24139.0
  },
  "X-n480-k70": {
-  "value": 90083,
-  "iter": 1,
+  "value": 89805,
+  "iter": 4,
   "record": 89449.0
  },
  "X-n491-k59": {
-  "value": 67328,
-  "iter": 1,
+  "value": 66942,
+  "iter": 2,
   "record": 66483.0
  }
 }
