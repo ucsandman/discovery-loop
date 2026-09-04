@@ -1,0 +1,205 @@
+{
+ "assign1-10-4": {
+  "best_known": 422.0,
+  "sol_id": 1,
+  "submitter": null,
+  "date": "2018-10-13",
+  "age_years": 7.9,
+  "vars": 572,
+  "bin": 520,
+  "int": 0,
+  "cont": 52,
+  "rows": 582,
+  "nonz": 28280,
+  "tags": [
+   "cardinality",
+   "mixed_binary",
+   "set_partitioning"
+  ],
+  "sense": "min",
+  "highs_gap": 0.018957345971563982
+ },
+ "n3707": {
+  "best_known": 1186691.0,
+  "sol_id": 3,
+  "submitter": "Edward Rothberg",
+  "date": "2020-04-22",
+  "age_years": 6.4,
+  "vars": 10000,
+  "bin": 5000,
+  "int": 0,
+  "cont": 5000,
+  "rows": 5150,
+  "nonz": 20000,
+  "tags": [
+   "decomposition",
+   "mixed_binary",
+   "variable_bound"
+  ],
+  "sense": "min",
+  "highs_gap": 0.0834412665133552
+ },
+ "neos-1423785": {
+  "best_known": 21893.26,
+  "sol_id": 3,
+  "submitter": "Edward Rothberg",
+  "date": "2020-07-17",
+  "age_years": 6.1,
+  "vars": 21506,
+  "bin": 1920,
+  "int": 0,
+  "cont": 19586,
+  "rows": 25721,
+  "nonz": 64082,
+  "tags": [
+   "aggregations",
+   "mixed_binary",
+   "precedence",
+   "variable_bound"
+  ],
+  "sense": "min",
+  "highs_gap": 0.013797549707992433
+ },
+ "n3705": {
+  "best_known": 1212657.0,
+  "sol_id": 6,
+  "submitter": "Edward Rothberg",
+  "date": "2020-09-14",
+  "age_years": 6.0,
+  "vars": 10000,
+  "bin": 5000,
+  "int": 0,
+  "cont": 5000,
+  "rows": 5150,
+  "nonz": 20000,
+  "tags": [
+   "decomposition",
+   "mixed_binary",
+   "variable_bound"
+  ],
+  "sense": "min",
+  "highs_gap": 0.09534600468228031
+ },
+ "milo-v12-6-r1-75-1": {
+  "best_known": 1153756.39820567,
+  "sol_id": 3,
+  "submitter": "DeepMind",
+  "date": "2020-10-07",
+  "age_years": 5.9,
+  "vars": 5698,
+  "bin": 1925,
+  "int": 0,
+  "cont": 3773,
+  "rows": 12243,
+  "nonz": 32174,
+  "tags": [
+   "aggregations",
+   "decomposition",
+   "general_linear",
+   "mixed_binary",
+   "precedence",
+   "variable_bound"
+  ],
+  "sense": "min",
+  "highs_gap": 0.039914984541502545
+ },
+ "n3700": {
+  "best_known": 1218974.9999999998,
+  "sol_id": 4,
+  "submitter": "Michael Winkler",
+  "date": "2022-04-22",
+  "age_years": 4.4,
+  "vars": 10000,
+  "bin": 5000,
+  "int": 0,
+  "cont": 5000,
+  "rows": 5150,
+  "nonz": 20000,
+  "tags": [
+   "decomposition",
+   "mixed_binary",
+   "variable_bound"
+  ],
+  "sense": "min",
+  "highs_gap": 0.0752706167066595
+ },
+ "ger50-17-ptp-pop-3t": {
+  "best_known": 5224.5144,
+  "sol_id": 4,
+  "submitter": "Ed Rothberg",
+  "date": "2023-05-19",
+  "age_years": 3.3,
+  "vars": 4892,
+  "bin": 0,
+  "int": 540,
+  "cont": 4352,
+  "rows": 545,
+  "nonz": 14285,
+  "tags": [
+   "general_linear",
+   "mixed_binary"
+  ],
+  "sense": "min",
+  "highs_gap": 0.023624626242775806
+ },
+ "n370b": {
+  "best_known": 1220708.0,
+  "sol_id": 5,
+  "submitter": "Mou Sun, Tao Li, Wotao Yin",
+  "date": "2023-12-22",
+  "age_years": 2.7,
+  "vars": 10000,
+  "bin": 5000,
+  "int": 0,
+  "cont": 5000,
+  "rows": 5150,
+  "nonz": 20000,
+  "tags": [
+   "decomposition",
+   "mixed_binary",
+   "variable_bound"
+  ],
+  "sense": "min",
+  "highs_gap": 0.07229001530259489
+ },
+ "n3709": {
+  "best_known": 1205801.0,
+  "sol_id": 5,
+  "submitter": "Davletshin Mars",
+  "date": "2024-04-20",
+  "age_years": 2.4,
+  "vars": 10000,
+  "bin": 5000,
+  "int": 0,
+  "cont": 5000,
+  "rows": 5150,
+  "nonz": 20000,
+  "tags": [
+   "decomposition",
+   "mixed_binary",
+   "variable_bound"
+  ],
+  "sense": "min",
+  "highs_gap": 0.09534243212603075
+ },
+ "r4l4-02-tree-bounds-50": {
+  "best_known": 499132179.0015595,
+  "sol_id": 4,
+  "submitter": "Mars Davletshin",
+  "date": "2024-07-17",
+  "age_years": 2.1,
+  "vars": 11468,
+  "bin": 1938,
+  "int": 2830,
+  "cont": 6700,
+  "rows": 4768,
+  "nonz": 19072,
+  "tags": [
+   "aggregations",
+   "general_linear",
+   "mixed_binary"
+  ],
+  "sense": "min",
+  "highs_gap": 0.04647690125859031
+ }
+}
