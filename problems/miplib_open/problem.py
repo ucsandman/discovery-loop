@@ -5,8 +5,9 @@ MIPLIB site is a live, externally meaningful bar: a verified feasible point stri
 instance; above, for a max instance) is a genuine result that ZIB credits and lists. Unlike miplib_heur,
 whose "record" is HiGHS-default on this PC, the record here is the world's best-known primal value, found by
 serious solvers over years. Value per target = (obj - best_known)/max(1,|best_known|) in min-sense (max-sense
-instances converted), so 0 ties the best-known and NEGATIVE beats it. A win is push-only; a human submits it
-to miplibsolutions@zib.de (see EMAIL_TO). Beating a MIPLIB open best-known in minutes on one PC is a long
+instances converted), so 0 ties the best-known and NEGATIVE beats it. A verified win is pushed to GitHub and
+emailed to miplibsolutions@zib.de (EMAIL_TO) through the approval-gated seam in publish.py (Wes approves on
+Telegram before anything leaves). Beating a MIPLIB open best-known in minutes on one PC is a long
 shot; the durable deliverable is an honest, independently verified scoreboard.
 """
 
@@ -148,11 +149,58 @@ not repeat an idea that already failed unless you fix its specific failure."""
 TOTAL_DESC = "minus the sum of relative gaps to best-known over the targets (gaps clipped at 100%; 0 = ties every best-known; a failure counts as a 100% gap)"
 SUBMIT_NOTE = (
     "Candidates: best-miplib_open/sol/NAME.sol (MIPLIB .sol format). Verify: python problems/miplib_open/verify.py "
-    "best-miplib_open/sol/NAME.json. A verified improvement on an open instance is submitted BY HAND to "
-    "miplibsolutions@zib.de (ZIB credits it in the next site update); nothing is emailed automatically."
+    "best-miplib_open/sol/NAME.json. A verified improvement on an open instance is emailed to "
+    "miplibsolutions@zib.de by publish.py after Wes approves the send on Telegram (ZIB credits it in the next "
+    "site update)."
 )
 
-# ZIB accepts improved open-instance solutions by email; the loop stays push-only, so EMAIL_TO is None and a
-# human sends the .sol to miplibsolutions@zib.de. Home page (2026-09-04): "Contributions of new solutions to
-# open instances are always welcome ... Please send your submissions to miplibsolutions@zib.de".
-EMAIL_TO = None
+# ZIB accepts improved open-instance solutions by email. Home page (2026-09-04): "Contributions of new
+# solutions to open instances are always welcome ... Please send your submissions to miplibsolutions@zib.de".
+# publish.py re-verifies every candidate, then sends through invoke-capability (DashClaw pending approval,
+# Wes approves on Telegram, moltfire@ sends). Enabled 2026-09-04 on Wes's instruction: auto-email verified wins.
+EMAIL_TO = "miplibsolutions@zib.de"
+
+
+def _objective(t, v):
+    """Exact objective for the email: from the saved candidate if present, else derived from the gap value."""
+    raw = os.path.join(HERE, "..", "..", "best-miplib_open", "sol", f"{t}.json")
+    try:
+        return float(json.load(open(raw))["obj"])
+    except (OSError, KeyError, ValueError):
+        r = records.table().get(t, {})
+        bk = float(r.get("best_known", 0.0))
+        span = max(1.0, abs(bk))
+        return bk - v * span if r.get("sense") == "max" else bk + v * span
+
+
+def email_subject(cands):
+    return f"MIPLIB 2017 open instances: improved solutions for {', '.join(t for t, _, _ in cands)}"
+
+
+def email_body(cands, repo_url):
+    rows = []
+    for t, v, _ in cands:
+        r = records.table().get(t, {})
+        rows.append(
+            f"  {t:<24} ours {_objective(t, v):.12g}   listed {r.get('best_known')}"
+            f"   ({r.get('sense', 'min')}, {v:+.3e} relative)"
+        )
+    rows = "\n".join(rows)
+    return f"""Dear MIPLIB team,
+
+attached are .sol files ("=obj=" line followed by the nonzero variables) for the following OPEN
+instances, each with an objective strictly better than the best-known value in the current .solu file:
+
+{rows}
+
+Every solution was re-checked independently of the solver: variable bounds, integrality and every row
+within 1e-6, objective recomputed from the column costs. They were found by an LLM-evolved
+large-neighbourhood-search matheuristic on top of HiGHS 1.15, running overnight on a desktop machine.
+
+Code, checker and every candidate: {repo_url}
+Please credit: Wes Sander, MoltFire (AI agent).
+
+Thank you for maintaining MIPLIB.
+
+Wes Sander
+"""

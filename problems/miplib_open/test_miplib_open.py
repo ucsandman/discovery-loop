@@ -167,6 +167,23 @@ def test_verifier_ground_truth():
         print(f"  (skipped ground-truth: {type(e).__name__}: {str(e)[:80]})")
 
 
+# ── maintainer email (enabled 2026-09-04): address set, body names every candidate with an objective ──
+def test_email_builders_render_for_a_win():
+    import problem
+
+    assert problem.EMAIL_TO == "miplibsolutions@zib.de"
+    t = records.TARGETS[0]
+    cands = [(t, -2.5e-4, 0.0)]  # value space: 2.5e-4 relative below the best-known
+    subj = problem.email_subject(cands)
+    body = problem.email_body(cands, "https://example.invalid/repo")
+    assert t in subj and "open" in subj.lower()
+    assert t in body and "https://example.invalid/repo" in body and "Wes Sander" in body
+    bk = float(records.table()[t]["best_known"])
+    ours = problem._objective(t, -2.5e-4)
+    assert ours != bk, "derived objective must differ from the listed best-known"
+    assert f"{ours:.12g}" in body
+
+
 # ── --no-publish gating (same pattern as problems/cvrp/test_cvrp.py) ──
 def _run(argv, no_publish, tmp):
     import loop

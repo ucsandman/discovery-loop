@@ -10,7 +10,7 @@ from each instance's detail page; all of it is cached in records.json (committed
 Submission of an improved solution (ZIB, verified off the live home page 2026-09-04):
   "Contributions of new solutions to open instances are always welcome, and will be made available in
    periodic updates of the web page. ... Please send your submissions to miplibsolutions@zib.de"
-The address is quoted in problem.EMAIL_TO's comment and BASELINE.md; the loop never emails (push-only).
+The address is problem.EMAIL_TO; publish.py emails verified wins there after Wes approves the send (2026-09-04).
 
 records_load()/records_fetch() return VALUE space, not objectives: the loop uses that same dict for
 beats()/score()/the scoreboard, and our per-target value is already normalised against best-known, so the

@@ -5,8 +5,8 @@ The value to beat per target is the **published best-known objective** on the MI
 `records.json`). All ten targets are OPEN instances: a feasible solution is known but optimality has never
 been proven, so a verified feasible point **below** the best-known (for a min instance) is a genuine,
 externally creditable result that ZIB lists. Per-target value = `(obj - best_known)/max(1,|best_known|)` in
-min-sense (max-sense instances converted): **0 ties the best-known, negative beats it.** A win is push-only;
-a human submits the `.sol` by hand (see "Submission" below); nothing is emailed automatically.
+min-sense (max-sense instances converted): **0 ties the best-known, negative beats it.** A verified win is
+pushed and emailed to ZIB after Wes approves the send (see "Submission" below).
 
 ## Selection procedure (run for real on this machine)
 
@@ -124,13 +124,15 @@ incumbents away from the constraint boundary (the 120 s screen values) pass fine
 that only clears best-known by riding a row to the tolerance boundary would be rejected here and must be
 re-checked by ZIB's exact checker before submission.
 
-## Submission (push-only)
+## Submission (push + approval-gated email)
 
-ZIB accepts improved open-instance solutions by email; the loop never sends one. Verified off the live home
-page (2026-09-04): *"Contributions of new solutions to open instances are always welcome ... Please send your
-submissions to miplibsolutions@zib.de."* So `problem.EMAIL_TO` is `None`, `publish.py` only does the GitHub
-push of `best-miplib_open/`, and a human submits a win by hand: attach `best-miplib_open/sol/NAME.sol`
-(MIPLIB `.sol` format, written by `problem.save`) in an email to `miplibsolutions@zib.de`. Re-verify first:
+ZIB accepts improved open-instance solutions by email. Verified off the live home page (2026-09-04):
+*"Contributions of new solutions to open instances are always welcome ... Please send your submissions to
+miplibsolutions@zib.de."* `problem.EMAIL_TO` is that address (enabled 2026-09-04 on Wes's instruction).
+`publish.py` pushes `best-miplib_open/` to GitHub, re-verifies each candidate that beats the live table, and
+sends the `.sol` files through `invoke-capability send-email`: DashClaw opens a pending approval, Wes gets a
+Telegram ping, and only after he approves does `moltfire@practicalsystems.io` send (Wes cc'd). Twelve-hour
+cooldown between emails; a target is re-sent only if it improved again. Manual re-check at any time:
 `python problems/miplib_open/verify.py best-miplib_open/sol/NAME.json`.
 
 ## night.json slot
