@@ -10,6 +10,7 @@ The --no-publish tests monkeypatch Loop.publish/evaluate/update_bests and drive 
 they never touch git, the network, or the model.
 """
 
+import importlib.util
 import os
 import sys
 import tempfile
@@ -21,6 +22,19 @@ sys.path.insert(0, ROOT)
 
 import records  # noqa: E402
 import verify  # noqa: E402
+
+
+def _load(name):
+    """Load one of THIS module's files by explicit path. A bare ``import problem`` is unsafe here: importing
+    verify executes the shared engine problems/miplib/verify.py, which inserts problems/miplib onto sys.path,
+    so ``problem`` would otherwise resolve to problems/miplib/problem.py (a different module)."""
+    spec = importlib.util.spec_from_file_location("miplib_open_" + name, os.path.join(HERE, name + ".py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+problem = _load("problem")
 
 # A tiny MILP for the deliberate-failure tests, so each bad solution trips exactly one field:
 #   minimise x + y   s.t.   x + y <= 8,   x in {0..5} integer,   y in [0,10] continuous
@@ -46,6 +60,7 @@ def _use_synth():
     """Point the shared verifier engine at the synthetic .mps and pin a best-known so value() is defined."""
     path = os.path.join(tempfile.gettempdir(), "miplib_open_synth.mps")
     open(path, "w").write(SYNTH_MPS)
+    records._patched_ip = verify._V.instance_path  # must be restored, or the ground-truth test reads the synth .mps
     verify._V.instance_path = lambda name: path
     records._patched_best = records.best_known
     records.best_known = lambda name: 0.0  # ties at obj 0
@@ -54,6 +69,7 @@ def _use_synth():
 
 def _restore_synth():
     records.best_known = records._patched_best
+    verify._V.instance_path = records._patched_ip
 
 
 def test_verifier_accepts_and_values_a_feasible_point():
@@ -118,8 +134,6 @@ def test_age_years():
 
 
 def test_beats_and_score():
-    import problem
-
     assert problem.beats(-1e-3, 0.0) is True  # clearly below best-known
     assert problem.beats(-1e-9, 0.0) is False  # inside WIN_MARGIN noise
     assert problem.beats(0.02, 0.0) is False
