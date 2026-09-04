@@ -151,14 +151,15 @@ def _tier(n, r):
     A gap HiGHS lands 0.3 % from best-known is movable; 80 % away is dead on arrival. And an instance HiGHS
     solves to kOptimal within the screen budget is effectively closed (only a true world-record beat scores),
     so it is a hard exclusion, not a preference. The cascade fills the ten from the best tier down."""
+    if r.get("status") == "kOptimal":
+        return None  # HiGHS proved optimality within the screen budget: effectively closed, hard-exclude
     g = abs(r["value"])
-    closed = r.get("status") == "kOptimal"
     if 1e-6 < g <= 0.10:
         return 1  # T1: real, small, movable gap
     if 0.10 < g <= 0.30:
         return 2  # T2: bigger gap, still conceivably movable
     if g <= 1e-6:
-        return None if closed else 3  # T3: HiGHS already ties best-known; only a record beat scores here
+        return 3  # T3: HiGHS ties best-known but did not prove it; only a record beat scores here
     return None  # gap > 0.30: a permanent clipped -1.0, would drown the champion total
 
 

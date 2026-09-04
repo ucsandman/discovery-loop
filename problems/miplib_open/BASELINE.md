@@ -17,11 +17,12 @@ feasible point or their HiGHS incumbent failed the independent 1e-6 checker.
 
 `select()` is a mechanical cascade (movability = how far HiGHS's 120 s incumbent lands from best-known):
 
-- **T1**: feasible and `1e-6 < gap <= 0.10` (real, small, movable) &mdash; 14 candidates
+- **T1**: feasible and `1e-6 < gap <= 0.10` (real, small, movable) &mdash; 13 candidates
 - **T2**: `0.10 < gap <= 0.30` &mdash; 3 candidates (used only to backfill if T1 < 10)
 - **T3**: `gap <= 1e-6` and HiGHS did **not** prove optimality (ties best-known; only a record beat scores) &mdash; 1
-- **excluded**: `gap > 0.30` (a permanent clipped -1.0 that would drown the champion total) and any instance
-  HiGHS solved to `kOptimal` within 120 s (effectively closed, e.g. `neos-5045105-creuse` at +0.0009%)
+- **excluded** (10): `gap > 0.30` (a permanent clipped -1.0 that would drown the champion total, 9 instances)
+  and any instance HiGHS solved to `kOptimal` within 120 s (effectively closed: `neos-5045105-creuse` at
+  +0.0009%, which is why it does not appear among the pickable 17 despite a sub-10% gap)
 
 Within each tier: oldest best-known first (looser, more movable), then smallest by nonzeros. **All ten
 targets came from T1**, so no T2/T3 backfill was needed.
@@ -46,6 +47,11 @@ signal). `seed` = `seed_solver.py` gap, measured through the real loop (see next
 
 Mean seed gap **+4.12%** (at the 240 s measurement budget). No target beats its best-known yet; the loop's
 job is to close these gaps, and a negative per-target value would be a genuine open-instance win.
+
+The committed `best-miplib_open/scores.json` and `sol/` are a **different, weaker snapshot**: the champion the
+loop starts from, produced by the `--iters 1 --time 120` smoke (phase 1 = only 30 s, so these numbers are
+worse than the 240 s table above). It is the loop's starting point, rebuilt on the first real iteration; the
+table above is the honest per-target seed measurement.
 
 **Known limitation (target concentration):** five of the ten (`n3707`, `n3705`, `n3700`, `n370b`, `n3709`)
 are the `n37xx` network-design family &mdash; near-identical 10000-var / 5150-row instances differing mostly by
