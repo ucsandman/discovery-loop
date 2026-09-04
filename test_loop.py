@@ -105,6 +105,39 @@ def test_plateau_ignores_no_code_entries():
     assert loop.check_plateau(history, 6, 0.01) is False
 
 
+# ── publish: the in-loop path only pushes; the maintainer email is batched per slot by night.py ──
+def test_loop_publish_is_push_only():
+    import types
+
+    calls = []
+    orig = subprocess.Popen
+    subprocess.Popen = lambda cmd, **_: calls.append(cmd) or None
+    try:
+        fake = types.SimpleNamespace(name="cvrp", runs=os.path.join(HERE, "runs-cvrp"))
+        loop.Loop.publish(fake)
+    finally:
+        subprocess.Popen = orig
+    assert len(calls) == 1
+    assert calls[0][1].endswith("publish.py")
+    assert "--push-only" in calls[0]
+
+
+def test_night_publish_slot_emails_full():
+    import night
+
+    calls = []
+    orig = subprocess.Popen
+    subprocess.Popen = lambda cmd, **_: calls.append(cmd) or None
+    try:
+        night.publish_slot("cvrp")
+    finally:
+        subprocess.Popen = orig
+    assert len(calls) == 1
+    assert calls[0][1].endswith("publish.py")
+    assert "--push-only" not in calls[0]
+    assert calls[0][calls[0].index("--problem") + 1] == "cvrp"
+
+
 def _main():
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     failed = 0

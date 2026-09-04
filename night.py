@@ -6,7 +6,9 @@ Schedule lives in night.json (edit by hand):
 
 Each slot runs `python -u loop.py --problem P --wall-minutes M --budget B [extra args]` and appends to
 runs-<P>/night-<date>.log. runs/night-status.json holds the per-slot outcome (champion total before/after,
-spend, wins, exit code) so a morning check can read one file instead of every log.
+spend, wins, exit code) so a morning check can read one file instead of every log. After each slot (even a
+crashed one) `publish.py --problem P` runs detached: one maintainer email per slot with every winner in it,
+one approval tap (the loop itself only pushes to GitHub).
 
   python night.py                 # run tonight's schedule
   python night.py --dry-run       # print the commands only
@@ -91,6 +93,20 @@ def run_slot(slot, dry):
     }
 
 
+def publish_slot(problem):
+    """One email per slot: publish.py re-verifies every winner the slot pushed and requests ONE approval for all
+    of them (Wes, 2026-09-04). Detached, so its 24h approval wait never delays the next slot; a crashed slot still
+    submits what it won. Output: runs-<P>/publish.log."""
+    _, runs = layout(problem)
+    os.makedirs(runs, exist_ok=True)
+    subprocess.Popen(
+        [sys.executable, os.path.join(HERE, "publish.py"), "--problem", problem],
+        cwd=HERE,
+        stdout=open(os.path.join(runs, "publish.log"), "a"),
+        stderr=subprocess.STDOUT,
+    )
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
@@ -102,6 +118,8 @@ def main():
     for slot in slots:
         try:
             status["slots"].append(run_slot(slot, a.dry_run))
+            if not a.dry_run:
+                publish_slot(slot["problem"])
         except Exception as e:  # one broken slot must not cost the other slot its night
             status["slots"].append({"problem": slot.get("problem"), "error": f"{type(e).__name__}: {e}"[:400]})
         if not a.dry_run:

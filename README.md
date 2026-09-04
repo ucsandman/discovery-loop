@@ -22,12 +22,15 @@ Outputs per problem: `best*/solver.py` (champion), `best*/<sub>/` (candidates in
 
 ## Publishing (nothing sits on this machine)
 
-`publish.py` runs automatically after any iteration that improves a record-beating N, and at the end of a run:
+`publish.py` runs in two layers:
 
-1. commits and pushes `best/` to GitHub (public, timestamped ledger of every candidate)
-2. emails the new `.pck` files to Packomania through the governed `invoke-capability send-email` seam:
-   DashClaw opens a pending approval, Wes approves on Telegram, `moltfire@practicalsystems.io` sends with Wes cc'd.
-   Every candidate is re-verified against the live table first; `best/submitted.json` records what went out; one email per 12h.
+1. `loop.py` fires `publish.py --push-only` after any iteration that improves a record-beating target and at the
+   end of a run: commit and push `best*/` to GitHub (public, timestamped ledger of every candidate). Never emails.
+2. `night.py` runs the full `publish.py` once after each slot (crashed slots included): every winner of the slot
+   goes to the maintainer in ONE email with ONE approval tap, through the governed `invoke-capability send-email`
+   seam. DashClaw opens a pending approval, Wes approves on Telegram (24h window, fail closed),
+   `moltfire@practicalsystems.io` sends with Wes cc'd. Every candidate is re-verified against the live table first;
+   `best*/submitted.json` records what went out; one email per 12h per problem.
 
 ```powershell
 python publish.py --dry-run   # show what would go out

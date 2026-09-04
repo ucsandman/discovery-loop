@@ -4,8 +4,11 @@
 2. email new submission files to the benchmark maintainers through the governed invoke-capability seam:
    DashClaw pending approval -> Wes approves on Telegram -> moltfire@ sends, Wes cc'd.
 
-loop.py runs this after any iteration that improves a record-beating target. By hand:
+loop.py runs this with --push-only after any iteration that improves a record-beating target (GitHub ledger,
+no email). night.py runs the full version once after each slot, so every winner of the slot goes out in ONE
+email with ONE approval tap, and a crashed slot still submits what it won (Wes, 2026-09-04). By hand:
   python publish.py --problem miplib            # push + email anything new (12h cooldown between emails)
+  python publish.py --problem miplib --push-only  # git commit + push only, never email
   python publish.py --problem miplib --dry-run  # show what would go out; no push, no approval request
   python publish.py --problem miplib --force    # ignore the cooldown
 """
@@ -114,6 +117,9 @@ def main():
     ap.add_argument("--problem", default="circle_packing")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--force", action="store_true")
+    ap.add_argument(
+        "--push-only", action="store_true", help="git commit + push only; night.py batches the email per slot"
+    )
     a = ap.parse_args()
     P = load_problem(a.problem)
     best, runs = layout(a.problem)
@@ -128,6 +134,9 @@ def main():
     ledger = json.load(open(ledger_path)) if os.path.exists(ledger_path) else {}
     cands = candidates(P, best, rec, ledger)
     git_push(best, a.dry_run)
+    if a.push_only:
+        print(f"email: skipped (--push-only); pending for the slot email: {[t for t, _, _ in cands]}")
+        return
     if not cands:
         print("email: nothing new beats the live table")
         return

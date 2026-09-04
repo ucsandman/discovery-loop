@@ -232,9 +232,10 @@ th{{background:#eee}}.win{{background:#c8f7c5}}h1{{margin:0}}</style>
 <p>{html.escape(self.P.SUBMIT_NOTE)}</p>""")
 
     def publish(self):
-        """Fire-and-forget: push candidates to GitHub and email the maintainers (approval-gated) via publish.py."""
+        """Fire-and-forget: push candidates to GitHub via publish.py --push-only. The maintainer email is batched
+        per slot by night.py (one email, one approval tap for every winner of the slot); by hand: python publish.py."""
         subprocess.Popen(
-            [sys.executable, os.path.join(HERE, "publish.py"), "--problem", self.name],
+            [sys.executable, os.path.join(HERE, "publish.py"), "--problem", self.name, "--push-only"],
             cwd=HERE,
             stdout=open(os.path.join(self.runs, "publish.log"), "a"),
             stderr=subprocess.STDOUT,

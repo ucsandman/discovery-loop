@@ -49,10 +49,11 @@ that cannot finish `budget + 360 s` before the wall limit, so a 160-minute slot 
 iterations before the guard stops it (22:00 -> ~00:40). `pglib_opf` then runs 00:40 -> 03:20 and `cvrp`
 03:20 -> 06:00, exactly as today. The loop also stops early on plateau or the \$15 model budget.
 
-Publishing stays enabled for a real night slot. `publish.py` pushes `best-miplib_open/` to GitHub and, for any
-re-verified win, requests an email to `miplibsolutions@zib.de` through the approval seam (Wes approves on
-Telegram, up to a 24 hour window, fail closed). Enabled 2026-09-04. Use `--no-publish` only for isolated
-experiments like the smoke run.
+Publishing stays enabled for a real night slot. During the slot the loop pushes `best-miplib_open/` to GitHub
+(`publish.py --push-only`). After the slot, `night.py` runs the full `publish.py`: every re-verified win of the
+slot goes to `miplibsolutions@zib.de` in one email with one approval tap (Wes approves on Telegram, up to a
+24 hour window, fail closed; a crashed slot still submits). Enabled 2026-09-04, batched the same day. Use
+`--no-publish` only for isolated experiments like the smoke run.
 
 ## One-line apply (human, after review)
 
