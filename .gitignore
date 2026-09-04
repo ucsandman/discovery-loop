@@ -8,3 +8,4 @@ __pycache__/
 problems/miplib/instances/
 problems/pglib_opf/instances/
 problems/cvrp/instances/
+problems/miplib_open/tag_open.html

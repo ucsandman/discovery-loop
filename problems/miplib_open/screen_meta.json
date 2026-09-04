@@ -1,0 +1,778 @@
+{
+ "milo-v13-4-3d-4-0": {
+  "best_known": 358152.2621937089,
+  "sol_id": 2,
+  "submitter": "Robert Ashford and Alkis Vazacopoulos",
+  "date": "2019-12-18",
+  "age_years": 6.7,
+  "vars": 688,
+  "bin": 160,
+  "int": 0,
+  "cont": 528,
+  "rows": 1328,
+  "nonz": 3292,
+  "tags": [
+   "aggregations",
+   "general_linear",
+   "mixed_binary",
+   "variable_bound"
+  ]
+ },
+ "neos-3009394-lami": {
+  "best_known": 5.5,
+  "sol_id": 1,
+  "submitter": null,
+  "date": "2018-10-16",
+  "age_years": 7.9,
+  "vars": 2757,
+  "bin": 2704,
+  "int": 52,
+  "cont": 1,
+  "rows": 2028,
+  "nonz": 6760,
+  "tags": [
+   "general_linear",
+   "set_partitioning"
+  ]
+ },
+ "dfn-bwin-DBE": {
+  "best_known": 73623.78788664003,
+  "sol_id": 3,
+  "submitter": "Alex Fender, Alice Boucher, Akif Coerduek, Piotr Sielski, Burcin Bozkaya, Preethi Maulik",
+  "date": "2025-01-10",
+  "age_years": 1.6,
+  "vars": 3285,
+  "bin": 2475,
+  "int": 0,
+  "cont": 810,
+  "rows": 235,
+  "nonz": 9855,
+  "tags": [
+   "mixed_binary",
+   "set_packing"
+  ]
+ },
+ "liu": {
+  "best_known": 1083.984782,
+  "sol_id": 5,
+  "submitter": "Alex Fender, Alice Boucher, Akif Coerduek, Piotr Sielski, Burcin Bozkaya, Preethi Maulik",
+  "date": "2025-10-16",
+  "age_years": 0.9,
+  "vars": 1156,
+  "bin": 1089,
+  "int": 0,
+  "cont": 67,
+  "rows": 2178,
+  "nonz": 10626,
+  "tags": [
+   "mixed_binary",
+   "precedence"
+  ]
+ },
+ "neos-1420790": {
+  "best_known": 3119.805057682128,
+  "sol_id": 7,
+  "submitter": "Alex Fender, Alice Boucher, Akif Coerduek, Piotr Sielski, Burcin Bozkaya, Preethi Maulik",
+  "date": "2025-01-10",
+  "age_years": 1.6,
+  "vars": 4926,
+  "bin": 540,
+  "int": 0,
+  "cont": 4386,
+  "rows": 2310,
+  "nonz": 12720,
+  "tags": [
+   "decomposition",
+   "mixed_binary",
+   "set_partitioning"
+  ]
+ },
+ "set3-09": {
+  "best_known": 176497.15,
+  "sol_id": 3,
+  "submitter": "Edward Rothberg",
+  "date": "2020-06-11",
+  "age_years": 6.2,
+  "vars": 4019,
+  "bin": 1424,
+  "int": 0,
+  "cont": 2595,
+  "rows": 3747,
+  "nonz": 13747,
+  "tags": [
+   "mixed_binary",
+   "precedence",
+   "variable_bound"
+  ]
+ },
+ "set3-16": {
+  "best_known": 134040.4097522878,
+  "sol_id": 2,
+  "submitter": "Robert Ashford and Alkis Vazacopoulos",
+  "date": "2019-12-18",
+  "age_years": 6.7,
+  "vars": 4019,
+  "bin": 1424,
+  "int": 0,
+  "cont": 2595,
+  "rows": 3747,
+  "nonz": 13747,
+  "tags": [
+   "mixed_binary",
+   "precedence",
+   "variable_bound"
+  ]
+ },
+ "ger50-17-ptp-pop-3t": {
+  "best_known": 5224.5144,
+  "sol_id": 4,
+  "submitter": "Ed Rothberg",
+  "date": "2023-05-19",
+  "age_years": 3.3,
+  "vars": 4892,
+  "bin": 0,
+  "int": 540,
+  "cont": 4352,
+  "rows": 545,
+  "nonz": 14285,
+  "tags": [
+   "general_linear",
+   "mixed_binary"
+  ]
+ },
+ "r4l4-02-tree-bounds-50": {
+  "best_known": 499132179.0015595,
+  "sol_id": 4,
+  "submitter": "Mars Davletshin",
+  "date": "2024-07-17",
+  "age_years": 2.1,
+  "vars": 11468,
+  "bin": 1938,
+  "int": 2830,
+  "cont": 6700,
+  "rows": 4768,
+  "nonz": 19072,
+  "tags": [
+   "aggregations",
+   "general_linear",
+   "mixed_binary"
+  ]
+ },
+ "n370b": {
+  "best_known": 1220708.0,
+  "sol_id": 5,
+  "submitter": "Mou Sun, Tao Li, Wotao Yin",
+  "date": "2023-12-22",
+  "age_years": 2.7,
+  "vars": 10000,
+  "bin": 5000,
+  "int": 0,
+  "cont": 5000,
+  "rows": 5150,
+  "nonz": 20000,
+  "tags": [
+   "decomposition",
+   "mixed_binary",
+   "variable_bound"
+  ]
+ },
+ "n3707": {
+  "best_known": 1186691.0,
+  "sol_id": 3,
+  "submitter": "Edward Rothberg",
+  "date": "2020-04-22",
+  "age_years": 6.4,
+  "vars": 10000,
+  "bin": 5000,
+  "int": 0,
+  "cont": 5000,
+  "rows": 5150,
+  "nonz": 20000,
+  "tags": [
+   "decomposition",
+   "mixed_binary",
+   "variable_bound"
+  ]
+ },
+ "n3709": {
+  "best_known": 1205801.0,
+  "sol_id": 5,
+  "submitter": "Davletshin Mars",
+  "date": "2024-04-20",
+  "age_years": 2.4,
+  "vars": 10000,
+  "bin": 5000,
+  "int": 0,
+  "cont": 5000,
+  "rows": 5150,
+  "nonz": 20000,
+  "tags": [
+   "decomposition",
+   "mixed_binary",
+   "variable_bound"
+  ]
+ },
+ "n3700": {
+  "best_known": 1218974.9999999998,
+  "sol_id": 4,
+  "submitter": "Michael Winkler",
+  "date": "2022-04-22",
+  "age_years": 4.4,
+  "vars": 10000,
+  "bin": 5000,
+  "int": 0,
+  "cont": 5000,
+  "rows": 5150,
+  "nonz": 20000,
+  "tags": [
+   "decomposition",
+   "mixed_binary",
+   "variable_bound"
+  ]
+ },
+ "n3705": {
+  "best_known": 1212657.0,
+  "sol_id": 6,
+  "submitter": "Edward Rothberg",
+  "date": "2020-09-14",
+  "age_years": 6.0,
+  "vars": 10000,
+  "bin": 5000,
+  "int": 0,
+  "cont": 5000,
+  "rows": 5150,
+  "nonz": 20000,
+  "tags": [
+   "decomposition",
+   "mixed_binary",
+   "variable_bound"
+  ]
+ },
+ "neos-5045105-creuse": {
+  "best_known": 20.57124707548,
+  "sol_id": 3,
+  "submitter": "Shunsuke Kamiya",
+  "date": "2025-01-16",
+  "age_years": 1.6,
+  "vars": 3848,
+  "bin": 0,
+  "int": 3780,
+  "cont": 68,
+  "rows": 252,
+  "nonz": 23108,
+  "tags": [
+   "general_linear",
+   "integer_knapsack"
+  ]
+ },
+ "bley_xs1noM": {
+  "best_known": 3873690.77,
+  "sol_id": 3,
+  "submitter": "Ed Klotz",
+  "date": "2020-09-11",
+  "age_years": 6.0,
+  "vars": 3243,
+  "bin": 2360,
+  "int": 883,
+  "cont": 0,
+  "rows": 3290,
+  "nonz": 25762,
+  "tags": [
+   "aggregations",
+   "general_linear",
+   "invariant_knapsack",
+   "knapsack",
+   "mixed_binary",
+   "numerics",
+   "set_covering",
+   "set_packing",
+   "set_partitioning",
+   "variable_bound"
+  ]
+ },
+ "bley_xs1": {
+  "best_known": 3855895.859999982,
+  "sol_id": 8,
+  "submitter": "Robert Ashford, Alkis Vazacopoulos",
+  "date": "2025-09-30",
+  "age_years": 0.9,
+  "vars": 3243,
+  "bin": 2360,
+  "int": 883,
+  "cont": 0,
+  "rows": 3290,
+  "nonz": 25762,
+  "tags": [
+   "aggregations",
+   "general_linear",
+   "invariant_knapsack",
+   "knapsack",
+   "mixed_binary",
+   "numerics",
+   "set_covering",
+   "set_packing",
+   "set_partitioning",
+   "variable_bound"
+  ]
+ },
+ "nag": {
+  "best_known": 945.0,
+  "sol_id": 2,
+  "submitter": "Frederic Didier",
+  "date": "2020-01-22",
+  "age_years": 6.6,
+  "vars": 2884,
+  "bin": 1350,
+  "int": 35,
+  "cont": 1499,
+  "rows": 5840,
+  "nonz": 26499,
+  "tags": [
+   "aggregations",
+   "general_linear",
+   "mixed_binary",
+   "precedence",
+   "set_partitioning",
+   "variable_bound"
+  ]
+ },
+ "tokyometro": {
+  "best_known": 8263.099999999999,
+  "sol_id": 4,
+  "submitter": "Edward Rothberg",
+  "date": "2022-07-12",
+  "age_years": 4.1,
+  "vars": 4537,
+  "bin": 2496,
+  "int": 2041,
+  "cont": 0,
+  "rows": 7719,
+  "nonz": 26958,
+  "tags": [
+   "aggregations",
+   "equation_knapsack",
+   "general_linear",
+   "mixed_binary",
+   "precedence",
+   "set_partitioning",
+   "variable_bound"
+  ]
+ },
+ "assign1-10-4": {
+  "best_known": 422.0,
+  "sol_id": 1,
+  "submitter": null,
+  "date": "2018-10-13",
+  "age_years": 7.9,
+  "vars": 572,
+  "bin": 520,
+  "int": 0,
+  "cont": 52,
+  "rows": 582,
+  "nonz": 28280,
+  "tags": [
+   "cardinality",
+   "mixed_binary",
+   "set_partitioning"
+  ]
+ },
+ "neos-848198": {
+  "best_known": 51797.0,
+  "sol_id": 4,
+  "submitter": "Michael Winkler",
+  "date": "2022-12-03",
+  "age_years": 3.8,
+  "vars": 10164,
+  "bin": 462,
+  "int": 0,
+  "cont": 9702,
+  "rows": 924,
+  "nonz": 29106,
+  "tags": [
+   "mixed_binary"
+  ]
+ },
+ "f2000": {
+  "best_known": 1810.0,
+  "sol_id": 4,
+  "submitter": "Edward Rothberg",
+  "date": "2020-11-25",
+  "age_years": 5.8,
+  "vars": 4000,
+  "bin": 4000,
+  "int": 0,
+  "cont": 0,
+  "rows": 10500,
+  "nonz": 29500,
+  "tags": [
+   "binary",
+   "set_covering",
+   "variable_bound"
+  ]
+ },
+ "fhnw-schedule-paira100": {
+  "best_known": -15.1131226682367,
+  "sol_id": 3,
+  "submitter": "Edward Rothberg",
+  "date": "2019-12-13",
+  "age_years": 6.7,
+  "vars": 5150,
+  "bin": 5050,
+  "int": 0,
+  "cont": 100,
+  "rows": 10000,
+  "nonz": 29873,
+  "tags": [
+   "mixed_binary",
+   "variable_bound"
+  ]
+ },
+ "supportcase35": {
+  "best_known": -164208.643099287,
+  "sol_id": 6,
+  "submitter": "Alex Fender, Alice Boucher, Akif Coerduek, Piotr Sielski, Burcin Bozkaya, Preethi Maulik",
+  "date": "2025-01-10",
+  "age_years": 1.6,
+  "vars": 12941,
+  "bin": 576,
+  "int": 0,
+  "cont": 12365,
+  "rows": 6334,
+  "nonz": 29908,
+  "tags": [
+   "mixed_binary",
+   "numerics",
+   "precedence",
+   "variable_bound"
+  ]
+ },
+ "milo-v12-6-r1-75-1": {
+  "best_known": 1153756.39820567,
+  "sol_id": 3,
+  "submitter": "DeepMind",
+  "date": "2020-10-07",
+  "age_years": 5.9,
+  "vars": 5698,
+  "bin": 1925,
+  "int": 0,
+  "cont": 3773,
+  "rows": 12243,
+  "nonz": 32174,
+  "tags": [
+   "aggregations",
+   "decomposition",
+   "general_linear",
+   "mixed_binary",
+   "precedence",
+   "variable_bound"
+  ]
+ },
+ "ramos3": {
+  "best_known": 186.0,
+  "sol_id": 4,
+  "submitter": "Yuya Hattori",
+  "date": "2022-10-13",
+  "age_years": 3.9,
+  "vars": 2187,
+  "bin": 2187,
+  "int": 0,
+  "cont": 0,
+  "rows": 2187,
+  "nonz": 32805,
+  "tags": [
+   "binary",
+   "set_covering"
+  ]
+ },
+ "xmas10-2": {
+  "best_known": -497.0,
+  "sol_id": 3,
+  "submitter": "DeepMind",
+  "date": "2020-08-12",
+  "age_years": 6.1,
+  "vars": 8100,
+  "bin": 900,
+  "int": 0,
+  "cont": 7200,
+  "rows": 8184,
+  "nonz": 35561,
+  "tags": [
+   "aggregations",
+   "binpacking",
+   "cardinality",
+   "invariant_knapsack",
+   "knapsack",
+   "mixed_binary",
+   "variable_bound"
+  ]
+ },
+ "neos-3691541-lonja": {
+  "best_known": -0.007441450579999998,
+  "sol_id": 2,
+  "submitter": "Alex Fender, Alice Boucher, Akif Coerduek, Piotr Sielski, Burcin Bozkaya, Preethi Maulik",
+  "date": "2025-01-10",
+  "age_years": 1.6,
+  "vars": 10300,
+  "bin": 10200,
+  "int": 0,
+  "cont": 100,
+  "rows": 10320,
+  "nonz": 40568,
+  "tags": [
+   "decomposition",
+   "invariant_knapsack",
+   "mixed_binary",
+   "precedence",
+   "set_partitioning",
+   "variable_bound"
+  ]
+ },
+ "gsvm2rl9": {
+  "best_known": 7438.181021170049,
+  "sol_id": 1,
+  "submitter": "Peng Lin and Shaowei Cai",
+  "date": "2024-09-29",
+  "age_years": 1.9,
+  "vars": 801,
+  "bin": 200,
+  "int": 0,
+  "cont": 601,
+  "rows": 600,
+  "nonz": 41400,
+  "tags": [
+   "mixed_binary",
+   "numerics",
+   "precedence",
+   "variable_bound"
+  ]
+ },
+ "xmas10": {
+  "best_known": -497.0,
+  "sol_id": 2,
+  "submitter": "Mars Davletshin",
+  "date": "2023-11-24",
+  "age_years": 2.8,
+  "vars": 8100,
+  "bin": 900,
+  "int": 0,
+  "cont": 7200,
+  "rows": 9080,
+  "nonz": 43635,
+  "tags": [
+   "aggregations",
+   "binpacking",
+   "cardinality",
+   "invariant_knapsack",
+   "knapsack",
+   "mixed_binary",
+   "variable_bound"
+  ]
+ },
+ "neos-3682128-sandon": {
+  "best_known": 34666767.4743958,
+  "sol_id": 3,
+  "submitter": "Yuji Shinano, Stefan Vigerske",
+  "date": "2025-10-16",
+  "age_years": 0.9,
+  "vars": 7880,
+  "bin": 7870,
+  "int": 10,
+  "cont": 0,
+  "rows": 14920,
+  "nonz": 50438,
+  "tags": [
+   "aggregations",
+   "cardinality",
+   "equation_knapsack",
+   "general_linear",
+   "integer_knapsack",
+   "invariant_knapsack",
+   "knapsack",
+   "set_packing",
+   "variable_bound"
+  ]
+ },
+ "eva1aprime5x5opt": {
+  "best_known": -17.94807560443689,
+  "sol_id": 4,
+  "submitter": "Ed Rothberg",
+  "date": "2023-05-19",
+  "age_years": 3.3,
+  "vars": 1712,
+  "bin": 400,
+  "int": 0,
+  "cont": 1312,
+  "rows": 11929,
+  "nonz": 57162,
+  "tags": [
+   "aggregations",
+   "mixed_binary",
+   "set_packing",
+   "variable_bound"
+  ]
+ },
+ "lr1dr02vc05v8a-t360": {
+  "best_known": 123046.8149370308,
+  "sol_id": 4,
+  "submitter": "Edward Rothberg",
+  "date": "2020-04-22",
+  "age_years": 6.4,
+  "vars": 20810,
+  "bin": 12174,
+  "int": 6471,
+  "cont": 2165,
+  "rows": 7560,
+  "nonz": 58950,
+  "tags": [
+   "aggregations",
+   "cardinality",
+   "general_linear",
+   "mixed_binary",
+   "set_packing",
+   "set_partitioning",
+   "variable_bound"
+  ]
+ },
+ "neos-4358725-tagus": {
+  "best_known": 4206.140099965,
+  "sol_id": null,
+  "submitter": null,
+  "date": null,
+  "age_years": null,
+  "vars": 11494,
+  "bin": 4898,
+  "int": 0,
+  "cont": 6596,
+  "rows": 22777,
+  "nonz": 59925,
+  "tags": [
+   "aggregations",
+   "general_linear",
+   "invariant_knapsack",
+   "mixed_binary",
+   "numerics",
+   "precedence",
+   "set_partitioning",
+   "variable_bound"
+  ]
+ },
+ "cvrpp-n16k8vrpi": {
+  "best_known": 450.0,
+  "sol_id": 1,
+  "submitter": null,
+  "date": "2018-10-13",
+  "age_years": 7.9,
+  "vars": 18294,
+  "bin": 2832,
+  "int": 531,
+  "cont": 14931,
+  "rows": 31615,
+  "nonz": 60544,
+  "tags": [
+   "aggregations",
+   "general_linear",
+   "indicator",
+   "mixed_binary",
+   "numerics",
+   "precedence",
+   "set_packing",
+   "set_partitioning",
+   "variable_bound"
+  ]
+ },
+ "pb-gfrd-pnc": {
+  "best_known": 8844.0,
+  "sol_id": 3,
+  "submitter": "Michael Winkler",
+  "date": "2023-07-01",
+  "age_years": 3.2,
+  "vars": 27888,
+  "bin": 27888,
+  "int": 0,
+  "cont": 0,
+  "rows": 874,
+  "nonz": 60737,
+  "tags": [
+   "binary",
+   "binpacking",
+   "equation_knapsack",
+   "knapsack"
+  ]
+ },
+ "graphdraw-mainerd": {
+  "best_known": 38841.9999999991,
+  "sol_id": 6,
+  "submitter": "Mars Davletshin",
+  "date": "2024-07-12",
+  "age_years": 2.1,
+  "vars": 2050,
+  "bin": 1860,
+  "int": 62,
+  "cont": 128,
+  "rows": 20661,
+  "nonz": 62350,
+  "tags": [
+   "general_linear",
+   "invariant_knapsack",
+   "mixed_binary",
+   "set_partitioning",
+   "variable_bound"
+  ]
+ },
+ "neos-1423785": {
+  "best_known": 21893.26,
+  "sol_id": 3,
+  "submitter": "Edward Rothberg",
+  "date": "2020-07-17",
+  "age_years": 6.1,
+  "vars": 21506,
+  "bin": 1920,
+  "int": 0,
+  "cont": 19586,
+  "rows": 25721,
+  "nonz": 64082,
+  "tags": [
+   "aggregations",
+   "mixed_binary",
+   "precedence",
+   "variable_bound"
+  ]
+ },
+ "neos-3594536-henty": {
+  "best_known": 401223.0,
+  "sol_id": 5,
+  "submitter": "Mars Davletshin",
+  "date": "2024-07-17",
+  "age_years": 2.1,
+  "vars": 22924,
+  "bin": 0,
+  "int": 22924,
+  "cont": 0,
+  "rows": 21280,
+  "nonz": 65712,
+  "tags": [
+   "aggregations",
+   "decomposition",
+   "general_linear",
+   "variable_bound"
+  ]
+ },
+ "neos-1420546": {
+  "best_known": 22948.10319799665,
+  "sol_id": 4,
+  "submitter": "Alex Fender, Alice Boucher, Akif Coerduek, Piotr Sielski, Burcin Bozkaya, Preethi Maulik",
+  "date": "2025-01-10",
+  "age_years": 1.6,
+  "vars": 26055,
+  "bin": 1125,
+  "int": 0,
+  "cont": 24930,
+  "rows": 12671,
+  "nonz": 67959,
+  "tags": [
+   "decomposition",
+   "mixed_binary",
+   "set_partitioning"
+  ]
+ }
+}
