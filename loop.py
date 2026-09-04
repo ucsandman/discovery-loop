@@ -179,17 +179,24 @@ OUTPUT FORMAT: first line "IDEA: <one sentence>", then exactly one ```python blo
             "--system-prompt",
             "You are an expert in numerical and combinatorial optimisation. Output only what is asked.",
         ]
-        p = subprocess.run(
-            cmd,
-            input=prompt,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            env=env,
-            timeout=900,
-            shell=(os.name == "nt"),
-        )
+        try:
+            p = subprocess.run(
+                cmd,
+                input=prompt,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=env,
+                timeout=900,
+                shell=(os.name == "nt"),
+            )
+        except subprocess.TimeoutExpired:
+            return None, 0.0, "cli timeout after 900s"
+        except OSError as e:
+            return None, 0.0, f"cli error: {e}"
+        if p.returncode != 0 and not p.stdout.strip():
+            return None, 0.0, f"cli error (exit {p.returncode}): {p.stderr[-300:]}"
         try:
             j = json.loads(p.stdout)
         except json.JSONDecodeError:
@@ -234,6 +241,44 @@ th{{background:#eee}}.win{{background:#c8f7c5}}h1{{margin:0}}</style>
         )
 
 
+def check_plateau(history, window, threshold):
+    """Return True if the last `window` iterations show no meaningful relative progress.
+
+    Three independent signals (any one triggers). No-code entries (including CLI timeouts) are
+    excluded from the window entirely, so a model timeout does not count as a non-improving
+    iteration. A window of 0 disables the plateau stop.
+    1. All remaining entries in the window are rejected (nothing worked).
+    2. No champion in the window (model is spinning).
+    3. Relative improvement across the window < threshold: improvement is measured against
+       max(abs(best_before), abs(best_in_window), 1e-12), since totals sit on very different
+       absolute scales per problem.
+    """
+    if window == 0:
+        return False
+    recent = [h for h in history if h["status"] not in ("seed", "no-code")]
+    if len(recent) < window:
+        return False
+    tail = recent[-window:]
+    # Signal 1: all rejected
+    if all(h["status"] == "rejected" for h in tail):
+        return True
+    # Signal 2: no champions at all
+    champ_totals = [h["total"] for h in tail if h["status"] == "champion"]
+    if not champ_totals:
+        return True
+    # Signal 3: improvement too small (relative)
+    cutoff = tail[0]["iter"]
+    best_before = max(
+        (h["total"] for h in history if h["status"] in ("champion", "seed") and h["iter"] < cutoff),
+        default=0.0,
+    )
+    best_in_window = max(champ_totals)
+    improvement = best_in_window - best_before
+    if improvement / max(abs(best_before), abs(best_in_window), 1e-12) < threshold:
+        return True
+    return False
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--problem", default="circle_packing")
@@ -243,9 +288,17 @@ def main():
     ap.add_argument("--iters", type=int, default=40)
     ap.add_argument("--budget", type=float, default=30.0, help="max model spend in USD")
     ap.add_argument("--model", default="claude-fable-5-1")
-    ap.add_argument("--plateau-window", type=int, default=4, help="consecutive non-improving iters before plateau stop")
     ap.add_argument(
-        "--plateau-threshold", type=float, default=0.01, help="min total improvement across window to count as progress"
+        "--plateau-window",
+        type=int,
+        default=6,
+        help="consecutive non-improving iters before plateau stop (no-code entries excluded); 0 disables",
+    )
+    ap.add_argument(
+        "--plateau-threshold",
+        type=float,
+        default=0.01,
+        help="min relative total improvement across window to count as progress",
     )
     ap.add_argument(
         "--wall-minutes",
@@ -300,38 +353,6 @@ def main():
         it += 1
         if a.eval_only:
             return
-
-    def check_plateau(window, threshold):
-        """Return True if the last `window` iterations show no meaningful progress.
-
-        Three independent signals (any one triggers):
-        1. All rejected/no-code in the window (nothing worked).
-        2. No champion in the window (model is spinning).
-        3. Total improvement across the window < threshold (marginal gains not worth the cost).
-           This uses the window's spend to compute improvement-per-dollar; if the window
-           contains a champion but the gain is tiny relative to cost, it still triggers.
-        """
-        recent = [h for h in history if h["status"] not in ("seed",)]
-        if len(recent) < window:
-            return False
-        tail = recent[-window:]
-        # Signal 1: all failures
-        if all(h["status"] in ("rejected", "no-code") for h in tail):
-            return True
-        # Signal 2: no champions at all
-        champ_totals = [h["total"] for h in tail if h["status"] == "champion"]
-        if not champ_totals:
-            return True
-        # Signal 3: improvement too small (absolute)
-        best_before = max(
-            (h["total"] for h in history[:-window] if h["status"] in ("champion", "seed")),
-            default=0,
-        )
-        improvement = max(champ_totals) - best_before
-        window_cost = sum(h["cost"] for h in tail)
-        if improvement < threshold and window_cost > 0:
-            return True
-        return False
 
     last_results = None
     while it < a.iters and cost_total < a.budget:
@@ -390,7 +411,7 @@ def main():
         if not a.no_publish and set(wins) & set(improved):
             L.publish()
         it += 1
-        if check_plateau(a.plateau_window, a.plateau_threshold):
+        if check_plateau(history, a.plateau_window, a.plateau_threshold):
             print(
                 f"[plateau] no meaningful improvement in last {a.plateau_window} iterations "
                 f"(threshold={a.plateau_threshold}). Stopping early to save budget. "
