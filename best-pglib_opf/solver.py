@@ -1,5 +1,7 @@
-"""AC-OPF solver: PIPS interior point + basin-hopping multi-start + continuation restarts + cost-scale and
-constraint-scale path diversification + step-controlled PIPS + dual-guided margin polish.
+"""AC-OPF solver: PIPS interior point + basin-hopping multi-start + continuation restarts (limit relaxation, load
+ramp, cost re-weighting, current-limit and objective homotopy, baseMVA re-basing, CONTINGENCY CONTINUATION) + cost
+scale path diversification + step-controlled PIPS + dual-guided margin polish of the incumbent AND of every
+near-tie local optimum.
 
 Phase 1: PIPS from the file's start point, a flat start, a DC-OPF start and a step-controlled flat start; Newton
 power-flow polish; if the independent verifier rejects the point at 1e-6, first re-solve with tight (1e-9)
@@ -7,16 +9,17 @@ interior-point tolerances, then warm re-solve with ONLY the near-binding constra
 Phase 2: until the time budget, restart PIPS from (a) Latin-hypercube samples over generator voltage set-points and
 dispatch, (b) small/large perturbations of the incumbent (basin hopping with adaptive step), (c) dispatch corners
 (random subsets of generators pinned to Pmin/Pmax), (d) continuation paths: relax-then-tighten limits, load ramp,
-re-weighted cost, CURRENT-LIMIT formulation then apparent-power limits, OBJECTIVE HOMOTOPY (loss-minimising or
-linear-only cost, then the true cost) and BASE-MVA RE-BASING (same physics, all pu equations rescaled => different
-central path), (e) cost-scale path diversification (all cost curves multiplied by 10^u) and (f) STEP-CONTROLLED
-PIPS restarts (OPF_ALG 565, a different interior-point trajectory from the same starts).  Every stage of a
+re-weighted cost, current-limit formulation, objective homotopy, baseMVA re-basing and CONTINGENCY CONTINUATION
+(a non-islanding branch outage, forced generator outages, or a perturbed network: scaled impedances, reactive
+load or line charging), (e) cost-scale path diversification and (f) step-controlled PIPS restarts.  Every stage of a
 continuation is followed by a true-problem re-solve and only that is checked.
-Every new incumbent gets a high-precision PIPS polish followed by a DUAL-GUIDED MARGIN POLISH: the same basin is
-re-solved with all inequality limits relaxed by a margin m < 1e-6 (the checker's tolerance) and every nodal P/Q
-load shifted by m in the direction the nodal multipliers LAM_P / LAM_Q say lowers cost, on an ASCENDING,
-warm-started ladder of m up to 9.98e-7, topped by cheap warm-started Newton power-flow rungs up to 9.999e-7;
-only points the verifier accepts are ever kept.  Best verified solution is saved atomically on every improvement.
+Every verified raw local optimum within a tiny relative band of the best raw objective enters a NEAR-TIE POOL of
+distinct points; each pool member (not only the incumbent) receives the high-precision polish and the DUAL-GUIDED
+MARGIN POLISH: its basin is re-solved with all inequality limits relaxed by a margin m < 1e-6 (the checker's
+tolerance) and every nodal P/Q load shifted by m in the direction the nodal multipliers LAM_P / LAM_Q say lowers
+cost, on an ascending, warm-started ladder of m up to 9.98e-7, topped by cheap warm-started Newton power-flow rungs
+up to 9.999e-7; only points the verifier accepts are ever kept.  Best verified solution is saved atomically on every
+improvement.
 
     python solver.py --target pglib_opf_case14_ieee --time 60 --seed 1 --out sol.json
 """
@@ -36,7 +39,7 @@ import verify  # noqa: E402
 from records import case_path  # noqa: E402
 
 from pypower.api import ppoption, runopf, runpf  # noqa: E402
-from pypower.idx_bus import BUS_I, BUS_TYPE, PD, QD, VM, VA, VMAX, VMIN, LAM_P, LAM_Q  # noqa: E402
+from pypower.idx_bus import BUS_I, BUS_TYPE, PD, QD, BS, VM, VA, VMAX, VMIN, LAM_P, LAM_Q  # noqa: E402
 from pypower.idx_gen import GEN_BUS, PG, QG, VG, PMAX, PMIN, QMAX, QMIN, GEN_STATUS  # noqa: E402
 from pypower.idx_brch import (  # noqa: E402
     F_BUS,
@@ -45,6 +48,7 @@ from pypower.idx_brch import (  # noqa: E402
     BR_X,
     BR_B,
     RATE_A,
+    BR_STATUS,
     ANGMIN,
     ANGMAX,
     PF,
@@ -59,6 +63,10 @@ MARGINS = (4e-7, 7e-7, 8.8e-7, 9.6e-7, 9.9e-7, 9.95e-7, 9.98e-7)  # ascending in
 PF_MARGINS = (9.99e-7, 9.995e-7, 9.998e-7, 9.999e-7)  # Newton power-flow rungs on top of the ladder
 ALG_PIPS = 560
 ALG_PIPS_SC = 565  # step-controlled PIPS
+TIE_REL = 2e-4  # near-tie pool band (relative to the best raw objective)
+TIE_ABS = 0.05  # ... and absolute ($/h)
+POOL_MAX = 6
+N_CONT = 9  # number of continuation kinds
 
 
 # ----------------------------------------------------------------------------------------------------- case handling
@@ -86,7 +94,7 @@ def cp(ppc):
 
 
 def warm(ppc, r):
-    """Copy of ppc (its own limits/loads/costs/base) whose start point is taken from result (or case) r.
+    """Copy of ppc (its own limits/loads/costs/base/statuses) whose start point is taken from result (or case) r.
 
     PG/QG are copied in MW, VM/VA as is, so a result on a re-based problem warm-starts the original correctly."""
     p = cp(ppc)
@@ -261,6 +269,91 @@ def rebased(ppc, k):
     br[:, BR_R] *= k
     br[:, BR_X] *= k
     br[:, BR_B] /= k
+    return p
+
+
+def reach(ppc, skip):
+    """Boolean array of buses reachable from the first bus over in-service branches, branch `skip` removed."""
+    bus, br = ppc["bus"], ppc["branch"]
+    nb = bus.shape[0]
+    pos = {int(b): i for i, b in enumerate(bus[:, BUS_I])}
+    adj = [[] for _ in range(nb)]
+    for j in range(br.shape[0]):
+        if j == skip or br[j, BR_STATUS] <= 0:
+            continue
+        f, t = pos.get(int(br[j, F_BUS])), pos.get(int(br[j, T_BUS]))
+        if f is None or t is None:
+            continue
+        adj[f].append(t)
+        adj[t].append(f)
+    ref = np.where(bus[:, BUS_TYPE] == 3)[0]
+    s0 = int(ref[0]) if len(ref) else 0
+    seen = np.zeros(nb, dtype=bool)
+    seen[s0] = True
+    stack = [s0]
+    while stack:
+        u = stack.pop()
+        for v in adj[u]:
+            if not seen[v]:
+                seen[v] = True
+                stack.append(v)
+    return seen
+
+
+def outaged(ppc, rng, tries=12):
+    """Random single branch outage that does not island any bus (None if none found)."""
+    p = cp(ppc)
+    br = p["branch"]
+    cand = np.where(br[:, BR_STATUS] > 0)[0]
+    if len(cand) < 2:
+        return None
+    base = reach(p, -1)
+    for _ in range(tries):
+        k = int(rng.choice(cand))
+        if np.array_equal(reach(p, k), base):
+            br[k, BR_STATUS] = 0
+            return p
+    return None
+
+
+def gens_off(ppc, rng):
+    """Force a random small subset of generators (never at the reference bus) out of service; None if the
+    remaining capacity is too small.  Returns (problem, indices)."""
+    p = cp(ppc)
+    bus, gen = p["bus"], p["gen"]
+    on = np.where(gen[:, GEN_STATUS] > 0)[0]
+    refb = set(int(b) for b in bus[bus[:, BUS_TYPE] == 3, BUS_I])
+    cand = np.array([i for i in on if int(gen[i, GEN_BUS]) not in refb])
+    if len(on) < 3 or len(cand) < 2:
+        return None, None
+    kmax = max(1, min(3, len(cand) // 4))
+    k = int(rng.integers(1, kmax + 1))
+    sel = rng.choice(cand, size=k, replace=False)
+    need = 1.08 * bus[:, PD].sum()
+    if gen[on, PMAX].sum() - gen[sel, PMAX].sum() < need:
+        return None, None
+    gen[sel, GEN_STATUS] = 0
+    gen[sel, PG] = 0.0
+    gen[sel, QG] = 0.0
+    return p, sel
+
+
+def network_perturbed(ppc, rng):
+    """Perturbed network: scaled impedances of a random branch subset, scaled reactive load, or scaled line
+    charging and bus shunts."""
+    p = cp(ppc)
+    br, bus = p["branch"], p["bus"]
+    mode = int(rng.integers(3))
+    if mode == 0:
+        sel = rng.random(br.shape[0]) < 0.25
+        f = np.exp(rng.normal(0.0, 0.4, int(sel.sum())))
+        br[sel, BR_X] *= f
+        br[sel, BR_R] *= f
+    elif mode == 1:
+        bus[:, QD] *= float(rng.uniform(0.0, 0.6))
+    else:
+        br[:, BR_B] *= float(rng.uniform(0.0, 0.5))
+        bus[:, BS] *= float(rng.uniform(0.0, 0.5))
     return p
 
 
@@ -455,14 +548,43 @@ def main():
     ppc = to_ppc(case)
     best = None
     best_r = None
-    margin_done = [-1.0]  # objective at which the margin polish last completed
+    best_raw = [None]  # best verified objective among un-margined (raw) local optima
+    pool = []  # near-tie raw local optima: {"obj", "r", "polished"}
+    margin_done = [-1.0]  # objective at which the incumbent's margin polish last completed
     sc_state = {"fail": 0, "tried": 0}  # step-controlled PIPS health (disabled after repeated solver failures)
+    est = {"single": 0.0, "cont": 0.0, "scale": 0.0, "polish": 0.0}
 
     def save(sol, obj):
         tmp = a.out + ".tmp"
         with open(tmp, "w") as f:
             json.dump({"target": a.target, "obj": obj, "solution": sol}, f)
         os.replace(tmp, a.out)
+
+    def same_point(r1, r2):
+        try:
+            return (
+                np.max(np.abs(r1["gen"][:, PG] - r2["gen"][:, PG])) < 0.02
+                and np.max(np.abs(r1["bus"][:, VM] - r2["bus"][:, VM])) < 2e-5
+            )
+        except Exception:
+            return False
+
+    def note_raw(obj, r):
+        """Register a verified raw local optimum in the near-tie pool (distinct points only)."""
+        if best_raw[0] is None or obj < best_raw[0]:
+            best_raw[0] = obj
+        band = max(TIE_REL * abs(best_raw[0]), TIE_ABS)
+        pool[:] = [e for e in pool if e["obj"] <= best_raw[0] + band]
+        if obj > best_raw[0] + band:
+            return
+        for e in pool:
+            if same_point(e["r"], r):
+                if obj < e["obj"] - 1e-9:
+                    e["obj"], e["r"] = obj, r
+                return
+        pool.append({"obj": obj, "r": r, "polished": False})
+        pool.sort(key=lambda e: e["obj"])
+        del pool[POOL_MAX:]
 
     def check(r, margined_flag=False):
         nonlocal best, best_r
@@ -478,6 +600,8 @@ def main():
             r["is_margined"] = margined_flag
             best, best_r = obj, r
             save(sol, obj)
+        if not margined_flag:
+            note_raw(obj, r)
         return obj
 
     def attempt(p, max_it, alg=ALG_PIPS):
@@ -519,12 +643,15 @@ def main():
             return None
         return pf
 
-    def margin_polish(dirs_from=None):
-        """Ascending, warm-started ladder of margined re-solves of the incumbent's basin; loads are shifted in the
-        direction the nodal multipliers of dirs_from (default: the incumbent) indicate; keep only verified points."""
-        if best_r is None:
+    def margin_polish(base_r=None, dirs_from=None, mark=True):
+        """Ascending, warm-started ladder of margined re-solves of the basin of base_r (default: the incumbent);
+        loads are shifted in the direction the nodal multipliers of dirs_from (default: base_r) indicate; keep
+        only verified points (saved only when they beat the global incumbent)."""
+        if base_r is None:
+            base_r = best_r
+        if base_r is None:
             return
-        base_r = best_r
+        ts = time.time()
         sp, sq = load_dirs(dirs_from if dirs_from is not None else base_r)
         prev = base_r
         fails = 0
@@ -550,23 +677,51 @@ def main():
                 r = pf_rung(m, sp, sq, prev)
                 if r is not None:
                     prev = r
-        margin_done[0] = best
+        if mark:
+            margin_done[0] = best
+        est["polish"] = max(est["polish"], time.time() - ts)
 
     def polish():
         """High-precision warm re-solve of the incumbent (if it is not already a margined point), then the
-        dual-guided margin polish."""
+        dual-guided margin polish; the matching pool entry is marked as polished."""
         if best_r is None or time.time() > deadline:
             return
         if not best_r.get("is_margined"):
             r = pips_tight(warm(ppc, best_r), 200)
             if r is not None:
                 check(r)
+        for e in pool:
+            if same_point(e["r"], best_r):
+                e["polished"] = True
         if margin_done[0] != best:
             margin_polish()
+
+    def polish_pool(limit=1):
+        """Margin-polish up to `limit` unpolished near-tie pool members (best raw objective first)."""
+        done = 0
+        for e in sorted(pool, key=lambda e: e["obj"]):
+            if done >= limit:
+                break
+            if e["polished"]:
+                continue
+            need = est["polish"] if est["polish"] > 0 else 6.0 * est["single"]
+            if time.time() + 1.2 * need + 1.5 * est["single"] + 1.0 > deadline:
+                break
+            e["polished"] = True
+            if best_r is not None and same_point(e["r"], best_r):
+                continue
+            base = e["r"]
+            r = pips_tight(warm(ppc, base), 200)
+            if r is not None and check(r) is not None and same_point(r, base):
+                base = r
+            margin_polish(base_r=base, mark=False)
+            done += 1
+        return done
 
     def cont_attempt(kind, max_it):
         """Continuation restart: solve a sequence of modified problems (each a (problem, flow-limit-type) pair),
         warm-starting each from the previous one, then re-solve the TRUE problem from the point reached."""
+        restore = None
         if kind == 0:  # relax limits, then tighten back in stages
             stages = [(relaxed(ppc, al), 0) for al in (0.5, 0.2, 0.05)]
             start = perturb(ppc, best_r, rng, 0.6) if best_r is not None else flat_start(ppc)
@@ -589,11 +744,33 @@ def main():
             start = flat_start(ppc)
             if best_r is not None and rng.random() < 0.5:
                 start = perturb(ppc, best_r, rng, 0.5)
-        else:  # baseMVA re-basing (constraint rescaling), then the original base
+        elif kind == 5:  # baseMVA re-basing (constraint rescaling), then the original base
             k = float(10.0 ** rng.uniform(-1.0, 1.0))
             stages = [(rebased(ppc, k), 0)]
             start = perturb(ppc, best_r, rng, 0.4) if best_r is not None else flat_start(ppc)
             if rng.random() < 0.4:
+                start = lhs_start(ppc, lhs[k_lhs_box[0] % len(lhs)])
+                k_lhs_box[0] += 1
+        elif kind == 6:  # branch outage contingency, then the intact network
+            q = outaged(ppc, rng)
+            if q is None:
+                return None
+            stages = [(q, 0)]
+            start = perturb(ppc, best_r, rng, 0.3) if best_r is not None else flat_start(ppc)
+            if rng.random() < 0.3:
+                start = flat_start(ppc)
+        elif kind == 7:  # forced generator outages, then all units back
+            q, restore = gens_off(ppc, rng)
+            if q is None:
+                return None
+            stages = [(q, 0)]
+            start = perturb(ppc, best_r, rng, 0.3) if best_r is not None else flat_start(ppc)
+            start["gen"][restore, PG] = 0.0
+            start["gen"][restore, QG] = 0.0
+        else:  # perturbed network (impedances / reactive load / charging), then the true network
+            stages = [(network_perturbed(ppc, rng), 0)]
+            start = perturb(ppc, best_r, rng, 0.4) if best_r is not None else flat_start(ppc)
+            if rng.random() < 0.3:
                 start = lhs_start(ppc, lhs[k_lhs_box[0] % len(lhs)])
                 k_lhs_box[0] += 1
         r = None
@@ -605,7 +782,12 @@ def main():
                 return None
         if time.time() > deadline:
             return None
-        return attempt(warm(ppc, r), max_it)
+        p = warm(ppc, r)
+        if restore is not None:
+            g = p["gen"]
+            g[restore, PG] = g[restore, PMIN] + 0.1 * (g[restore, PMAX] - g[restore, PMIN])
+            g[restore, QG] = 0.0
+        return attempt(p, max_it)
 
     def scale_attempt(start, max_it):
         """Cost-scale path diversification: solve with all costs scaled by 10^u (same optimum set, different
@@ -617,7 +799,7 @@ def main():
         check(r)
         return attempt(warm(ppc, r), max_it)
 
-    # Latin-hypercube rows (shared by the LHS, scale, sc and re-basing modes)
+    # Latin-hypercube rows (shared by the LHS, scale, sc, re-basing and network modes)
     non = int((ppc["gen"][:, GEN_STATUS] > 0).sum())
     try:
         from scipy.stats import qmc
@@ -628,7 +810,6 @@ def main():
     k_lhs_box = [0]
 
     # Phase 1: file start, flat start, DC-OPF start, step-controlled flat start, then precision + margin polish
-    est = {"single": 0.0, "cont": 0.0, "scale": 0.0}
     ts = time.time()
     attempt(ppc, 500)
     est["single"] = max(est["single"], time.time() - ts)
@@ -656,7 +837,7 @@ def main():
             polish()
 
     # Phase 2: continuation restarts + basin hopping + dispatch corners + LHS restarts + cost-scale paths +
-    # step-controlled PIPS restarts
+    # step-controlled PIPS restarts; near-tie pool members are margin-polished as they appear
     k_cont = 0
     k_scale = 0
     k_sc = 0
@@ -704,7 +885,7 @@ def main():
         before = best
         ts = time.time()
         if mode == "cont":
-            cont_attempt(k_cont % 6, 250)
+            cont_attempt(k_cont % N_CONT, 250)
             k_cont += 1
             est["cont"] = max(est["cont"], time.time() - ts)
         elif mode == "scale":
@@ -750,16 +931,25 @@ def main():
             stagnant += 1
             if stagnant % 3 == 0:
                 hop_scale = min(1.5, hop_scale * 1.5)
+        if best_r is not None and any(not e["polished"] for e in pool):
+            polish_pool(1)
         if best is None and tries > 25:
             break
 
-    # Final: make sure the incumbent has had its margin polish, then one refresh pass with the multipliers of the
-    # margined incumbent itself (captures any load-shift direction that flipped sign after the first pass)
+    # Final: make sure the incumbent has had its margin polish, polish any remaining near-tie pool members, then
+    # one refresh pass with the multipliers of the margined incumbent itself (captures any load-shift direction
+    # that flipped sign after the first pass)
+    if best_r is not None and margin_done[0] != best and time.time() + 1.3 * est["single"] < deadline:
+        polish()
+    if best_r is not None:
+        while any(not e["polished"] for e in pool):
+            if polish_pool(1) == 0:
+                break
     if best_r is not None and margin_done[0] != best and time.time() + 1.3 * est["single"] < deadline:
         polish()
     if best_r is not None and best_r.get("is_margined") and time.time() + 2.0 * est["single"] < deadline:
         margin_polish(dirs_from=best_r)
-    print(f"best={best} tries={tries} secs={time.time() - t0:.1f}", file=sys.stderr)
+    print(f"best={best} tries={tries} pool={len(pool)} secs={time.time() - t0:.1f}", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -40,8 +40,8 @@
   "record": 37589.0
  },
  "pglib_opf_case60_c": {
-  "value": 92693.58192208428,
-  "iter": 8,
+  "value": 92693.58192208421,
+  "iter": 10,
   "record": 92694.0
  },
  "pglib_opf_case73_ieee_rts": {
@@ -80,8 +80,8 @@
   "record": 27558.0
  },
  "pglib_opf_case240_pserc": {
-  "value": 3329670.103196343,
-  "iter": 9,
+  "value": 3329670.0929906843,
+  "iter": 10,
   "record": 3329700.0
  },
  "pglib_opf_case300_ieee": {
@@ -95,8 +95,8 @@
   "record": 454950.0
  },
  "pglib_opf_case588_sdet": {
-  "value": 313139.7826126468,
-  "iter": 9,
+  "value": 313139.78253438824,
+  "iter": 10,
   "record": 313140.0
  },
  "pglib_opf_case793_goc": {
