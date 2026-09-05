@@ -1,4 +1,4 @@
-"""AC-OPF solver: PIPS interior point + basin-hopping multi-start + continuation restarts + margin polish.
+"""AC-OPF solver: PIPS interior point + basin-hopping multi-start + continuation restarts + dual-guided margin polish.
 
 Phase 1: PIPS from the file's start point, a flat start and a DC-OPF start; Newton power-flow polish; if the
 independent verifier rejects the point at 1e-6, first re-solve with tight (1e-9) interior-point tolerances, then
@@ -7,10 +7,11 @@ Phase 2: until the time budget, restart PIPS from (a) Latin-hypercube samples ov
 dispatch, (b) small/large perturbations of the incumbent (basin hopping with adaptive step), (c) dispatch corners
 (random subsets of generators pinned to Pmin/Pmax), and (d) continuation paths (relax-then-tighten limits, load
 ramp, re-weighted cost).
-Every new incumbent gets a high-precision PIPS polish followed by a MARGIN POLISH: the same basin is re-solved with
-all inequality limits and every nodal P/Q load relaxed by a margin m < 1e-6 (the checker's tolerance), on a ladder
-of decreasing m; only points the verifier accepts are ever written.  Best verified solution is saved atomically on
-every improvement.
+Every new incumbent gets a high-precision PIPS polish followed by a DUAL-GUIDED MARGIN POLISH: the same basin is
+re-solved with all inequality limits relaxed by a margin m < 1e-6 (the checker's tolerance) and every nodal P/Q
+load shifted by m in the direction the nodal multipliers LAM_P / LAM_Q say lowers cost, on an ASCENDING,
+warm-started ladder of m up to 9.95e-7; only points the verifier accepts are ever kept.  Best verified solution
+is saved atomically on every improvement.
 
     python solver.py --target pglib_opf_case14_ieee --time 60 --seed 1 --out sol.json
 """
@@ -30,13 +31,13 @@ import verify  # noqa: E402
 from records import case_path  # noqa: E402
 
 from pypower.api import ppoption, runopf, runpf  # noqa: E402
-from pypower.idx_bus import BUS_I, BUS_TYPE, PD, QD, VM, VA, VMAX, VMIN  # noqa: E402
+from pypower.idx_bus import BUS_I, BUS_TYPE, PD, QD, VM, VA, VMAX, VMIN, LAM_P, LAM_Q  # noqa: E402
 from pypower.idx_gen import GEN_BUS, PG, QG, VG, PMAX, PMIN, QMAX, QMIN, GEN_STATUS  # noqa: E402
 from pypower.idx_brch import F_BUS, T_BUS, RATE_A, ANGMIN, ANGMAX, PF, QF, PT, QT  # noqa: E402
 
 np.seterr(all="ignore")
 
-MARGINS = (9e-7, 7e-7, 5e-7, 3e-7, 1.5e-7)
+MARGINS = (4e-7, 7e-7, 8.8e-7, 9.6e-7, 9.9e-7, 9.95e-7)  # ascending ladder, all strictly below the 1e-6 tolerance
 
 
 # ----------------------------------------------------------------------------------------------------- case handling
@@ -117,8 +118,18 @@ def tighten(ppc, r, eps, tol=3e-5):
     return p
 
 
-def margined(ppc, m):
-    """Relax every inequality limit and every nodal P/Q load by m (pu; m degrees for angle limits).
+def load_dirs(r):
+    """+1 where increasing the load raises cost (shift load down), -1 where the nodal multiplier is negative."""
+    if r is None or r.get("lam_p") is None:
+        return None, None
+    sp = np.where(np.asarray(r["lam_p"]) < 0.0, -1.0, 1.0)
+    sq = np.where(np.asarray(r["lam_q"]) < 0.0, -1.0, 1.0)
+    return sp, sq
+
+
+def margined(ppc, m, sp=None, sq=None):
+    """Relax every inequality limit by m (pu; m degrees for angle limits) and shift every nodal P/Q load by m
+    in the cost-lowering direction given by sp/sq (default: reduce the load).
 
     A solution of this problem violates the true constraints by at most ~m, which the verifier tolerates when
     m < 1e-6.  Off generators are untouched (they must stay exactly at zero)."""
@@ -126,10 +137,15 @@ def margined(ppc, m):
     base = p["baseMVA"]
     bus, gen, br = p["bus"], p["gen"], p["branch"]
     e = m * base
+    nb = bus.shape[0]
+    if sp is None or len(sp) != nb:
+        sp = np.ones(nb)
+    if sq is None or len(sq) != nb:
+        sq = np.ones(nb)
     bus[:, VMAX] += m
     bus[:, VMIN] -= m
-    bus[:, PD] -= e
-    bus[:, QD] -= e
+    bus[:, PD] -= e * sp
+    bus[:, QD] -= e * sq
     on = gen[:, GEN_STATUS] > 0
     gen[on, PMAX] += e
     gen[on, PMIN] -= e
@@ -181,7 +197,9 @@ def perturbed_cost(ppc, rng, sigma):
 
 # ----------------------------------------------------------------------------------------------------------- solving
 def pips(ppc, max_it, feastol=1e-7, gradtol=1e-6, comptol=1e-6, costtol=1e-6):
-    """PIPS OPF then a Newton power-flow polish (nodal balance to 1e-10, Pg and gen-bus Vm kept => cost unchanged)."""
+    """PIPS OPF then a Newton power-flow polish (nodal balance to 1e-10, Pg and gen-bus Vm kept => cost unchanged).
+
+    The nodal multipliers LAM_P / LAM_Q of the OPF are kept in r["lam_p"], r["lam_q"] for the margin polish."""
     opt = ppoption(
         VERBOSE=0,
         OUT_ALL=0,
@@ -199,6 +217,13 @@ def pips(ppc, max_it, feastol=1e-7, gradtol=1e-6, comptol=1e-6, costtol=1e-6):
         return None
     if not r or not r.get("success"):
         return None
+    lam_p = lam_q = None
+    try:
+        if r["bus"].shape[1] > LAM_Q:
+            lam_p = np.array(r["bus"][:, LAM_P], dtype=float)
+            lam_q = np.array(r["bus"][:, LAM_Q], dtype=float)
+    except Exception:
+        lam_p = lam_q = None
     try:
         pos = {int(b): i for i, b in enumerate(r["bus"][:, BUS_I])}
         r["gen"][:, VG] = [r["bus"][pos[int(b)], VM] for b in r["gen"][:, GEN_BUS]]
@@ -208,6 +233,8 @@ def pips(ppc, max_it, feastol=1e-7, gradtol=1e-6, comptol=1e-6, costtol=1e-6):
             r = pf
     except Exception:
         pass
+    r["lam_p"] = lam_p
+    r["lam_q"] = lam_q
     return r
 
 
@@ -345,7 +372,7 @@ def main():
     ppc = to_ppc(case)
     best = None
     best_r = None
-    margin_done = [-1.0]  # objective at which the margin polish last succeeded
+    margin_done = [-1.0]  # objective at which the margin polish last completed
 
     def save(sol, obj):
         tmp = a.out + ".tmp"
@@ -353,7 +380,7 @@ def main():
             json.dump({"target": a.target, "obj": obj, "solution": sol}, f)
         os.replace(tmp, a.out)
 
-    def check(r):
+    def check(r, margined_flag=False):
         nonlocal best, best_r
         try:
             sol = extract(r)
@@ -364,6 +391,7 @@ def main():
             return None
         obj = float(res["obj"])
         if best is None or obj < best:
+            r["is_margined"] = margined_flag
             best, best_r = obj, r
             save(sol, obj)
         return obj
@@ -391,28 +419,41 @@ def main():
             r = r2
         return None
 
-    def margin_polish():
-        """Re-solve the incumbent's basin with limits and loads relaxed by m < 1e-6; keep only verified points."""
+    def margin_polish(dirs_from=None):
+        """Ascending, warm-started ladder of margined re-solves of the incumbent's basin; loads are shifted in the
+        direction the nodal multipliers of dirs_from (default: the incumbent) indicate; keep only verified points."""
         if best_r is None:
             return
         base_r = best_r
+        sp, sq = load_dirs(dirs_from if dirs_from is not None else base_r)
+        prev = base_r
+        fails = 0
         for m in MARGINS:
             if time.time() > deadline:
-                return
-            r = pips_tight(warm(margined(ppc, m), base_r), 200)
-            if r is None:
-                continue
-            if check(r) is not None:
-                margin_done[0] = best
-                return
+                break
+            r = pips_tight(warm(margined(ppc, m, sp, sq), prev), 200)
+            ok = r is not None and check(r, True) is not None
+            if not ok and prev is not base_r and time.time() < deadline:
+                r = pips_tight(warm(margined(ppc, m, sp, sq), base_r), 200)
+                ok = r is not None and check(r, True) is not None
+            if ok:
+                prev = r
+                fails = 0
+            else:
+                fails += 1
+                if fails >= 2:
+                    break
+        margin_done[0] = best
 
     def polish():
-        """High-precision warm re-solve of the incumbent, then the margin polish."""
+        """High-precision warm re-solve of the incumbent (if it is not already a margined point), then the
+        dual-guided margin polish."""
         if best_r is None or time.time() > deadline:
             return
-        r = pips_tight(warm(ppc, best_r), 200)
-        if r is not None:
-            check(r)
+        if not best_r.get("is_margined"):
+            r = pips_tight(warm(ppc, best_r), 200)
+            if r is not None:
+                check(r)
         if margin_done[0] != best:
             margin_polish()
 
@@ -522,9 +563,12 @@ def main():
         if best is None and tries > 25:
             break
 
-    # Final: make sure the incumbent has had its margin polish if any time is left
+    # Final: make sure the incumbent has had its margin polish, then one refresh pass with the multipliers of the
+    # margined incumbent itself (captures any load-shift direction that flipped sign after the first pass)
     if best_r is not None and margin_done[0] != best and time.time() + 1.3 * est["single"] < deadline:
         polish()
+    if best_r is not None and best_r.get("is_margined") and time.time() + 2.0 * est["single"] < deadline:
+        margin_polish(dirs_from=best_r)
     print(f"best={best} tries={tries} secs={time.time() - t0:.1f}", file=sys.stderr)
 
 
