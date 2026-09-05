@@ -19,3 +19,7 @@
 - The release hook identified obsolete runner code and dynamically dispatched HTTP/pytest names. Removed the obsolete runner and unused send options; the existing whitelist now names only verified dynamic entry points. Existing test assertions were preserved.
 - A review button originally saved a request with no worker consuming it. It now explicitly marks a human-review bookmark, shows that state persistently, and includes the selected problem in the morning report without implying an extra model run.
 - Linux CI has no Claude executable. An eager executable check bypassed the existing subprocess timeout regression and changed its reported failure. Missing-executable handling now occurs at the subprocess boundary on every platform; CI runs both OS jobs independently so one failure does not hide the other result.
+
+## 2026-09-05: Documentation refresh
+
+The main README reflected the new pipeline, but older slot proposals and baseline footers still instructed automatic publishing. Centralized current procedures in the operations guide, replaced obsolete instructions with links, and labeled preserved measurements as historical. Future behavior changes must search historical guide introductions and operational footers as well as the README.

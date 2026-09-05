@@ -1,4 +1,6 @@
 # Baseline Results
+
+> Historical baseline provenance. Tables retain their original measurements and tolerances; they are not current confirmation certificates. Fresh comparisons use the current verifier and pinned worker environment. See [operations](../../docs/OPERATIONS.md).
 This section presents the results of running 
 [PowerModels.jl](https://github.com/lanl-ansi/PowerModels.jl) 
 on the OPF benchmarks from the

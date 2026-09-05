@@ -1,6 +1,6 @@
 # Retro: miplib_open
 
-Appended by retro.py after every night slot, newest at the bottom. loop.py reads the last section's Lessons and Next into every iteration prompt.
+Historical archive from the previous loop. Current retrospectives are stored with run-local evidence as `retro.json` and use sanitized development observations. Dollar amounts below are historical accounting estimates, not subscription bills. These observations do not establish current confirmation.
 
 ## 2026-09-05 06:01 miplib_open: iters 0-6, spend $7.67, champion -0.3354, beating best-known: none
 

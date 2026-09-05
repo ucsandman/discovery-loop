@@ -7,7 +7,7 @@ This extends loop.py, night.py, the problem plugins, and their existing status p
 ## Acceptance criteria
 
 1. Per-invocation budgets and iteration counts, including generation, review and retrospective usage. Unknown charges reserve the full configured call allowance.
-2. Fable and Astra providers return the same response contract; errors never become successful zero-cost work. Equal-budget single-provider and paired experiments are available.
+2. Fable and Astra providers return the same response contract; errors never become successful zero-cost work. Single-provider and paired experiments use configured accounting allowances.
 3. Candidate and incumbent use identical target/seed matrices, independent feasibility checking, minimum effect and replication gates. Held-out confirmation data never enters generation prompts.
 4. Generated programs execute in disposable, network-disabled Docker workers with read-only inputs and bounded CPU, memory, processes and time. No host execution fallback.
 5. Night scheduling has one deadline, an exclusive lock, dated checkpoints, resume, heartbeat, pause, partial-failure status and zero-work detection.
@@ -15,34 +15,50 @@ This extends loop.py, night.py, the problem plugins, and their existing status p
 7. Power-grid tolerance exploitation is blocked by stricter independent evaluation; legacy claims are explicitly unvalidated.
 8. Documentation, regression tests, browser QA, live provider probes and a real isolated solver run pass before release.
 
-## Shared integration contracts
+## Runtime components
 
-Parent owns research_state.py, publish.py, documentation, packaging and final integration.
+| Component | Responsibility |
+| --- | --- |
+| `providers.py` | Subscription authentication, restricted CLI calls, response parsing and accounting |
+| `isolation.py` | Allowlisted inputs, immutable Docker image selection and bounded worker execution |
+| `evaluation.py` | Comparable target/seed matrices, independent checks and confirmation gates |
+| `loop.py` | Development proposals, cross-review, confirmation and incumbent lineage |
+| `research_state.py` | Atomic state, file locks, pause controls and budget reservations |
+| `night.py` | Counterbalanced schedule, shared deadline, checkpoints and resume |
+| `retro.py` | Opposite-provider retrospectives from sanitized development observations |
+| `scripts/morning-research.py` | Sanitized morning report and existing-routine integration |
+| `dashboard.py` and `web/` | Local evidence review, tuning and exact-file approval |
+| `publish.py` | Independent release revalidation and explicit approved bundle publication |
 
-research_state.py exposes atomic_json(path, data), read_json(path, default=None), append_event(path, data), FileLock(path), BudgetLedger(path, limit), BudgetExceeded, and paused(root).
-BudgetLedger.remaining is available allowance; .spent is charged accounting usage; reserve(amount, label) returns reservation id (raises BudgetExceeded); settle(id, cost=None, usage=None) records the reported API-equivalent estimate, otherwise the full reserved amount. These are not monthly-subscription bills. Constructors and writes lock atomically.
+## Provider and accounting contract
 
-providers.py exposes call_model(prompt, provider='fable', model=None, timeout=900, max_cost=2.0, ledger=None, purpose='generation') returning a dict: text, code, idea, provider, model, cost (number or null), usage (dict), error (string or null). Probe uses the same callable. Models default to claude-fable-5-1 and gpt-6-astra. Provider selection never silently falls back. CLI-only, no new API billing.
+`call_model(prompt, provider='fable', model=None, timeout=900, max_cost=2.0, ledger=None, purpose='generation')` returns text, code, idea, provider, model, cost, usage and error fields. Accounting includes `billing_mode` and `cost_basis`; failures carry an `error_kind`, including authentication, unavailable, usage_limit or timeout. Defaults are `claude-fable-5-1` and `gpt-6-astra`. Provider selection never silently falls back.
 
-isolation.py exposes run_solver(problem, solver, target, budget, seed, out, root=None, image=None, deadline=None) returning subprocess-like returncode/stdout/stderr; raises on timeout/unavailable sandbox. Inputs are allowlisted plugin files and instance data, never the entire checkout/home. Container writes only its dedicated output directory. Parent plugin evaluation remains outside the generated process. preflight(root=None) returns a dict with ok and details. Docker image discovery-loop-worker:local.
+`BudgetLedger` reserves before a call and settles using reported API-equivalent usage, or the full reservation when no estimate is available. Unresolved reservations survive a crash. These amounts are not monthly-subscription bills. Equal configured allowances do not normalize provider token usage.
 
-loop.py retains legacy helper signatures used by existing tests. New arguments: --provider fable|astra|paired, --run-id ID, --ledger PATH, --call-budget NUMBER, --seed-count NUMBER, --min-effect NUMBER, --no-publish, --evidence-root PATH. Its default canonical execution is isolated. Run-local evidence lives under runs/research/<run-id>/<problem>/, with run.json and evidence.json; paths recorded in evidence are repo-relative. Evidence includes run_id, problem, provider, status, candidate_hash, candidate_path, confirmed, publishable, development/confirmation metrics, usage, limitations and timestamps. Confirmation gating must distinguish known benchmark tuning from generalization; old visible targets are never relabeled unseen. Generation history remains development-only. The loop must stop for runs/control.json paused=true and share the night ledger.
+## Worker boundary
 
-night.py preserves callable publish_slot and retro_slot compatibility but never invokes publishing automatically in the new pipeline. Schedule includes global minutes/budget, slot limits and provider modes; execution defaults local-only. Writes runs/night-status.json and a sanitized runs/research/morning.json for the existing briefing. CLI --resume resumes the same run without resetting its ledger. Plans a 14-night balanced fable/astra/paired trial.
+Experiments resolve `discovery-loop-worker:local` to an immutable image ID, record it in `worker_environment`, and reuse it for comparisons and resume. Generated programs run without network access, with read-only roots and inputs, a non-root user, dropped capabilities and bounded CPU, memory, process count and time. Selected plugin helpers and instance data are allowlisted; the whole checkout and credentials are never mounted.
 
-dashboard.py serves localhost only, default port 8766, with GET /api/status, GET /api/evidence, POST /api/control, POST /api/schedule, POST /api/approve. Same-origin/Host checks, CSRF token and strict payload validation are mandatory. Controls write runs/control.json and approvals store exact evidence and candidate hashes; approval is not external sending. The page explains that approved evidence is ready for separate publication. UI files under web/; no framework or CDN dependencies. Dashboard reads the existing night/status/evidence outputs.
+Output and logs have separate bounded temporary filesystems. The host also caps process output, so writing directly to process stdout cannot bypass the container's file limits. Timeout and overflow remove the exact experiment container. There is no host execution fallback.
 
-## Ownership
+## Experiments and evidence
 
-- Core agent: loop.py, evaluation.py, new tests/test_evaluation.py and tests/test_research_loop.py.
-- Providers agent: providers.py, isolation.py, worker.Dockerfile, worker-requirements.txt, tests/test_providers.py, tests/test_isolation.py.
-- Night agent: night.py, night.json, retro.py, tests/test_night.py, tests/test_retro.py, scripts/install-night-tasks.ps1, scripts/morning-research.py.
-- Science agent: problems/** source files, problem_loader.py, tests/test_problem_integrity.py. Do not edit existing tests or saved best solvers.
-- UI agent: dashboard.py, web/**, tests/test_dashboard.py.
+The supported command line enters `loop.cli_main()` and `run_research()`. Single-provider and paired modes use the same evaluation machinery. Paired mode starts with independent proposals from one frozen development brief and cross-reviews promising candidates before confirmation.
+
+Run-local files live in `runs/research/<run-id>/<problem>/`. `run.json` records progress. `evidence.json` records hashes, comparisons, usage, limitations and worker identity. Confirmed candidates advance the incumbent with hash-bound `confirmation.json`. Generation history stays development-only; previously exposed targets are never relabeled unseen.
+
+The night runner writes status and dated checkpoints. `scripts/morning-research.py`, not the runner, writes `runs/research/morning.json`. Manual resume is explicit; scheduled catch-up resumes existing checkpoints and does not repeat completed nights. The implemented 14-night cycle gives each research track five Fable, five Astra and four paired nights, with seven occurrences of each research order.
+
+## Dashboard contract
+
+The server listens on localhost, port 8766 by default. Read routes are `GET /api/status` and `GET /api/evidence`; mutations use `POST /api/control`, `POST /api/schedule` and `POST /api/approve`. Host, Origin, CSRF and payload checks protect mutations. Path and symlink checks constrain file access.
+
+Controls persist in `runs/control.json`. Continue clears a pause request without starting work. Morning review is a persistent human bookmark. Schedule tuning validates the same configuration used by the runner. Approvals bind the exact evidence bytes, solver and solution artifacts; they never send or publish by themselves.
 
 ## Verification and delivery
 
-Existing tests are not edited. New regression cases must demonstrate failure before the fix when practical. Run full pytest, Ruff, compilation, provider probes, a sandbox escape negative test, real solver evaluation and browser interaction tests. No secret files are read. Existing uncommitted work is preserved and excluded from this delivery. Scheduled tasks are exported before any installation. No external messages are sent during verification.
+Existing tests are not edited. New regression cases must demonstrate failure before the fix when practical. Use `python scripts/check.py` for the supported separated test suites, Ruff and compilation. Provider, worker and dashboard changes also require the relevant live probes. No secret files are read. Existing uncommitted work is preserved and excluded from this delivery. Scheduled tasks are exported before any installation. No external messages are sent during verification.
 
 ## Delivery deviations
 
@@ -59,3 +75,5 @@ Existing tests are not edited. New regression cases must demonstrate failure bef
 - Generated output overflow was rejected by the host buffer cap, including a same-UID process-output bypass probe. The exact worker container was removed.
 - Desktop/mobile rendering, pause/continue, settings, review and hash-bound approval were verified. Positive approval used a clearly synthetic isolated fixture; real benchmark evidence remains unvalidated unless it passes confirmation.
 - Final clean Windows environment: 151 tests passed, 5 optional or unavailable-data checks skipped; Ruff and 48 Python compilations passed. The separate real Docker suite passed all 10 tests.
+
+- Both Windows and Ubuntu CI jobs passed for the shipped pipeline commit `1e4152b`. See the [verification workflow](https://github.com/ucsandman/discovery-loop/actions/workflows/verify.yml) for subsequent changes.

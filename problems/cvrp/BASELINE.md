@@ -1,5 +1,7 @@
 # CVRP seed baseline (CVRPLIB X, open instances)
 
+> Historical baseline provenance. Tables retain their original measurements and tolerances; they are not current confirmation certificates. Fresh comparisons use the current verifier and pinned worker environment. See [operations](../../docs/OPERATIONS.md).
+
 The value to beat per target is the **best known solution (BKS)** from the live CVRPLIB table
 (`records.py` fetches it from <https://galgos.inf.puc-rio.br/cvrplib/en/instances> and caches it in
 `records.json`). All ten targets are X instances with 200–500 nodes whose BKS is **not proven optimal**
@@ -53,24 +55,6 @@ The checker is also proven to reject bad solutions: a customer visited twice, a 
 customer, and a customer number out of range are each returned as `feasible: false`. See
 `python problems/cvrp/test_cvrp.py` (offline verifier + `--no-publish` tests) and the ground-truth test inside it.
 
-## night.json slot (shipped 2026-09-03)
+## Current nightly operation
 
-`night.json` runs three 160-minute slots from 22:00: `miplib_heur`, `pglib_opf`, then `cvrp` (finish ~06:00).
-The night keeps its previous total length; the newest problem runs last so a failure there cannot cost the
-others their slot. The first real evolution iteration (smoke, 2026-09-03) became champion and improved all ten
-targets, so the slot went live the same night.
-
-```json
-{
-  "slots": [
-    {"problem": "miplib_heur", "minutes": 160, "budget": 15},
-    {"problem": "pglib_opf",   "minutes": 160, "budget": 15},
-    {"problem": "cvrp",        "minutes": 160, "budget": 15}
-  ]
-}
-```
-
-Timing from a 22:00 start: miplib_heur 22:00→00:40, pglib_opf 00:40→03:20, cvrp 03:20→06:00. Each slot runs
-`loop.py --problem cvrp --wall-minutes M --budget B --iters 200`; the loop already stops early on plateau or
-budget. Publishing stays enabled for a real night slot (CVRPLIB has no email address, so publish only does the
-GitHub push of `best-cvrp/`); use `--no-publish` only for isolated experiments like the smoke run above.
+The historical 160-minute schedule and automatic pushes have been replaced. Routing now receives 180 research minutes plus 30 retrospective minutes in the counterbalanced trial. Research produces local evidence; publication requires separate exact-file approval. See [operations](../../docs/OPERATIONS.md).

@@ -1,12 +1,13 @@
 # miplib_open seed baseline (MIPLIB 2017 OPEN instances)
 
+> Historical baseline provenance. Tables retain their original measurements and tolerances; they are not current confirmation certificates. Fresh comparisons use the current verifier and pinned worker environment. See [operations](../../docs/OPERATIONS.md).
+
 The value to beat per target is the **published best-known objective** on the MIPLIB 2017 site
 (`records.py` reads it from the newest official `.solu` file's `=best=` line and caches provenance in
 `records.json`). All ten targets are OPEN instances: a feasible solution is known but optimality has never
 been proven, so a verified feasible point **below** the best-known (for a min instance) is a genuine,
 externally creditable result that ZIB lists. Per-target value = `(obj - best_known)/max(1,|best_known|)` in
-min-sense (max-sense instances converted): **0 ties the best-known, negative beats it.** A verified win is
-pushed and emailed to ZIB after Wes approves the send (see "Submission" below).
+min-sense (max-sense instances converted): **0 ties the best-known, negative beats it.** A candidate improvement requires current-reference validation and exact-file approval before explicit publication.
 
 ## Selection procedure (run for real on this machine)
 
@@ -124,19 +125,8 @@ incumbents away from the constraint boundary (the 120 s screen values) pass fine
 that only clears best-known by riding a row to the tolerance boundary would be rejected here and must be
 re-checked by ZIB's exact checker before submission.
 
-## Submission (push + approval-gated email)
+## Current publication and scheduling
 
-ZIB accepts improved open-instance solutions by email. Verified off the live home page (2026-09-04):
-*"Contributions of new solutions to open instances are always welcome ... Please send your submissions to
-miplibsolutions@zib.de."* `problem.EMAIL_TO` is that address (enabled 2026-09-04 on Wes's instruction).
-`publish.py` pushes `best-miplib_open/` to GitHub, re-verifies each candidate that beats the live table, and
-sends the `.sol` files through `invoke-capability send-email`: DashClaw opens a pending approval, Wes gets a
-Telegram ping, and only after he approves does `moltfire@practicalsystems.io` send (Wes cc'd). Twelve-hour
-cooldown between emails; a target is re-sent only if it improved again. Manual re-check at any time:
-`python problems/miplib_open/verify.py best-miplib_open/sol/NAME.json`.
+The historical automatic push and email flow has been replaced. Research produces local evidence. Explicit publication requires current references, strict revalidation and approval bound to exact files. Research email is unavailable until the separate sender supports immutable approved body and attachment bytes.
 
-## night.json slot
-
-Proposed in `docs/miplib-open-night-slot.md` (not applied by this branch): swap the `miplib_heur` slot for
-`miplib_open`, same 160 minutes from 22:00, keeping `pglib_opf` and `cvrp`. `miplib_open`'s wins are
-externally creditable; `miplib_heur`'s bar ("HiGHS default on this PC") is not.
+`miplib_open` remains a manual research option. The default night uses general MIP heuristic research, routing and power-grid validation. See [operations](../../docs/OPERATIONS.md) and the [superseded proposal](../../docs/miplib-open-night-slot.md).

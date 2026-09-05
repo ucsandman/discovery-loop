@@ -1,6 +1,6 @@
 # Research portfolio
 
-The first 14-night trial compares Fable-only, Astra-only and paired research with the same slot allowance and solver resources. The comparison is exploratory: the small number of nights does not establish a model ranking.
+The first 14-night trial compares Fable-only, Astra-only and paired research with the same slot allowance and solver resources. Accounting differs between providers and does not normalize tokens or subscription consumption. The comparison is exploratory: the small number of nights does not establish a model ranking.
 
 | Track | Intended beneficiary | Measured now | Evidence required before claiming benefit |
 | --- | --- | --- | --- |
@@ -14,7 +14,7 @@ Continue a track when experiments test distinct mechanisms and produce useful ev
 
 ## Trial measures
 
-Report calls, conservative allowance charged, provider-reported dollar cost where available, solver evaluations, elapsed compute, candidate failure rate and confirmed effect size. Do not rank providers by unverified wins, summed historical champions, model self-assessment, or estimated dollar charges without labeling the uncertainty.
+Report calls, conservative allowance charged, provider-reported API-equivalent estimates where available, solver evaluations, elapsed compute, candidate failure rate and confirmed effect size. Do not rank providers by unverified wins, summed historical champions, model self-assessment, or estimated dollar charges without labeling the uncertainty.
 
 ## Release boundary
 

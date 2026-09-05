@@ -1,6 +1,32 @@
-# discovery-loop
+<div align="center">
+
+# Discovery Loop
+
+**A local optimization research lab powered by Fable and Astra.**
+
+[![Verify research pipeline](https://github.com/ucsandman/discovery-loop/actions/workflows/verify.yml/badge.svg)](https://github.com/ucsandman/discovery-loop/actions/workflows/verify.yml)
+![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![Docker workers](https://img.shields.io/badge/Workers-Docker-2496ED?logo=docker&logoColor=white)
+![Subscription CLI](https://img.shields.io/badge/Models-Subscription_CLI-526B4E)
+
+[Quick start](#developer-setup) · [How it works](#how-an-experiment-works) · [Nightly routine](#nightly-integration) · [Documentation](docs/README.md) · [Contributing](CONTRIBUTING.md)
+
+</div>
 
 A local research lab for improving optimization solvers with Fable and Astra. Models propose programs; isolated workers execute them; independent mathematical checks and matched-seed experiments decide what survives. Benchmark progress is kept separate from claims of real-world benefit.
+
+![Discovery Loop dashboard showing nightly status, allowance controls and evidence for morning review](web/dashboard-proof.png)
+
+*The local dashboard with real run data. Historical results are labeled unvalidated; the preview is not evidence of a confirmed discovery.*
+
+| Capability | What it gives you |
+| --- | --- |
+| Independent proposals | Fable and Astra work from the same frozen development brief, then cross-review promising candidates. |
+| Reproducible comparisons | Matched targets and seeds, independent feasibility checks and a recorded immutable worker image. |
+| Bounded overnight work | A shared allowance, checkpoints, pause controls and an explicit deadline. |
+| Human review | Evidence inspection and approvals bound to exact files, with no automatic publication. |
+
+> **Release status:** The pipeline and dashboard are implemented. Windows task registration and morning-delivery integration have been previewed and backed up; activation remains pending. No sealed release dataset or validated real-world impact claim is available.
 
 ## Morning review
 
@@ -14,14 +40,32 @@ Historical scores remain visible as **unvalidated**. In particular, the earlier 
 
 ## Developer setup
 
-Requires Python 3.12, Docker with Linux containers, and the locally installed Claude and Codex CLIs authenticated through their subscriptions.
+Clone this repository and open a terminal in its root. Requires Python 3.12, Docker with Linux containers, and the locally installed Claude and Codex CLIs authenticated through their subscriptions.
 
 ```powershell
 python -m venv .venv
-.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.venv\Scripts\Activate.ps1
+python -m pip install -r requirements-dev.txt
 docker build -f worker.Dockerfile -t discovery-loop-worker:local .
-.venv\Scripts\python.exe dashboard.py --open
+python dashboard.py --open
 ```
+
+<details>
+<summary>Linux / macOS setup</summary>
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements-dev.txt
+docker build -f worker.Dockerfile -t discovery-loop-worker:local .
+python dashboard.py --open
+```
+
+Windows and Ubuntu run in CI. The macOS commands use the same Python environment; macOS is not in the CI matrix.
+
+</details>
+
+Use the activated virtual environment for the commands below. If PowerShell blocks activation, run `.venv\Scripts\python.exe` in place of `python`.
 
 Runtime and worker dependencies are pinned. No API key is required. Provider preflight rejects API-key authentication and does not silently fall back to API billing. Research calls use `claude -p` with Fable and `codex exec` with Astra, with tools and external integrations disabled.
 
@@ -43,6 +87,20 @@ All normal research runs stop at local evidence. `--no-publish` remains a compat
 A small development-only probe can select `--targets`, lower `--time`, and set `--wall-minutes`. Such a probe is not a claim of performance at the standard benchmark budget. Confirmation requires at least three distinct matched seeds.
 
 ## How an experiment works
+
+```mermaid
+flowchart LR
+    N[Nightly plan and shared allowance] --> B[Frozen development brief]
+    B --> F[Fable proposal]
+    B --> A[Astra proposal]
+    F --> W[Isolated Docker evaluation]
+    A --> W
+    W --> R[Cross-review]
+    R --> C[Matched-seed confirmation]
+    C --> E[Local evidence and lineage]
+    E --> H[Human dashboard review]
+    H --> P[Separate approved publication]
+```
 
 1. Freeze the incumbent, inputs, comparison scope and resource limits.
 2. Give Fable and Astra the same development brief in paired mode. They do not see each other's initial proposals.
@@ -73,6 +131,16 @@ Problem helpers use isolated package namespaces. Legacy solvers can still import
 
 `night.json` controls an eight-hour window, per-slot and per-call limits, and a 14-night counterbalanced Fable/Astra/paired trial. The runner uses an exclusive lock, checkpoints, heartbeat, pause handling, process-tree timeouts and explicit zero-work/partial/failure statuses.
 
+| Stage | Maximum time | Research allowance | Retrospective allowance |
+| --- | ---: | ---: | ---: |
+| Routing research | 180 min + 30 min retrospective | 40 | 5 |
+| General MIP heuristic research | 180 min + 30 min retrospective | 40 | 5 |
+| Power-grid validation only | 30 min | 0 | 0 |
+| Unallocated time buffer | 30 min | 0 | 0 |
+| **Night limit** | **480 min** | **90 units total across all calls** | **Included** |
+
+Research order alternates. Each track receives five Fable, five Astra and four paired nights per cycle. Equal configured allowances do not imply equal tokens or equivalent subscription consumption; the trial is exploratory.
+
 On Windows, preview the scheduled-task changes first:
 
 ```powershell
@@ -90,7 +158,8 @@ Per-run files live under `runs/research/<run-id>/<problem>/`. `run.json` records
 Publication requires a dashboard approval bound to the exact evidence, solver and solution hashes. Changed files invalidate approval. Current reference retrieval and independent revalidation fail closed.
 
 ```powershell
-python publish.py --problem cvrp --evidence <evidence.json> --approval <approval.json> --dry-run
+# Replace these example paths with the evidence and approval shown by the dashboard.
+python publish.py --problem cvrp --evidence "runs/research/RUN_ID/cvrp/evidence.json" --approval "runs/research/approvals/CANDIDATE_HASH.json" --dry-run
 ```
 
 Without `--push-only`, an approved publication command prepares only a local bundle. `--push-only` explicitly commits and pushes the approved bundle after checking the exact committed file set and blob hashes. No research run invokes it automatically. A paired-incumbent improvement is not labeled a world record; record claims must beat the current reference.
@@ -110,4 +179,16 @@ Optional real Docker tests are enabled by `RUN_DOCKER_TESTS=1` in the test proce
 
 The dashboard is an internal localhost surface, not a public website. No external analytics or frontend dependencies are required.
 
-See [decisions](docs/DECISIONS.md), [lessons](docs/ERRORS.md), and [changelog](CHANGELOG.md).
+## Documentation
+
+| Guide | Contents |
+| --- | --- |
+| [Operations](docs/OPERATIONS.md) | Setup checks, nightly runs, recovery, task activation and release boundaries |
+| [Architecture](docs/RESEARCH-IMPLEMENTATION.md) | Runtime components, data contracts and isolation |
+| [Research portfolio](docs/RESEARCH-PORTFOLIO.md) | Beneficiaries, measurements and limits on claims |
+| [Decisions](docs/DECISIONS.md) | Why the system works this way |
+| [Contributing](CONTRIBUTING.md) | Development workflow and verification |
+| [Changelog](CHANGELOG.md) | Shipped changes |
+| [Documentation index](docs/README.md) | Current guides and historical records |
+
+Bug reports should include a sanitized reproduction, the problem and provider mode, and the failing verification output. Never attach credentials or private run inputs. See the [issue tracker](https://github.com/ucsandman/discovery-loop/issues).

@@ -1,6 +1,6 @@
 # Retro: cvrp
 
-Appended by retro.py after every night slot, newest at the bottom. loop.py reads the last section's Lessons and Next into every iteration prompt.
+Historical archive from the previous loop. Current retrospectives are stored with run-local evidence as `retro.json` and use sanitized development observations. Dollar amounts below are historical accounting estimates, not subscription bills. These observations do not establish current confirmation.
 
 ## 2026-09-05 05:55 cvrp: iters 5-8, spend $8.63, champion -0.0550, beating best-known: none
 

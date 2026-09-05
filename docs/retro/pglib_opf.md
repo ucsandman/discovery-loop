@@ -1,6 +1,8 @@
 # Retro: pglib_opf
 
-Appended by retro.py after every night slot, newest at the bottom. loop.py reads the last section's Lessons and Next into every iteration prompt.
+Historical archive from the previous loop. Current retrospectives are stored with run-local evidence as `retro.json` and use sanitized development observations. Dollar amounts below are historical accounting estimates, not subscription bills. These observations do not establish current confirmation.
+
+> The tolerance-sensitive improvement described below is unvalidated and fails the current strict scientific standard. Its suggested tolerance exploitation is historical material, not current research guidance.
 
 ## 2026-09-05 05:59 pglib_opf: iters 0-11, spend $15.91, champion 0.0033, beating best-known: pglib_opf_case197_snem
 
