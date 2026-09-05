@@ -7,8 +7,9 @@ Schedule lives in night.json (edit by hand):
 Each slot runs `python -u loop.py --problem P --wall-minutes M --budget B [extra args]` and appends to
 runs-<P>/night-<date>.log. runs/night-status.json holds the per-slot outcome (champion total before/after,
 spend, wins, exit code) so a morning check can read one file instead of every log. After each slot (even a
-crashed one) `publish.py --problem P` runs detached: one maintainer email per slot with every winner in it,
-one approval tap (the loop itself only pushes to GitHub).
+crashed one) `retro.py --problem P` appends the night's retro to docs/retro/P.md (what worked, what didn't,
+lessons, five Next directions that tomorrow's prompt reads), then `publish.py --problem P` runs detached: one
+maintainer email per slot with every winner in it, one approval tap (the loop itself only pushes to GitHub).
 
   python night.py                 # run tonight's schedule
   python night.py --dry-run       # print the commands only
@@ -93,6 +94,22 @@ def run_slot(slot, dry):
     }
 
 
+def retro_slot(problem, since_iter):
+    """One model call after the slot: append what worked, what didn't, lessons and five Next directions to
+    docs/retro/<problem>.md so tomorrow's prompt starts from tonight's result instead of repeating it. Synchronous
+    (a few minutes at most) so the retro exists before publish_slot pushes the repo. Output: runs-<P>/retro.log."""
+    _, runs = layout(problem)
+    os.makedirs(runs, exist_ok=True)
+    with open(os.path.join(runs, "retro.log"), "a", encoding="utf-8") as lf:
+        subprocess.run(
+            [sys.executable, os.path.join(HERE, "retro.py"), "--problem", problem, "--since-iter", str(since_iter)],
+            cwd=HERE,
+            stdout=lf,
+            stderr=subprocess.STDOUT,
+            timeout=1200,
+        )
+
+
 def publish_slot(problem):
     """One email per slot: publish.py re-verifies every winner the slot pushed and requests ONE approval for all
     of them (Wes, 2026-09-04). Detached, so its 24h approval wait never delays the next slot; a crashed slot still
@@ -117,8 +134,13 @@ def main():
     status = {"night": time.strftime("%Y-%m-%d"), "started": time.strftime("%Y-%m-%dT%H:%M:%S"), "slots": []}
     for slot in slots:
         try:
-            status["slots"].append(run_slot(slot, a.dry_run))
+            result = run_slot(slot, a.dry_run)
+            status["slots"].append(result)
             if not a.dry_run:
+                try:
+                    retro_slot(slot["problem"], result["before"]["iterations"])
+                except Exception as e:  # a failed retro must not block the push or the next slot
+                    result["retro_error"] = f"{type(e).__name__}: {e}"[:300]
                 publish_slot(slot["problem"])
         except Exception as e:  # one broken slot must not cost the other slot its night
             status["slots"].append({"problem": slot.get("problem"), "error": f"{type(e).__name__}: {e}"[:400]})

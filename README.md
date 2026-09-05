@@ -37,6 +37,22 @@ python publish.py --dry-run   # show what would go out
 python publish.py             # push + request approval for anything new
 ```
 
+## Retro (so tomorrow does not redo tonight)
+
+`retro.py` runs once after every night slot (before the publish) and appends a dated section to `docs/retro/<problem>.md`:
+what worked (with the mechanism), what didn't (with the likely reason, duplicates grouped), three to six checkable
+lessons, and five **Next** directions that must differ in kind (algorithm family, time allocation, representation,
+instance structure, robustness), at least two far from anything tried, each with why it could beat the best-known and
+how we would know it failed. The brainstorming rules from the superpowers brainstorming skill are in the prompt.
+`loop.py` reads the newest section's Lessons and Next into every iteration prompt, shows a compressed list of every
+idea from earlier nights (not only the last 12), and asks the model to start its IDEA line with `[NEXT #k]` for the
+direction it takes, so the next retro sees what was consumed. One model call, about $0.50 to $1.30 per slot.
+
+```powershell
+python retro.py --problem cvrp --dry-run       # the prompt, no model call
+python retro.py --problem cvrp --since-iter 5  # review iterations 5 and later, append to docs/retro/cvrp.md
+```
+
 ## pglib_opf: AC optimal power flow on the PGLib-OPF benchmark
 
 IEEE PES PGLib-OPF v23.07 "typical operating conditions" cases, 3 to 793 buses. The value to beat per case is the

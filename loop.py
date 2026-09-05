@@ -46,6 +46,35 @@ def value_of(entry):
     return None if entry is None else entry.get("value", entry.get("sum"))
 
 
+def retro_path(name):
+    return os.path.join(HERE, "docs", "retro", f"{name}.md")
+
+
+def read_latest_retro(path):
+    """The Lessons and Next blocks of the newest section of a retro file written by retro.py, or "" if none."""
+    if not os.path.exists(path):
+        return ""
+    text = open(path, encoding="utf-8").read()
+    sections = re.split(r"^## ", text, flags=re.M)
+    if len(sections) < 2:
+        return ""
+    last = sections[-1]
+    keep = []
+    for heading in ("### Lessons", "### Next"):
+        m = re.search(re.escape(heading) + r"\n(.*?)(?=^### |\Z)", last, re.S | re.M)
+        if m:
+            keep.append(f"{heading}\n{m.group(1).strip()}")
+    return "\n".join(keep)
+
+
+def compress_history(history, keep_full=12, cap=80):
+    """Ideas older than the last keep_full iterations, one short line each, newest first, at most cap lines.
+    The full block already shows the recent ones; this stops a repeat of something tried nights ago."""
+    old = history[:-keep_full] if len(history) > keep_full else []
+    lines = [f"iter {h['iter']} ({h['status']}): {(h.get('idea') or '')[:110]}" for h in reversed(old)]
+    return "\n".join(lines[:cap])
+
+
 class Loop:
     def __init__(self, problem):
         self.P = load_problem(problem)
@@ -143,6 +172,22 @@ class Loop:
             )
             or "(none yet)"
         )
+        older = compress_history(history)
+        if older:
+            hist += f"\n\nPREVIOUSLY TRIED, EARLIER NIGHTS (do not repeat unless you fix the named failure):\n{older}"
+        retro = read_latest_retro(retro_path(self.name))
+        retro_block = (
+            f"""
+LAST RETRO (written after the previous run; follow it):
+{retro}
+
+Take the lowest-numbered Next direction whose tag [NEXT #k] does not yet appear in IDEAS TRIED and start your IDEA
+line with that tag. If every direction is used, or the scoreboard now argues against all of them, start the IDEA
+line with [NEXT none] and say why in the same sentence.
+"""
+            if retro
+            else ""
+        )
         return f"""{self.P.PROMPT}
 
 CURRENT CHAMPION solver.py:
@@ -154,7 +199,7 @@ SCOREBOARD ({"higher" if self.P.MAXIMIZE else "lower"} is better; champion total
 {board}
 IDEAS TRIED SO FAR:
 {hist}
-
+{retro_block}
 {self.P.TASK}
 
 OUTPUT FORMAT: first line "IDEA: <one sentence>", then exactly one ```python block with the full file. Nothing else."""
