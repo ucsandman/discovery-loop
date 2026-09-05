@@ -66,6 +66,11 @@ def git_push(best, dry):
     if sh("git", "diff", "--cached", "--quiet").returncode != 0:
         sh("git", "commit", "-q", "-m", f"{os.path.basename(best)}: candidates {time.strftime('%Y-%m-%d %H:%M')}")
     p = sh("git", "push", "-q")
+    if p.returncode != 0 and "cannot lock ref" in p.stderr:
+        # loop.py's end-of-run push and night.py's slot push fire within the same second and race for the
+        # branch lock; the loser's commit is already local, so one retry after the winner finishes carries it.
+        time.sleep(5)
+        p = sh("git", "push", "-q")
     print("push:", "ok" if p.returncode == 0 else p.stderr[-300:])
 
 
