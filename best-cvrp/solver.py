@@ -5,7 +5,10 @@ Phase 2: granular local search (each customer only paired with its K nearest nei
          increasing distance and cut off as soon as the candidate edge is longer than the longest edge
          currently incident to the customer) with relocate / Or-opt (1-3 customers, optionally reversed),
          swap 1-1, inter-route segment swaps (2-1, 1-2, 2-2), intra-route 2-opt and inter-route 2-opt*;
-         every move is capacity checked.  After a move only the endpoints of the changed edges are re-queued.
+         every move is capacity checked.  All customer-side data (position, incident edges, Or-opt segments
+         and their removal gains/demands, prefix load) is computed once per customer and reused for the whole
+         neighbour scan; positions are kept in an O(1) array that is re-indexed per route after a move.
+         After a move only the endpoints of the changed edges are re-queued.
 Phase 3: until the deadline, SISR-style ruin (adjacent / split strings around a random seed, occasionally a
          whole route plus strings around it so vehicles can be eliminated, occasionally random customers)
          + neighbour-adjacent cheapest insertion with blinks (full scan only when no neighbour slot fits)
@@ -65,6 +68,30 @@ def clarke_wright(D, demand, cap):
     return list(routes.values())
 
 
+class Sol:
+    """Routes + per-customer route id / position + per-route load."""
+
+    __slots__ = ("routes", "rid", "load", "pos")
+
+    def __init__(self, routes, rid, load, pos):
+        self.routes = routes
+        self.rid = rid
+        self.load = load
+        self.pos = pos
+
+    def copy(self):
+        return Sol([R[:] for R in self.routes], self.rid[:], self.load[:], self.pos[:])
+
+    def reindex(self, r):
+        pos = self.pos
+        rid = self.rid
+        k = 0
+        for x in self.routes[r]:
+            pos[x] = k
+            rid[x] = r
+            k += 1
+
+
 class CVRP:
     def __init__(self, Dn, demand, cap, rng, K=20, Kruin=50):
         self.Dn = Dn
@@ -99,191 +126,68 @@ class CVRP:
 
     def compact(self, routes):
         routes = [R[:] for R in routes if R]
-        rid = [-1] * (self.n + 1)
+        n1 = self.n + 1
+        rid = [-1] * n1
+        pos = [-1] * n1
         load = []
         dem = self.dem
         for r, R in enumerate(routes):
+            k = 0
             for x in R:
                 rid[x] = r
+                pos[x] = k
+                k += 1
             load.append(sum(dem[x] for x in R))
-        return routes, rid, load
+        return Sol(routes, rid, load, pos)
 
     # ------------------------------------------------------------------ local search
-    def _set2(self, routes, rid, load, rc, rv, A, B):
+    def _set2(self, S, rc, rv, A, B):
         dem = self.dem
-        routes[rc] = A
-        routes[rv] = B
-        for x in A:
-            rid[x] = rc
-        for x in B:
-            rid[x] = rv
-        load[rc] = sum(dem[x] for x in A)
-        load[rv] = sum(dem[x] for x in B)
+        S.routes[rc] = A
+        S.routes[rv] = B
+        S.load[rc] = sum(dem[x] for x in A)
+        S.load[rv] = sum(dem[x] for x in B)
+        S.reindex(rc)
+        S.reindex(rv)
 
-    def _improve(self, c, v, routes, rid, load):
+    def _improve(self, c, S, prune):
+        """Scan every granular neighbour v of c; apply the first improving move found."""
         D = self.D
         dem = self.dem
         cap = self.cap
+        routes = S.routes
+        rid = S.rid
+        load = S.load
+        pos = S.pos
         rc = rid[c]
-        rv = rid[v]
         Rc = routes[rc]
-        Rv = routes[rv]
-        i = Rc.index(c)
-        j = Rv.index(v)
+        i = pos[c]
         lc = len(Rc)
-        lv = len(Rv)
         pc = Rc[i - 1] if i else 0
         nc = Rc[i + 1] if i + 1 < lc else 0
-        pv = Rv[j - 1] if j else 0
-        nv = Rv[j + 1] if j + 1 < lv else 0
         Dc = D[c]
-        Dv = D[v]
         Dpc = D[pc]
-        Dpv = D[pv]
         dc = dem[c]
-        dv = dem[v]
-        same = rc == rv
         Lc = load[rc]
-        Lv = load[rv]
-
-        # ---- swap c <-> v
-        if same:
-            if j == i + 1:
-                delta = Dpc[v] + Dc[nv] - Dpc[c] - Dv[nv]
-            elif i == j + 1:
-                delta = Dpv[c] + Dv[nc] - Dpv[v] - Dc[nc]
-            else:
-                delta = Dpc[v] + Dv[nc] + Dpv[c] + Dc[nv] - Dpc[c] - Dc[nc] - Dpv[v] - Dv[nv]
-            if delta < 0:
-                Rc[i] = v
-                Rc[j] = c
-                self.aff = (c, v, pc, nc, pv, nv)
-                return True
+        if prune:
+            thr = Dc[pc] if Dc[pc] > Dc[nc] else Dc[nc]
         else:
-            if Lc - dc + dv <= cap and Lv - dv + dc <= cap:
-                delta = Dpc[v] + Dv[nc] + Dpv[c] + Dc[nv] - Dpc[c] - Dc[nc] - Dpv[v] - Dv[nv]
-                if delta < 0:
-                    Rc[i] = v
-                    Rv[j] = c
-                    rid[c] = rv
-                    rid[v] = rc
-                    load[rc] = Lc - dc + dv
-                    load[rv] = Lv - dv + dc
-                    self.aff = (c, v, pc, nc, pv, nv)
-                    return True
-            # ---- segment swaps (2,1), (2,2), (1,2) between different routes
-            if i + 1 < lc:
-                c2 = Rc[i + 1]
-                nc2 = Rc[i + 2] if i + 2 < lc else 0
-                d2 = dem[c2]
-                Dc2 = D[c2]
-                if Lc - dc - d2 + dv <= cap and Lv - dv + dc + d2 <= cap:
-                    delta = Dpc[v] + Dv[nc2] + Dpv[c] + Dc2[nv] - Dpc[c] - Dc2[nc2] - Dpv[v] - Dv[nv]
-                    if delta < 0:
-                        Rc[i : i + 2] = [v]
-                        Rv[j : j + 1] = [c, c2]
-                        rid[v] = rc
-                        rid[c] = rv
-                        rid[c2] = rv
-                        load[rc] = Lc - dc - d2 + dv
-                        load[rv] = Lv - dv + dc + d2
-                        self.aff = (c, v, c2, pc, nc2, pv, nv)
-                        return True
-                if j + 1 < lv:
-                    v2 = Rv[j + 1]
-                    nv2 = Rv[j + 2] if j + 2 < lv else 0
-                    dv2 = dem[v2]
-                    if Lc - dc - d2 + dv + dv2 <= cap and Lv - dv - dv2 + dc + d2 <= cap:
-                        delta = Dpc[v] + D[v2][nc2] + Dpv[c] + Dc2[nv2] - Dpc[c] - Dc2[nc2] - Dpv[v] - D[v2][nv2]
-                        if delta < 0:
-                            Rc[i : i + 2] = [v, v2]
-                            Rv[j : j + 2] = [c, c2]
-                            rid[v] = rc
-                            rid[v2] = rc
-                            rid[c] = rv
-                            rid[c2] = rv
-                            load[rc] = Lc - dc - d2 + dv + dv2
-                            load[rv] = Lv - dv - dv2 + dc + d2
-                            self.aff = (c, v, c2, v2, pc, nc2, pv, nv2)
-                            return True
-            if j + 1 < lv:
-                v2 = Rv[j + 1]
-                nv2 = Rv[j + 2] if j + 2 < lv else 0
-                dv2 = dem[v2]
-                if Lc - dc + dv + dv2 <= cap and Lv - dv - dv2 + dc <= cap:
-                    delta = Dpc[v] + D[v2][nc] + Dpv[c] + Dc[nv2] - Dpc[c] - Dc[nc] - Dpv[v] - D[v2][nv2]
-                    if delta < 0:
-                        Rc[i : i + 1] = [v, v2]
-                        Rv[j : j + 2] = [c]
-                        rid[v] = rc
-                        rid[v2] = rc
-                        rid[c] = rv
-                        load[rc] = Lc - dc + dv + dv2
-                        load[rv] = Lv - dv - dv2 + dc
-                        self.aff = (c, v, v2, pc, nc, pv, nv2)
-                        return True
-
-        # ---- 2-opt (same route) / 2-opt* (different routes)
-        if same:
-            if i < j:
-                if Dc[v] + D[nc][nv] - Dc[nc] - Dv[nv] < 0:
-                    Rc[i + 1 : j + 1] = Rc[i + 1 : j + 1][::-1]
-                    self.aff = (c, v, pc, nc, pv, nv)
-                    return True
-                if Dpc[pv] + Dc[v] - Dpc[c] - Dpv[v] < 0:
-                    Rc[i:j] = Rc[i:j][::-1]
-                    self.aff = (c, v, pc, nc, pv, nv)
-                    return True
-            else:
-                if Dv[c] + D[nv][nc] - Dv[nv] - Dc[nc] < 0:
-                    Rc[j + 1 : i + 1] = Rc[j + 1 : i + 1][::-1]
-                    self.aff = (c, v, pc, nc, pv, nv)
-                    return True
-                if Dpv[pc] + Dv[c] - Dpv[v] - Dpc[c] < 0:
-                    Rc[j:i] = Rc[j:i][::-1]
-                    self.aff = (c, v, pc, nc, pv, nv)
-                    return True
+            thr = INF
+        if i + 1 < lc:
+            c2 = Rc[i + 1]
+            nc2 = Rc[i + 2] if i + 2 < lc else 0
+            d2 = dem[c2]
+            Dc2 = D[c2]
         else:
-            d1 = Dc[nv] + Dv[nc] - Dc[nc] - Dv[nv]
-            d2 = Dpc[pv] + Dc[v] - Dpc[c] - Dpv[v]
-            d3 = Dc[v] + Dpv[nc] - Dc[nc] - Dpv[v]
-            d4 = Dv[c] + Dpc[nv] - Dpc[c] - Dv[nv]
-            if d1 < 0 or d2 < 0 or d3 < 0 or d4 < 0:
-                prec = 0
-                for x in Rc[: i + 1]:
-                    prec += dem[x]
-                prev = 0
-                for x in Rv[: j + 1]:
-                    prev += dem[x]
-                if d1 < 0 and prec + Lv - prev <= cap and prev + Lc - prec <= cap:
-                    self._set2(routes, rid, load, rc, rv, Rc[: i + 1] + Rv[j + 1 :], Rv[: j + 1] + Rc[i + 1 :])
-                    self.aff = (c, v, pc, nc, pv, nv)
-                    return True
-                if d2 < 0 and prec - dc + prev - dv <= cap and Lc - prec + dc + Lv - prev + dv <= cap:
-                    self._set2(routes, rid, load, rc, rv, Rc[:i] + Rv[:j][::-1], Rc[i:][::-1] + Rv[j:])
-                    self.aff = (c, v, pc, nc, pv, nv)
-                    return True
-                if d3 < 0 and prec + Lv - prev + dv <= cap and prev - dv + Lc - prec <= cap:
-                    self._set2(routes, rid, load, rc, rv, Rc[: i + 1] + Rv[j:], Rv[:j] + Rc[i + 1 :])
-                    self.aff = (c, v, pc, nc, pv, nv)
-                    return True
-                if d4 < 0 and prev + Lc - prec + dc <= cap and prec - dc + Lv - prev <= cap:
-                    self._set2(routes, rid, load, rc, rv, Rv[: j + 1] + Rc[i:], Rc[:i] + Rv[j + 1 :])
-                    self.aff = (c, v, pc, nc, pv, nv)
-                    return True
-
-        # ---- Or-opt / relocate: move a segment containing c next to v
-        segs = [(i, i + 1)]
-        if i + 2 <= lc:
-            segs.append((i, i + 2))
-        if i + 3 <= lc:
-            segs.append((i, i + 3))
-        if i >= 1:
-            segs.append((i - 1, i + 1))
-        if i >= 2:
-            segs.append((i - 2, i + 1))
-        for s, e in segs:
-            L = e - s
+            c2 = 0
+            nc2 = 0
+            d2 = 0
+            Dc2 = None
+        # Or-opt segments containing c, with removal gain and demand (computed once per c)
+        segs = []
+        for s, e in ((i, i + 1), (i, i + 2), (i, i + 3), (i - 1, i + 1), (i - 2, i + 1)):
+            if s < 0 or e > lc:
+                continue
             a = Rc[s]
             b = Rc[e - 1]
             p = Rc[s - 1] if s else 0
@@ -291,53 +195,208 @@ class CVRP:
             gain = D[p][a] + D[b][q] - D[p][q]
             if gain <= 0:
                 continue
-            if same:
-                if s <= j < e:
-                    continue
-                ca = j != s - 1
-                cb = j != e
-                sd = 0
+            if e - s == 1:
+                sd = dc
             else:
-                sd = dc if L == 1 else sum(dem[x] for x in Rc[s:e])
-                if Lv + sd > cap:
-                    continue
-                ca = cb = True
-            Da = D[a]
-            Db = D[b]
-            mv = None
-            if ca:
-                base = Dv[nv] + gain
-                if Dv[a] + Db[nv] < base:
-                    mv = (True, False)
-                elif L > 1 and Dv[b] + Da[nv] < base:
-                    mv = (True, True)
-            if mv is None and cb:
-                base = Dpv[v] + gain
-                if Dpv[a] + Db[v] < base:
-                    mv = (False, False)
-                elif L > 1 and Dpv[b] + Da[v] < base:
-                    mv = (False, True)
-            if mv is not None:
-                after, rev = mv
-                seg = Rc[s:e]
-                del Rc[s:e]
-                piece = seg[::-1] if rev else seg
-                k = Rc.index(v) if same else j
-                ins = k + 1 if after else k
-                Rv[ins:ins] = piece
-                if not same:
-                    for x in seg:
-                        rid[x] = rv
-                    load[rc] -= sd
-                    load[rv] += sd
-                self.aff = (c, v, pc, nc, pv, nv, p, q, a, b)
-                return True
+                sd = 0
+                for x in Rc[s:e]:
+                    sd += dem[x]
+            segs.append((s, e, e - s, a, b, p, q, gain, sd, D[a], D[b]))
+        prec = -1  # prefix load of Rc up to and including c (lazy)
+
+        for v in self.nb[c]:
+            if Dc[v] > thr:
+                break
+            rv = rid[v]
+            if rv < 0:
+                continue
+            Rv = routes[rv]
+            j = pos[v]
+            lv = len(Rv)
+            pv = Rv[j - 1] if j else 0
+            nv = Rv[j + 1] if j + 1 < lv else 0
+            Dv = D[v]
+            Dpv = D[pv]
+            dv = dem[v]
+            Lv = load[rv]
+            same = rc == rv
+
+            # ---- swap c <-> v
+            if same:
+                if j == i + 1:
+                    delta = Dpc[v] + Dc[nv] - Dpc[c] - Dv[nv]
+                elif i == j + 1:
+                    delta = Dpv[c] + Dv[nc] - Dpv[v] - Dc[nc]
+                else:
+                    delta = Dpc[v] + Dv[nc] + Dpv[c] + Dc[nv] - Dpc[c] - Dc[nc] - Dpv[v] - Dv[nv]
+                if delta < 0:
+                    Rc[i] = v
+                    Rc[j] = c
+                    pos[c] = j
+                    pos[v] = i
+                    self.aff = (c, v, pc, nc, pv, nv)
+                    return True
+            else:
+                if Lc - dc + dv <= cap and Lv - dv + dc <= cap:
+                    delta = Dpc[v] + Dv[nc] + Dpv[c] + Dc[nv] - Dpc[c] - Dc[nc] - Dpv[v] - Dv[nv]
+                    if delta < 0:
+                        Rc[i] = v
+                        Rv[j] = c
+                        rid[c] = rv
+                        rid[v] = rc
+                        pos[c] = j
+                        pos[v] = i
+                        load[rc] = Lc - dc + dv
+                        load[rv] = Lv - dv + dc
+                        self.aff = (c, v, pc, nc, pv, nv)
+                        return True
+                # ---- segment swaps (2,1), (2,2), (1,2) between different routes
+                if c2:
+                    if Lc - dc - d2 + dv <= cap and Lv - dv + dc + d2 <= cap:
+                        delta = Dpc[v] + Dv[nc2] + Dpv[c] + Dc2[nv] - Dpc[c] - Dc2[nc2] - Dpv[v] - Dv[nv]
+                        if delta < 0:
+                            Rc[i : i + 2] = [v]
+                            Rv[j : j + 1] = [c, c2]
+                            load[rc] = Lc - dc - d2 + dv
+                            load[rv] = Lv - dv + dc + d2
+                            S.reindex(rc)
+                            S.reindex(rv)
+                            self.aff = (c, v, c2, pc, nc2, pv, nv)
+                            return True
+                    if j + 1 < lv:
+                        v2 = Rv[j + 1]
+                        nv2 = Rv[j + 2] if j + 2 < lv else 0
+                        dv2 = dem[v2]
+                        if Lc - dc - d2 + dv + dv2 <= cap and Lv - dv - dv2 + dc + d2 <= cap:
+                            delta = Dpc[v] + D[v2][nc2] + Dpv[c] + Dc2[nv2] - Dpc[c] - Dc2[nc2] - Dpv[v] - D[v2][nv2]
+                            if delta < 0:
+                                Rc[i : i + 2] = [v, v2]
+                                Rv[j : j + 2] = [c, c2]
+                                load[rc] = Lc - dc - d2 + dv + dv2
+                                load[rv] = Lv - dv - dv2 + dc + d2
+                                S.reindex(rc)
+                                S.reindex(rv)
+                                self.aff = (c, v, c2, v2, pc, nc2, pv, nv2)
+                                return True
+                if j + 1 < lv:
+                    v2 = Rv[j + 1]
+                    nv2 = Rv[j + 2] if j + 2 < lv else 0
+                    dv2 = dem[v2]
+                    if Lc - dc + dv + dv2 <= cap and Lv - dv - dv2 + dc <= cap:
+                        delta = Dpc[v] + D[v2][nc] + Dpv[c] + Dc[nv2] - Dpc[c] - Dc[nc] - Dpv[v] - D[v2][nv2]
+                        if delta < 0:
+                            Rc[i : i + 1] = [v, v2]
+                            Rv[j : j + 2] = [c]
+                            load[rc] = Lc - dc + dv + dv2
+                            load[rv] = Lv - dv - dv2 + dc
+                            S.reindex(rc)
+                            S.reindex(rv)
+                            self.aff = (c, v, v2, pc, nc, pv, nv2)
+                            return True
+
+            # ---- 2-opt (same route) / 2-opt* (different routes)
+            if same:
+                if i < j:
+                    if Dc[v] + D[nc][nv] - Dc[nc] - Dv[nv] < 0:
+                        Rc[i + 1 : j + 1] = Rc[i + 1 : j + 1][::-1]
+                        S.reindex(rc)
+                        self.aff = (c, v, pc, nc, pv, nv)
+                        return True
+                    if Dpc[pv] + Dc[v] - Dpc[c] - Dpv[v] < 0:
+                        Rc[i:j] = Rc[i:j][::-1]
+                        S.reindex(rc)
+                        self.aff = (c, v, pc, nc, pv, nv)
+                        return True
+                else:
+                    if Dv[c] + D[nv][nc] - Dv[nv] - Dc[nc] < 0:
+                        Rc[j + 1 : i + 1] = Rc[j + 1 : i + 1][::-1]
+                        S.reindex(rc)
+                        self.aff = (c, v, pc, nc, pv, nv)
+                        return True
+                    if Dpv[pc] + Dv[c] - Dpv[v] - Dpc[c] < 0:
+                        Rc[j:i] = Rc[j:i][::-1]
+                        S.reindex(rc)
+                        self.aff = (c, v, pc, nc, pv, nv)
+                        return True
+            else:
+                d1 = Dc[nv] + Dv[nc] - Dc[nc] - Dv[nv]
+                d2_ = Dpc[pv] + Dc[v] - Dpc[c] - Dpv[v]
+                d3 = Dc[v] + Dpv[nc] - Dc[nc] - Dpv[v]
+                d4 = Dv[c] + Dpc[nv] - Dpc[c] - Dv[nv]
+                if d1 < 0 or d2_ < 0 or d3 < 0 or d4 < 0:
+                    if prec < 0:
+                        prec = 0
+                        for x in Rc[: i + 1]:
+                            prec += dem[x]
+                    prev = 0
+                    for x in Rv[: j + 1]:
+                        prev += dem[x]
+                    if d1 < 0 and prec + Lv - prev <= cap and prev + Lc - prec <= cap:
+                        self._set2(S, rc, rv, Rc[: i + 1] + Rv[j + 1 :], Rv[: j + 1] + Rc[i + 1 :])
+                        self.aff = (c, v, pc, nc, pv, nv)
+                        return True
+                    if d2_ < 0 and prec - dc + prev - dv <= cap and Lc - prec + dc + Lv - prev + dv <= cap:
+                        self._set2(S, rc, rv, Rc[:i] + Rv[:j][::-1], Rc[i:][::-1] + Rv[j:])
+                        self.aff = (c, v, pc, nc, pv, nv)
+                        return True
+                    if d3 < 0 and prec + Lv - prev + dv <= cap and prev - dv + Lc - prec <= cap:
+                        self._set2(S, rc, rv, Rc[: i + 1] + Rv[j:], Rv[:j] + Rc[i + 1 :])
+                        self.aff = (c, v, pc, nc, pv, nv)
+                        return True
+                    if d4 < 0 and prev + Lc - prec + dc <= cap and prec - dc + Lv - prev <= cap:
+                        self._set2(S, rc, rv, Rv[: j + 1] + Rc[i:], Rc[:i] + Rv[j + 1 :])
+                        self.aff = (c, v, pc, nc, pv, nv)
+                        return True
+
+            # ---- Or-opt / relocate: move a segment containing c next to v
+            for s, e, L, a, b, p, q, gain, sd, Da, Db in segs:
+                if same:
+                    if s <= j < e:
+                        continue
+                    ca = j != s - 1
+                    cb = j != e
+                else:
+                    if Lv + sd > cap:
+                        continue
+                    ca = cb = True
+                mv = None
+                if ca:
+                    base = Dv[nv] + gain
+                    if Dv[a] + Db[nv] < base:
+                        mv = (True, False)
+                    elif L > 1 and Dv[b] + Da[nv] < base:
+                        mv = (True, True)
+                if mv is None and cb:
+                    base = Dpv[v] + gain
+                    if Dpv[a] + Db[v] < base:
+                        mv = (False, False)
+                    elif L > 1 and Dpv[b] + Da[v] < base:
+                        mv = (False, True)
+                if mv is not None:
+                    after, rev = mv
+                    seg = Rc[s:e]
+                    del Rc[s:e]
+                    piece = seg[::-1] if rev else seg
+                    if same:
+                        k = j - L if j >= e else j
+                    else:
+                        k = j
+                    ins = k + 1 if after else k
+                    Rv[ins:ins] = piece
+                    if same:
+                        S.reindex(rc)
+                    else:
+                        load[rc] = Lc - sd
+                        load[rv] = Lv + sd
+                        S.reindex(rc)
+                        S.reindex(rv)
+                    self.aff = (c, v, pc, nc, pv, nv, p, q, a, b)
+                    return True
         return False
 
-    def local_search(self, routes, rid, load, pending, deadline, prune=True):
-        nb = self.nb
-        D = self.D
+    def local_search(self, S, pending, deadline, prune=True):
         improve = self._improve
+        rid = S.rid
         stack = [x for x in pending if x > 0]
         self.rng.shuffle(stack)
         inq = set(stack)
@@ -348,38 +407,23 @@ class CVRP:
                 break
             c = stack.pop()
             inq.discard(c)
-            r = rid[c]
-            if r < 0:
+            if rid[c] < 0:
                 continue
-            if prune:
-                # only try neighbours whose edge is no longer than the longest edge currently at c
-                R = routes[r]
-                i = R.index(c)
-                pc = R[i - 1] if i else 0
-                nc = R[i + 1] if i + 1 < len(R) else 0
-                Dc = D[c]
-                thr = Dc[pc] if Dc[pc] > Dc[nc] else Dc[nc]
-                for v in nb[c]:
-                    if Dc[v] > thr:
-                        break
-                    if improve(c, v, routes, rid, load):
-                        for x in self.aff:
-                            if x and x not in inq:
-                                inq.add(x)
-                                stack.append(x)
-                        break  # c is re-queued via aff and re-examined with fresh edges
-            else:
-                for v in nb[c]:
-                    if improve(c, v, routes, rid, load):
-                        for x in self.aff:
-                            if x and x not in inq:
-                                inq.add(x)
-                                stack.append(x)
+            if improve(c, S, prune):
+                # c is re-queued via aff and re-examined with fresh edges
+                for x in self.aff:
+                    if x and x not in inq:
+                        inq.add(x)
+                        stack.append(x)
 
     # ------------------------------------------------------------------ ruin & recreate
-    def _string_ruin(self, routes, rid, load, seed, ks, Lmax, ruined, removed, cuts):
+    def _string_ruin(self, S, seed, ks, Lmax, ruined, removed, cuts):
         rng = self.rng
         dem = self.dem
+        routes = S.routes
+        rid = S.rid
+        load = S.load
+        pos = S.pos
         for v in [seed] + self.nbr[seed]:
             if len(ruined) >= ks:
                 break
@@ -391,7 +435,7 @@ class CVRP:
             if lr == 0:
                 continue
             l = rng.randint(1, int(min(Lmax, lr)))
-            j = R.index(v)
+            j = pos[v]
             if l < lr and rng.random() < 0.5:
                 # split string: remove l customers around a preserved block of m customers
                 m = 1
@@ -424,13 +468,19 @@ class CVRP:
                     cuts.append(R[start])
             for x in seg:
                 rid[x] = -1
+                pos[x] = -1
                 load[r] -= dem[x]
+            S.reindex(r)
             removed.extend(seg)
             ruined.add(r)
 
-    def ruin(self, routes, rid, load, cbar):
+    def ruin(self, S, cbar):
         rng = self.rng
         dem = self.dem
+        routes = S.routes
+        rid = S.rid
+        load = S.load
+        pos = S.pos
         removed = []
         cuts = []
         u = rng.random()
@@ -439,14 +489,16 @@ class CVRP:
             for x in rng.sample(range(1, self.n + 1), m):
                 r = rid[x]
                 R = routes[r]
-                k = R.index(x)
+                k = pos[x]
                 del R[k]
                 if k > 0:
                     cuts.append(R[k - 1])
                 if k < len(R):
                     cuts.append(R[k])
                 rid[x] = -1
+                pos[x] = -1
                 load[r] -= dem[x]
+                S.reindex(r)
                 removed.append(x)
             return removed, cuts
         nr = sum(1 for R in routes if R)
@@ -463,6 +515,7 @@ class CVRP:
             R = routes[r]
             for x in R:
                 rid[x] = -1
+                pos[x] = -1
             removed.extend(R)
             load[r] = 0
             del R[:]
@@ -471,7 +524,7 @@ class CVRP:
             ks += 1
         else:
             seed = rng.randint(1, self.n)
-        self._string_ruin(routes, rid, load, seed, ks, Lmax, ruined, removed, cuts)
+        self._string_ruin(S, seed, ks, Lmax, ruined, removed, cuts)
         return removed, cuts
 
     def _best_any(self, routes, load, c, dc, blink):
@@ -503,13 +556,17 @@ class CVRP:
                 bk = k
         return br, bk
 
-    def recreate(self, routes, rid, load, removed):
+    def recreate(self, S, removed):
         D = self.D
         dem = self.dem
         cap = self.cap
         rng = self.rng
         D0 = self.D0
         nb = self.nb
+        routes = S.routes
+        rid = S.rid
+        load = S.load
+        pos = S.pos
         mode = rng.random()
         if mode < 0.4:
             rng.shuffle(removed)
@@ -531,7 +588,7 @@ class CVRP:
                 if r < 0 or load[r] + dc > cap:
                     continue
                 R = routes[r]
-                k = R.index(u)
+                k = pos[u]
                 p = R[k - 1] if k else 0
                 q = R[k + 1] if k + 1 < len(R) else 0
                 du = Dc[u]
@@ -550,26 +607,27 @@ class CVRP:
             if br < 0:
                 routes.append([c])
                 rid[c] = len(routes) - 1
+                pos[c] = 0
                 load.append(dc)
                 continue
             routes[br].insert(bk, c)
-            rid[c] = br
             load[br] += dc
+            S.reindex(br)
 
     # ------------------------------------------------------------------ driver
     def solve(self, routes0, deadline, polish_deadline, save):
         rng = self.rng
         n = self.n
-        routes, rid, load = self.compact(routes0)
-        self.local_search(routes, rid, load, range(1, n + 1), deadline)
-        routes, rid, load = self.compact(routes)
-        cur_cost = self.total_cost(routes)
+        S = self.compact(routes0)
+        self.local_search(S, range(1, n + 1), deadline)
+        S = self.compact(S.routes)
+        cur_cost = self.total_cost(S.routes)
         best_cost = cur_cost
-        best_routes = [R[:] for R in routes]
+        best_routes = [R[:] for R in S.routes]
         save(best_routes, best_cost)
-        cur_routes, cur_rid, cur_load = routes, rid, load
+        cur = S
 
-        avg_edge = cur_cost / max(1, n + len(routes))
+        avg_edge = cur_cost / max(1, n + len(S.routes))
         T0 = max(1.0, 0.3 * avg_edge)
         Tf = 1.0
         t_start = time.time()
@@ -581,44 +639,45 @@ class CVRP:
             if now >= deadline:
                 break
             if now - last_best_t > stall and cur_cost > best_cost:
-                cur_routes, cur_rid, cur_load = self.compact(best_routes)
+                cur = self.compact(best_routes)
                 cur_cost = best_cost
                 last_best_t = now
             frac = min(1.0, (now - t_start) / span)
             T = T0 * (Tf / T0) ** frac
-            work = [R[:] for R in cur_routes]
-            wrid = cur_rid[:]
-            wload = cur_load[:]
+            work = cur.copy()
             cbar = 8.0 + rng.random() * 10.0
-            removed, cuts = self.ruin(work, wrid, wload, cbar)
+            removed, cuts = self.ruin(work, cbar)
             if not removed:
                 continue
-            self.recreate(work, wrid, wload, removed)
+            self.recreate(work, removed)
             pending = set(removed)
             pending.update(cuts)
+            wroutes = work.routes
+            wrid = work.rid
+            wpos = work.pos
             for c in removed:
-                R = work[wrid[c]]
-                k = R.index(c)
+                R = wroutes[wrid[c]]
+                k = wpos[c]
                 if k > 0:
                     pending.add(R[k - 1])
                 if k + 1 < len(R):
                     pending.add(R[k + 1])
-            self.local_search(work, wrid, wload, pending, deadline)
-            new_cost = self.total_cost(work)
+            self.local_search(work, pending, deadline)
+            new_cost = self.total_cost(work.routes)
             if new_cost <= cur_cost or rng.random() < math.exp((cur_cost - new_cost) / T):
-                if any(not R for R in work):
-                    work, wrid, wload = self.compact(work)
-                cur_routes, cur_rid, cur_load = work, wrid, wload
+                if any(not R for R in work.routes):
+                    work = self.compact(work.routes)
+                cur = work
                 cur_cost = new_cost
                 if new_cost < best_cost:
                     best_cost = new_cost
-                    best_routes = [R[:] for R in work if R]
+                    best_routes = [R[:] for R in work.routes if R]
                     last_best_t = time.time()
                     save(best_routes, best_cost)
         # final polish: full unpruned local search over every customer of the incumbent
-        routes, rid, load = self.compact(best_routes)
-        self.local_search(routes, rid, load, range(1, n + 1), polish_deadline, prune=False)
-        routes = [R for R in routes if R]
+        S = self.compact(best_routes)
+        self.local_search(S, range(1, n + 1), polish_deadline, prune=False)
+        routes = [R for R in S.routes if R]
         pc = self.total_cost(routes)
         if pc < best_cost:
             best_cost = pc
