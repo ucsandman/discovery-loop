@@ -89,7 +89,7 @@ A small development-only probe can select `--targets`, lower `--time`, and set `
 ## How an experiment works
 
 ```mermaid
-flowchart LR
+flowchart TD
     N[Nightly plan and shared allowance] --> B[Frozen development brief]
     B --> F[Fable proposal]
     B --> A[Astra proposal]

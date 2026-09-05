@@ -23,3 +23,5 @@
 ## 2026-09-05: Documentation refresh
 
 The main README reflected the new pipeline, but older slot proposals and baseline footers still instructed automatic publishing. Centralized current procedures in the operations guide, replaced obsolete instructions with links, and labeled preserved measurements as historical. Future behavior changes must search historical guide introductions and operational footers as well as the README.
+
+Live GitHub rendering loaded the diagram only after it entered the viewport and exposed unreadably small horizontal labels. Changed the flow to vertical and verified the rendered diagram, not just the Markdown source. The repository About description was also updated to remove its obsolete automatic-publication claim.
