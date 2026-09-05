@@ -1,6 +1,6 @@
 # Research pipeline implementation
 
-Status: Implementation verified, 2026-09-05. Windows task activation awaits the requested operator confirmation.
+Status: Implementation verified, 2026-09-05. Windows tasks activated and the dashboard restarted after operator confirmation on 2026-09-05.
 
 This extends loop.py, night.py, the problem plugins, and their existing status pages. No separate research engine.
 
@@ -64,8 +64,8 @@ Existing tests are not edited. New regression cases must demonstrate failure bef
 
 - The old imported `loop.main()` remains only for compatibility with the unchanged CVRP test that explicitly requires automatic publisher invocation. The supported command line calls `cli_main()`, which produces local evidence. All legacy model and solver helpers now use the same subscription and isolation boundaries; the publication gate rejects calls without exact approvals. Replacing that obsolete assertion remains a pending operator decision.
 - Research email is disabled because the separate governed sender cannot bind immutable attachment bytes. Local bundles and exact-commit Git publication are implemented.
-- The installed Windows tasks were previewed and backed up, not changed. Their activation and the existing morning delivery integration require the pending explicit confirmation.
-- A dashboard restart was rejected by automatic approval review with only 'blocked by policy'. Its currently running instance remains available.
+- Windows task registration and the morning integration were applied after confirmation on 2026-09-05, with rollback XML exported and all four registrations verified.
+- The earlier dashboard restart restriction was resolved after operator authorization. The current dashboard runs through its registered task; its loopback listener and rendered configuration were verified.
 
 ## Live verification evidence
 

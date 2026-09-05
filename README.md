@@ -26,7 +26,7 @@ A local research lab for improving optimization solvers with Fable and Astra. Mo
 | Bounded overnight work | A shared allowance, checkpoints, pause controls and an explicit deadline. |
 | Human review | Evidence inspection and approvals bound to exact files, with no automatic publication. |
 
-> **Release status:** The pipeline and dashboard are implemented. Windows task registration and morning-delivery integration have been previewed and backed up; activation remains pending. No sealed release dataset or validated real-world impact claim is available.
+> **Release status:** The pipeline and dashboard are implemented. The operator installation activated the Windows research, morning-integration and dashboard tasks on 2026-09-05, with rollback backups. New installations still preview before applying task changes. No sealed release dataset or validated real-world impact claim is available.
 
 ## Morning review
 

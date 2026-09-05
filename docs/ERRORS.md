@@ -25,3 +25,7 @@
 The main README reflected the new pipeline, but older slot proposals and baseline footers still instructed automatic publishing. Centralized current procedures in the operations guide, replaced obsolete instructions with links, and labeled preserved measurements as historical. Future behavior changes must search historical guide introductions and operational footers as well as the README.
 
 Live GitHub rendering loaded the diagram only after it entered the viewport and exposed unreadably small horizontal labels. Changed the flow to vertical and verified the rendered diagram, not just the Markdown source. The repository About description was also updated to remove its obsolete automatic-publication claim.
+
+## 2026-09-05: Task activation
+
+Preview and live task state were kept separate until operator authorization. Applied the exported plan, read back all four registrations, and restarted the dashboard through the task rather than leaving an old process serving imported code. An overly strict compound process check stopped the initial restart without killing anything; re-read the exact PID and command line before retrying. Future activation checks must include the running listener, effective UI values and both positive and negative freshness cases, not just a successful installer exit.

@@ -41,9 +41,9 @@ Preview without changing task registration:
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-night-tasks.ps1
 ```
 
-The installer exports existing task XML and prints rollback instructions. Activation with `-Apply` remains pending operator confirmation in this installation.
+The installer exports existing task XML and prints rollback instructions. The operator installation applied these changes with `-Apply` on 2026-09-05 after confirmation. New installations should review the preview before applying it. Task registration is machine-local and is not installed by cloning the repository.
 
-| Task | Prepared behavior |
+| Task | Registered behavior |
 | --- | --- |
 | `discovery-loop-night` | 22:00 research with `--scheduled`, bounded catch-up and an 8h15m scheduler limit |
 | `NightlyMeditation` | 06:40, inject sanitized fresh research context into the existing runner |
@@ -69,3 +69,11 @@ python scripts/check.py
 ```
 
 This runs three test suites in separate interpreters, Ruff and Python compilation. CI runs on Windows and Ubuntu. Optional real-worker tests require Docker and `RUN_DOCKER_TESTS=1` in the test process; see [contributing](../CONTRIBUTING.md). CI does not prove subscription availability or task activation on an operator's machine.
+
+## Activation verification, 2026-09-05
+
+All four task registrations were read back after installation. The next research trigger was 22:00 local, followed by meditation at 06:40 and briefing at 06:57 the next morning. The dashboard was restarted through its new task and served the current 90-unit, 480-minute configuration on loopback.
+
+Both subscription authentication probes and the immutable Docker worker preflight passed. The actual transformed meditation script passed Bash syntax checking without executing it. The artifact freshness check accepted a fresh fixture and rejected a stale one. The local report correctly reported missing current-night evidence before the first scheduled run; activation is not proof of a completed overnight experiment.
+
+Rollback exports and the applied plan are retained locally under `runs/task-backups/` and `runs/task-activation.txt`. Registration verification is recorded in `runs/task-activation-verified.json`. These machine-specific files are not published.

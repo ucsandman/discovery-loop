@@ -1,5 +1,11 @@
 # Changelog
 
+## Operator task activation, 2026-09-05
+
+- Activated the bounded 22:00 research task, morning evidence wrappers and dashboard-at-logon task after confirmation, retaining rollback exports.
+- Restarted the dashboard through Task Scheduler and verified the live allowance and deadline settings.
+- Verified subscription authentication, Docker readiness, meditation script syntax and fresh/stale artifact decisions. The first full scheduled night remains separate from registration verification.
+
 ## Documentation refresh, 2026-09-05
 
 - Rebuilt the README with workflow and stack badges, a real dashboard preview, architecture diagram, nightly resource table and guide navigation.
