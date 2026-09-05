@@ -1,5 +1,5 @@
 # Wes Sander, MoltFire
-pglib_opf_case200_activ: AC-OPF objective 27557.389313 $/h (verified feasible at 1e-06 pu)
+pglib_opf_case200_activ: AC-OPF objective 27557.389258 $/h (verified feasible at 1e-06 pu)
 
 gen  bus  Pg[MW]  Qg[MVAr]
   0   49     1.3599     0.5272
@@ -48,7 +48,7 @@ gen  bus  Pg[MW]  Qg[MVAr]
  43  170     2.8199    -1.0401
  44  182     5.2499     0.8828
  45  183     7.9799     1.9883
- 46  189   383.3858   -46.6701
+ 46  189   383.3857   -46.6701
  47  196     0.0000     0.0000
  48  197     0.0000     0.0000
 

@@ -1,21 +1,22 @@
-"""AC-OPF solver: PIPS interior point + basin-hopping multi-start + continuation restarts + cost-scale path
-diversification + dual-guided margin polish.
+"""AC-OPF solver: PIPS interior point + basin-hopping multi-start + continuation restarts + cost-scale and
+constraint-scale path diversification + step-controlled PIPS + dual-guided margin polish.
 
-Phase 1: PIPS from the file's start point, a flat start and a DC-OPF start; Newton power-flow polish; if the
-independent verifier rejects the point at 1e-6, first re-solve with tight (1e-9) interior-point tolerances, then
-warm re-solve with ONLY the near-binding constraints tightened.
+Phase 1: PIPS from the file's start point, a flat start, a DC-OPF start and a step-controlled flat start; Newton
+power-flow polish; if the independent verifier rejects the point at 1e-6, first re-solve with tight (1e-9)
+interior-point tolerances, then warm re-solve with ONLY the near-binding constraints tightened.
 Phase 2: until the time budget, restart PIPS from (a) Latin-hypercube samples over generator voltage set-points and
 dispatch, (b) small/large perturbations of the incumbent (basin hopping with adaptive step), (c) dispatch corners
-(random subsets of generators pinned to Pmin/Pmax), (d) continuation paths (relax-then-tighten limits, load
-ramp, re-weighted cost) and (e) COST-SCALE PATH DIVERSIFICATION: the same problem with all cost curves multiplied
-by 10^u, u in [-3, 3] (identical optimum set, different interior-point central path), followed by a true-cost
-re-solve from the point reached.
+(random subsets of generators pinned to Pmin/Pmax), (d) continuation paths: relax-then-tighten limits, load ramp,
+re-weighted cost, CURRENT-LIMIT formulation then apparent-power limits, OBJECTIVE HOMOTOPY (loss-minimising or
+linear-only cost, then the true cost) and BASE-MVA RE-BASING (same physics, all pu equations rescaled => different
+central path), (e) cost-scale path diversification (all cost curves multiplied by 10^u) and (f) STEP-CONTROLLED
+PIPS restarts (OPF_ALG 565, a different interior-point trajectory from the same starts).  Every stage of a
+continuation is followed by a true-problem re-solve and only that is checked.
 Every new incumbent gets a high-precision PIPS polish followed by a DUAL-GUIDED MARGIN POLISH: the same basin is
 re-solved with all inequality limits relaxed by a margin m < 1e-6 (the checker's tolerance) and every nodal P/Q
 load shifted by m in the direction the nodal multipliers LAM_P / LAM_Q say lowers cost, on an ASCENDING,
-warm-started ladder of m up to 9.98e-7, topped by cheap warm-started Newton power-flow rungs at 9.99e-7 and
-9.995e-7; only points the verifier accepts are ever kept.  Best verified solution is saved atomically on every
-improvement.
+warm-started ladder of m up to 9.98e-7, topped by cheap warm-started Newton power-flow rungs up to 9.999e-7;
+only points the verifier accepts are ever kept.  Best verified solution is saved atomically on every improvement.
 
     python solver.py --target pglib_opf_case14_ieee --time 60 --seed 1 --out sol.json
 """
@@ -37,12 +38,27 @@ from records import case_path  # noqa: E402
 from pypower.api import ppoption, runopf, runpf  # noqa: E402
 from pypower.idx_bus import BUS_I, BUS_TYPE, PD, QD, VM, VA, VMAX, VMIN, LAM_P, LAM_Q  # noqa: E402
 from pypower.idx_gen import GEN_BUS, PG, QG, VG, PMAX, PMIN, QMAX, QMIN, GEN_STATUS  # noqa: E402
-from pypower.idx_brch import F_BUS, T_BUS, RATE_A, ANGMIN, ANGMAX, PF, QF, PT, QT  # noqa: E402
+from pypower.idx_brch import (  # noqa: E402
+    F_BUS,
+    T_BUS,
+    BR_R,
+    BR_X,
+    BR_B,
+    RATE_A,
+    ANGMIN,
+    ANGMAX,
+    PF,
+    QF,
+    PT,
+    QT,
+)
 
 np.seterr(all="ignore")
 
 MARGINS = (4e-7, 7e-7, 8.8e-7, 9.6e-7, 9.9e-7, 9.95e-7, 9.98e-7)  # ascending interior-point ladder, all < 1e-6
-PF_MARGINS = (9.99e-7, 9.995e-7)  # Newton power-flow rungs on top of the ladder
+PF_MARGINS = (9.99e-7, 9.995e-7, 9.998e-7, 9.999e-7)  # Newton power-flow rungs on top of the ladder
+ALG_PIPS = 560
+ALG_PIPS_SC = 565  # step-controlled PIPS
 
 
 # ----------------------------------------------------------------------------------------------------- case handling
@@ -70,7 +86,9 @@ def cp(ppc):
 
 
 def warm(ppc, r):
-    """Copy of ppc (its own limits/loads/costs) whose start point is taken from result (or case) r."""
+    """Copy of ppc (its own limits/loads/costs/base) whose start point is taken from result (or case) r.
+
+    PG/QG are copied in MW, VM/VA as is, so a result on a re-based problem warm-starts the original correctly."""
     p = cp(ppc)
     p["bus"][:, VM] = r["bus"][:, VM]
     p["bus"][:, VA] = r["bus"][:, VA]
@@ -214,15 +232,49 @@ def scaled_cost(ppc, fac):
     return p
 
 
+def homotopy_cost(ppc, uniform):
+    """Objective homotopy stage: either the loss-minimising objective (every polynomial cost replaced by 1 $/MW
+    linear) or the linear-only version of the true cost (higher-order terms dropped)."""
+    p = cp(ppc)
+    gc = p["gencost"]
+    for i in range(gc.shape[0]):
+        if int(gc[i, 0]) != 2:
+            continue
+        nc = int(gc[i, 3])
+        if nc < 2 or gc.shape[1] < 4 + nc:
+            continue
+        if uniform:
+            gc[i, 4 : 4 + nc] = 0.0
+            gc[i, 4 + nc - 2] = 1.0
+        else:
+            gc[i, 4 : 4 + nc - 2] = 0.0
+    return p
+
+
+def rebased(ppc, k):
+    """Same physical network on a baseMVA multiplied by k (branch R, X scale by k, line charging by 1/k; every
+    MW/MVAr/MVA/$ quantity is unchanged): identical optimum set, all pu equations rescaled by 1/k, so the
+    interior point follows a different central path."""
+    p = cp(ppc)
+    p["baseMVA"] = float(ppc["baseMVA"]) * k
+    br = p["branch"]
+    br[:, BR_R] *= k
+    br[:, BR_X] *= k
+    br[:, BR_B] /= k
+    return p
+
+
 # ----------------------------------------------------------------------------------------------------------- solving
-def pips(ppc, max_it, feastol=1e-7, gradtol=1e-6, comptol=1e-6, costtol=1e-6):
+def pips(ppc, max_it, feastol=1e-7, gradtol=1e-6, comptol=1e-6, costtol=1e-6, alg=ALG_PIPS, flow_lim=0):
     """PIPS OPF then a Newton power-flow polish (nodal balance to 1e-10, Pg and gen-bus Vm kept => cost unchanged).
 
+    alg 560 = PIPS, 565 = step-controlled PIPS; flow_lim 0 = apparent power, 1 = active power, 2 = current.
     The nodal multipliers LAM_P / LAM_Q of the OPF are kept in r["lam_p"], r["lam_q"] for the margin polish."""
     opt = ppoption(
         VERBOSE=0,
         OUT_ALL=0,
-        OPF_ALG=560,
+        OPF_ALG=alg,
+        OPF_FLOW_LIM=flow_lim,
         PDIPM_FEASTOL=feastol,
         PDIPM_GRADTOL=gradtol,
         PDIPM_COMPTOL=comptol,
@@ -404,6 +456,7 @@ def main():
     best = None
     best_r = None
     margin_done = [-1.0]  # objective at which the margin polish last completed
+    sc_state = {"fail": 0, "tried": 0}  # step-controlled PIPS health (disabled after repeated solver failures)
 
     def save(sol, obj):
         tmp = a.out + ".tmp"
@@ -427,9 +480,13 @@ def main():
             save(sol, obj)
         return obj
 
-    def attempt(p, max_it):
-        """PIPS from start p; on verifier rejection, tight-tolerance re-solve, then targeted tightening."""
-        r = pips(p, max_it)
+    def attempt(p, max_it, alg=ALG_PIPS):
+        """PIPS (plain or step-controlled) from start p; on verifier rejection, tight-tolerance re-solve, then
+        targeted tightening."""
+        r = pips(p, max_it, alg=alg)
+        if alg == ALG_PIPS_SC:
+            sc_state["tried"] += 1
+            sc_state["fail"] = sc_state["fail"] + 1 if r is None else 0
         if r is None:
             return None
         obj = check(r)
@@ -508,24 +565,42 @@ def main():
             margin_polish()
 
     def cont_attempt(kind, max_it):
-        """Continuation restart: solve a sequence of modified problems, warm-starting each from the previous one."""
+        """Continuation restart: solve a sequence of modified problems (each a (problem, flow-limit-type) pair),
+        warm-starting each from the previous one, then re-solve the TRUE problem from the point reached."""
         if kind == 0:  # relax limits, then tighten back in stages
-            stages = [relaxed(ppc, al) for al in (0.5, 0.2, 0.05)]
+            stages = [(relaxed(ppc, al), 0) for al in (0.5, 0.2, 0.05)]
             start = perturb(ppc, best_r, rng, 0.6) if best_r is not None else flat_start(ppc)
         elif kind == 1:  # load ramp
             s = float(rng.uniform(0.7, 0.9))
-            stages = [scaled_load(ppc, s), scaled_load(ppc, 0.5 * (1.0 + s))]
+            stages = [(scaled_load(ppc, s), 0), (scaled_load(ppc, 0.5 * (1.0 + s)), 0)]
             start = flat_start(ppc)
             if best_r is not None and rng.random() < 0.5:
                 start = perturb(ppc, best_r, rng, 1.0)
-        else:  # re-weighted cost, then true cost
-            stages = [perturbed_cost(ppc, rng, 0.4)]
+        elif kind == 2:  # re-weighted cost, then true cost
+            stages = [(perturbed_cost(ppc, rng, 0.4), 0)]
             start = perturb(ppc, best_r, rng, 0.3) if best_r is not None else flat_start(ppc)
+        elif kind == 3:  # current-limit formulation of the thermal limits, then apparent-power limits
+            stages = [(cp(ppc), 2)]
+            start = perturb(ppc, best_r, rng, 0.5) if best_r is not None else flat_start(ppc)
+            if rng.random() < 0.5:
+                start = flat_start(ppc)
+        elif kind == 4:  # objective homotopy: loss-minimising or linear-only cost, then the true cost
+            stages = [(homotopy_cost(ppc, rng.random() < 0.5), 0)]
+            start = flat_start(ppc)
+            if best_r is not None and rng.random() < 0.5:
+                start = perturb(ppc, best_r, rng, 0.5)
+        else:  # baseMVA re-basing (constraint rescaling), then the original base
+            k = float(10.0 ** rng.uniform(-1.0, 1.0))
+            stages = [(rebased(ppc, k), 0)]
+            start = perturb(ppc, best_r, rng, 0.4) if best_r is not None else flat_start(ppc)
+            if rng.random() < 0.4:
+                start = lhs_start(ppc, lhs[k_lhs_box[0] % len(lhs)])
+                k_lhs_box[0] += 1
         r = None
-        for q in stages:
+        for q, fl in stages:
             if time.time() > deadline:
                 return None
-            r = pips(warm(q, r) if r is not None else warm(q, start), max_it)
+            r = pips(warm(q, r) if r is not None else warm(q, start), max_it, flow_lim=fl)
             if r is None:
                 return None
         if time.time() > deadline:
@@ -542,7 +617,17 @@ def main():
         check(r)
         return attempt(warm(ppc, r), max_it)
 
-    # Phase 1: file start, flat start, DC-OPF start, then precision + margin polish
+    # Latin-hypercube rows (shared by the LHS, scale, sc and re-basing modes)
+    non = int((ppc["gen"][:, GEN_STATUS] > 0).sum())
+    try:
+        from scipy.stats import qmc
+
+        lhs = qmc.LatinHypercube(d=2 * non, seed=int(a.seed)).random(128)
+    except Exception:
+        lhs = rng.random((128, 2 * non))
+    k_lhs_box = [0]
+
+    # Phase 1: file start, flat start, DC-OPF start, step-controlled flat start, then precision + margin polish
     est = {"single": 0.0, "cont": 0.0, "scale": 0.0}
     ts = time.time()
     attempt(ppc, 500)
@@ -562,34 +647,56 @@ def main():
         est["single"] = max(est["single"], time.time() - ts)
         if best is not None and (before is None or best < before - 1e-9):
             polish()
+    if time.time() + 1.6 * est["single"] + 1.0 < deadline:
+        ts = time.time()
+        before = best
+        attempt(flat_start(ppc) if best_r is None else perturb(ppc, best_r, rng, 0.3), 300, alg=ALG_PIPS_SC)
+        est["single"] = max(est["single"], time.time() - ts)
+        if best is not None and (before is None or best < before - 1e-9):
+            polish()
 
-    # Phase 2: continuation restarts + basin hopping + dispatch corners + LHS restarts + cost-scale paths
-    non = int((ppc["gen"][:, GEN_STATUS] > 0).sum())
-    try:
-        from scipy.stats import qmc
-
-        lhs = qmc.LatinHypercube(d=2 * non, seed=int(a.seed)).random(128)
-    except Exception:
-        lhs = rng.random((128, 2 * non))
-    k_lhs = 0
+    # Phase 2: continuation restarts + basin hopping + dispatch corners + LHS restarts + cost-scale paths +
+    # step-controlled PIPS restarts
     k_cont = 0
     k_scale = 0
+    k_sc = 0
     tries = 0
     stagnant = 0
     hop_scale = 0.25
-    schedule = ["cont", "small", "lhs", "scale", "corner", "cont", "small", "scale", "large", "corner"]
+    schedule = [
+        "cont",
+        "small",
+        "lhs",
+        "scale",
+        "corner",
+        "cont",
+        "sc",
+        "small",
+        "scale",
+        "large",
+        "cont",
+        "corner",
+        "sc",
+        "lhs",
+        "cont",
+        "small",
+    ]
     while True:
         mode = schedule[tries % len(schedule)]
         if best_r is None:
             mode = "large"
+        if mode == "sc" and sc_state["fail"] >= 2:
+            mode = "small"
         if mode == "cont":
             need = est["cont"] if est["cont"] > 0 else 4.0 * est["single"]
         elif mode == "scale":
             need = est["scale"] if est["scale"] > 0 else 2.5 * est["single"]
+        elif mode == "sc":
+            need = 1.5 * est["single"]
         else:
             need = est["single"]
         if time.time() + 1.3 * need + 1.0 > deadline:
-            if mode in ("cont", "scale") and time.time() + 1.3 * est["single"] + 1.0 < deadline:
+            if mode in ("cont", "scale", "sc") and time.time() + 1.3 * est["single"] + 1.0 < deadline:
                 mode = "small"
             else:
                 break
@@ -597,26 +704,37 @@ def main():
         before = best
         ts = time.time()
         if mode == "cont":
-            cont_attempt(k_cont % 3, 250)
+            cont_attempt(k_cont % 6, 250)
             k_cont += 1
             est["cont"] = max(est["cont"], time.time() - ts)
         elif mode == "scale":
             if k_scale % 2 == 0:
                 start = perturb(ppc, best_r, rng, max(hop_scale, 0.3))
             else:
-                start = lhs_start(ppc, lhs[k_lhs % len(lhs)])
-                k_lhs += 1
+                start = lhs_start(ppc, lhs[k_lhs_box[0] % len(lhs)])
+                k_lhs_box[0] += 1
             k_scale += 1
             scale_attempt(start, 250)
             est["scale"] = max(est["scale"], time.time() - ts)
+        elif mode == "sc":
+            if k_sc % 3 == 0:
+                p = perturb(ppc, best_r, rng, max(hop_scale, 0.3))
+            elif k_sc % 3 == 1:
+                p = lhs_start(ppc, lhs[k_lhs_box[0] % len(lhs)])
+                k_lhs_box[0] += 1
+            else:
+                p = corner_start(ppc, best_r, rng)
+            k_sc += 1
+            attempt(p, 250, alg=ALG_PIPS_SC)
+            est["single"] = max(est["single"], time.time() - ts)
         else:
             if best_r is None:
                 p = perturb(ppc, None, rng, 1.0 if tries % 4 else 2.5)
             elif mode == "small":
                 p = perturb(ppc, best_r, rng, hop_scale)
             elif mode == "lhs":
-                p = lhs_start(ppc, lhs[k_lhs % len(lhs)])
-                k_lhs += 1
+                p = lhs_start(ppc, lhs[k_lhs_box[0] % len(lhs)])
+                k_lhs_box[0] += 1
             elif mode == "corner":
                 p = corner_start(ppc, best_r, rng)
             else:

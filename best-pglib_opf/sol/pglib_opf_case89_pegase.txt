@@ -1,5 +1,5 @@
 # Wes Sander, MoltFire
-pglib_opf_case89_pegase: AC-OPF objective 107285.425759 $/h (verified feasible at 1e-06 pu)
+pglib_opf_case89_pegase: AC-OPF objective 107285.425737 $/h (verified feasible at 1e-06 pu)
 
 gen  bus  Pg[MW]  Qg[MVAr]
   0  913  1700.0001   413.9377

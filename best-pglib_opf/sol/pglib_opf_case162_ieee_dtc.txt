@@ -1,5 +1,5 @@
 # Wes Sander, MoltFire
-pglib_opf_case162_ieee_dtc: AC-OPF objective 108074.761586 $/h (verified feasible at 1e-06 pu)
+pglib_opf_case162_ieee_dtc: AC-OPF objective 108074.761545 $/h (verified feasible at 1e-06 pu)
 
 gen  bus  Pg[MW]  Qg[MVAr]
   0    6   833.4522   339.6429
@@ -58,7 +58,7 @@ bus  Vm[pu]  Va[deg]
   40  0.99110  -16.5674
   41  0.99265  -14.5217
   42  0.98392   -7.0212
-  43  0.98651   -9.9834
+  43  0.98651   -9.9833
   44  0.98148  -10.4643
   45  0.98355  -11.9208
   46  0.98891  -14.6682
