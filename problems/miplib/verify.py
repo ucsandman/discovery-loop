@@ -15,8 +15,11 @@ import highspy
 import numpy as np
 import scipy.sparse as sp
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from records import instance_path  # noqa: E402
+if __package__:
+    from .records import instance_path
+else:  # direct ``python problems/miplib/verify.py`` compatibility
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    from problems.miplib.records import instance_path
 
 TOL = 1e-6
 
@@ -29,25 +32,64 @@ def load(name):
     return h
 
 
-def check(solution, name):
+def check(solution, name, tol=TOL):
+    if not np.isfinite(tol) or tol < 0:
+        raise ValueError("tolerance must be a finite non-negative number")
+    if not isinstance(solution, dict):
+        raise ValueError("solution must map variable names to numeric values")
     h = load(name)
     lp = h.getLp()
     n, m = lp.num_col_, lp.num_row_
     names = list(lp.col_names_)
     idx = {nm: i for i, nm in enumerate(names)}
     unknown = [k for k in solution if k not in idx]
+    converted, nonfinite = {}, []
+    for key, value in solution.items():
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            nonfinite.append(key)
+            continue
+        if isinstance(value, bool) or not np.isfinite(number):
+            nonfinite.append(key)
+            continue
+        converted[key] = number
     x = np.zeros(n)
-    for k, v in solution.items():
+    for k, v in converted.items():
         if k in idx:
-            x[idx[k]] = float(v)
+            x[idx[k]] = v
+
+    sense = "min" if h.getObjectiveSense()[1] == highspy.ObjSense.kMinimize else "max"
+    if nonfinite:
+        return {
+            "feasible": False,
+            "obj": None,
+            "sense": sense,
+            "bound_viol": float("inf"),
+            "int_viol": float("inf"),
+            "row_viol": float("inf"),
+            "bound_excess": float("inf"),
+            "int_excess": float("inf"),
+            "row_excess": float("inf"),
+            "unknown_vars": unknown[:5],
+            "nonfinite_vars": nonfinite[:5],
+            "cols": n,
+            "rows": m,
+            "tolerance": tol,
+        }
 
     lo, up = np.array(lp.col_lower_), np.array(lp.col_upper_)
-    tol = TOL * np.maximum(1.0, np.abs(x))
-    bound_viol = max(0.0, float((lo - x - tol).max()), float((x - up - tol).max()))
+    finite_lo = np.where(np.isfinite(lo), np.abs(lo), 0.0)
+    finite_up = np.where(np.isfinite(up), np.abs(up), 0.0)
+    bound_scale = np.maximum.reduce((np.ones(n), np.abs(x), finite_lo, finite_up))
+    bound_raw = np.maximum.reduce((np.zeros(n), lo - x, x - up))
+    bound_viol = float(bound_raw.max()) if n else 0.0
+    bound_excess = float(np.maximum(0.0, bound_raw - tol * bound_scale).max()) if n else 0.0
 
     kinds = list(lp.integrality_)
     isint = np.array([k != highspy.HighsVarType.kContinuous for k in kinds], bool) if kinds else np.zeros(n, bool)
     int_viol = float(np.abs(x[isint] - np.round(x[isint])).max()) if isint.any() else 0.0
+    int_excess = max(0.0, int_viol - tol)
 
     A = lp.a_matrix_
     if A.format_ == highspy.MatrixFormat.kColwise:
@@ -56,12 +98,15 @@ def check(solution, name):
         M = sp.csr_matrix((A.value_, A.index_, A.start_), shape=(m, n))
     ax = M @ x
     rl, ru = np.array(lp.row_lower_), np.array(lp.row_upper_)
-    tolr = TOL * np.maximum(1.0, np.abs(ax))
-    row_viol = max(0.0, float((rl - ax - tolr).max()), float((ax - ru - tolr).max())) if m else 0.0
+    finite_rl = np.where(np.isfinite(rl), np.abs(rl), 0.0)
+    finite_ru = np.where(np.isfinite(ru), np.abs(ru), 0.0)
+    row_scale = np.maximum.reduce((np.ones(m), np.abs(ax), finite_rl, finite_ru))
+    row_raw = np.maximum.reduce((np.zeros(m), rl - ax, ax - ru))
+    row_viol = float(row_raw.max()) if m else 0.0
+    row_excess = float(np.maximum(0.0, row_raw - tol * row_scale).max()) if m else 0.0
 
     obj = float(np.dot(np.array(lp.col_cost_), x) + lp.offset_)
-    sense = "min" if h.getObjectiveSense()[1] == highspy.ObjSense.kMinimize else "max"
-    feasible = not unknown and bound_viol <= 0 and int_viol <= TOL and row_viol <= 0
+    feasible = not unknown and bound_excess <= 0 and int_excess <= 0 and row_excess <= 0 and np.isfinite(obj)
     return {
         "feasible": bool(feasible),
         "obj": obj,
@@ -69,9 +114,14 @@ def check(solution, name):
         "bound_viol": bound_viol,
         "int_viol": int_viol,
         "row_viol": row_viol,
+        "bound_excess": bound_excess,
+        "int_excess": int_excess,
+        "row_excess": row_excess,
         "unknown_vars": unknown[:5],
+        "nonfinite_vars": [],
         "cols": n,
         "rows": m,
+        "tolerance": tol,
     }
 
 

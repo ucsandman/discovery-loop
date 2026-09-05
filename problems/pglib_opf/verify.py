@@ -2,7 +2,8 @@
 
 A solution is {"vm": [pu per bus], "va": [radians per bus], "pg": [pu per gen row], "qg": [pu per gen row]} in the
 case file's row order. Every constraint of the PGLib AC-OPF model is re-evaluated here, with MATPOWER conventions
-(tap ratio, phase shift, line charging, bus shunts, out-of-service gens/branches), at TOL = 1e-6:
+(tap ratio, phase shift, line charging, bus shunts, out-of-service gens/branches). ``check`` defaults to the
+legacy TOL = 1e-6; discovery evaluation and release validation explicitly pass 1e-8:
 
   voltage bounds, generator P/Q bounds (zero output for status 0), nodal P and Q balance at every bus,
   apparent-power thermal limit at both branch ends when rate_a > 0, angle-difference limits, reference angle 0.
@@ -18,9 +19,13 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import matpower as mp  # noqa: E402
-from records import case_path  # noqa: E402
+if __package__:
+    from . import matpower as mp
+    from .records import case_path
+else:  # direct ``python problems/pglib_opf/verify.py`` compatibility
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    from problems.pglib_opf import matpower as mp
+    from problems.pglib_opf.records import case_path
 
 TOL = 1e-6
 _CACHE = {}
@@ -75,7 +80,9 @@ def objective(case, pg_pu):
     return total
 
 
-def check(solution, name):
+def check(solution, name, tol=TOL):
+    if not np.isfinite(tol) or tol < 0:
+        raise ValueError("tolerance must be a finite non-negative number")
     case = load_case(name)
     bus, gen, branch, base = case["bus"], case["gen"], case["branch"], case["baseMVA"]
     nb, ng = bus.shape[0], gen.shape[0]
@@ -89,7 +96,7 @@ def check(solution, name):
     viol = []  # (amount, description)
 
     def bound(x, lo, hi, label):
-        for i in np.flatnonzero((x < lo - TOL) | (x > hi + TOL)):
+        for i in np.flatnonzero((x < lo) | (x > hi)):
             viol.append((max(lo[i] - x[i], x[i] - hi[i]), f"{label}[{i}]={x[i]:.8g} not in [{lo[i]:.8g},{hi[i]:.8g}]"))
 
     bound(vm, bus[:, mp.VMIN], bus[:, mp.VMAX], "vm")
@@ -97,11 +104,11 @@ def check(solution, name):
     bound(pg[on], gen[on, mp.PMIN] / base, gen[on, mp.PMAX] / base, "pg(on)")
     bound(qg[on], gen[on, mp.QMIN] / base, gen[on, mp.QMAX] / base, "qg(on)")
     for i in np.flatnonzero(~on):
-        if abs(pg[i]) > TOL or abs(qg[i]) > TOL:
+        if abs(pg[i]) > 0 or abs(qg[i]) > 0:
             viol.append((max(abs(pg[i]), abs(qg[i])), f"gen[{i}] is out of service but dispatched"))
     ref = np.flatnonzero(bus[:, mp.BUS_TYPE] == 3)
     for i in ref:
-        if abs(va[i]) > TOL:
+        if abs(va[i]) > 0:
             viol.append((abs(va[i]), f"reference bus {int(bus[i, mp.BUS_I])} angle {va[i]:.3g} != 0"))
 
     Y, f, t, yff, yft, ytf, ytt, rows = admittances(case)
@@ -113,9 +120,9 @@ def check(solution, name):
             Sg[pos[int(gen[i, mp.GEN_BUS])]] += pg[i] + 1j * qg[i]
     Sd = (bus[:, mp.PD] + 1j * bus[:, mp.QD]) / base
     mis = Sg - Sd - V * np.conj(Y @ V)
-    for i in np.flatnonzero(np.abs(mis.real) > TOL):
+    for i in np.flatnonzero(np.abs(mis.real) > 0):
         viol.append((abs(mis.real[i]), f"P balance at bus {int(bus[i, mp.BUS_I])} off by {mis.real[i]:.3g} pu"))
-    for i in np.flatnonzero(np.abs(mis.imag) > TOL):
+    for i in np.flatnonzero(np.abs(mis.imag) > 0):
         viol.append((abs(mis.imag[i]), f"Q balance at bus {int(bus[i, mp.BUS_I])} off by {mis.imag[i]:.3g} pu"))
 
     Vf, Vt = V[f], V[t]
@@ -124,26 +131,79 @@ def check(solution, name):
     br = branch[rows]
     rate = br[:, mp.RATE_A] / base
     lim = rate > 0
-    for k in np.flatnonzero(lim & (np.abs(Sf) > rate + TOL)):
+    for k in np.flatnonzero(lim & (np.abs(Sf) > rate)):
         viol.append((abs(Sf[k]) - rate[k], f"branch {rows[k]} from-end |S|={abs(Sf[k]):.6g} > {rate[k]:.6g}"))
-    for k in np.flatnonzero(lim & (np.abs(St) > rate + TOL)):
+    for k in np.flatnonzero(lim & (np.abs(St) > rate)):
         viol.append((abs(St[k]) - rate[k], f"branch {rows[k]} to-end |S|={abs(St[k]):.6g} > {rate[k]:.6g}"))
     diff = np.rad2deg(np.angle(Vf * np.conj(Vt)))
     amin, amax = br[:, mp.ANGMIN], br[:, mp.ANGMAX]
     lo = (amin != 0) & (amin > -360)
     hi = (amax != 0) & (amax < 360)
-    for k in np.flatnonzero(lo & (diff < amin - TOL)):
+    for k in np.flatnonzero(lo & (diff < amin)):
         viol.append((amin[k] - diff[k], f"branch {rows[k]} angle {diff[k]:.6g} deg < {amin[k]:.6g}"))
-    for k in np.flatnonzero(hi & (diff > amax + TOL)):
+    for k in np.flatnonzero(hi & (diff > amax)):
         viol.append((diff[k] - amax[k], f"branch {rows[k]} angle {diff[k]:.6g} deg > {amax[k]:.6g}"))
 
     viol.sort(key=lambda v: -v[0])
+    failures = [v for v in viol if v[0] > tol]
+    raw_max = float(viol[0][0]) if viol else 0.0
     return {
-        "feasible": not viol,
+        "feasible": not failures,
         "obj": objective(case, pg),
-        "max_violation": viol[0][0] if viol else 0.0,
-        "worst": viol[0][1] if viol else "",
-        "n_violations": len(viol),
+        "max_violation": raw_max,
+        "max_excess": max(0.0, raw_max - tol),
+        "worst": failures[0][1] if failures else "",
+        "n_violations": len(failures),
+        "tolerance": tol,
+    }
+
+
+def reference_polish(solution, name, tol=1e-8):
+    """Run PYPOWER on the unmodified case, seeded from ``solution``, then independently recheck it."""
+    from pypower.api import ppoption, runopf, runpf
+
+    case = load_case(name)
+    base = case["baseMVA"]
+    gen = np.zeros((case["gen"].shape[0], 21))
+    gen[:, : case["gen"].shape[1]] = case["gen"][:, :21]
+    branch = np.zeros((case["branch"].shape[0], 17))
+    branch[:, : case["branch"].shape[1]] = case["branch"][:, :17]
+    ppc = {
+        "version": "2",
+        "baseMVA": base,
+        "bus": case["bus"].copy(),
+        "gen": gen,
+        "branch": branch,
+        "gencost": case["gencost"].copy(),
+    }
+    ppc["bus"][:, mp.VM] = np.asarray(solution["vm"], dtype=float)
+    ppc["bus"][:, mp.VA] = np.rad2deg(np.asarray(solution["va"], dtype=float))
+    ppc["gen"][:, mp.PG] = np.asarray(solution["pg"], dtype=float) * base
+    ppc["gen"][:, mp.QG] = np.asarray(solution["qg"], dtype=float) * base
+    options = ppoption(VERBOSE=0, OUT_ALL=0, OPF_ALG=560, PDIPM_FEASTOL=tol, PDIPM_MAX_IT=500)
+    result = runopf(ppc, options)
+    if not result.get("success"):
+        return {"success": False, "error": "PYPOWER original-problem OPF did not converge"}
+    pos = {int(bus): i for i, bus in enumerate(result["bus"][:, mp.BUS_I])}
+    result["gen"][:, mp.VG] = [result["bus"][pos[int(bus)], mp.VM] for bus in result["gen"][:, mp.GEN_BUS]]
+    result, success = runpf(
+        result,
+        ppoption(VERBOSE=0, OUT_ALL=0, PF_TOL=min(tol, 1e-10), PF_MAX_IT=50, ENFORCE_Q_LIMS=0),
+    )
+    if not success:
+        return {"success": False, "error": "PYPOWER original-problem power-flow polish did not converge"}
+    polished = {
+        "vm": result["bus"][:, mp.VM].tolist(),
+        "va": np.deg2rad(result["bus"][:, mp.VA]).tolist(),
+        "pg": (result["gen"][:, mp.PG] / base).tolist(),
+        "qg": (result["gen"][:, mp.QG] / base).tolist(),
+    }
+    checked = check(polished, name, tol=tol)
+    return {
+        "success": checked["feasible"],
+        "solution": polished,
+        "check": checked,
+        "error": None if checked["feasible"] else "reference polish failed strict verification",
     }
 
 

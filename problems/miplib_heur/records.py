@@ -6,10 +6,10 @@ options, 2 threads, 1e-7 tolerances) reaches on THIS machine in the same 60 s / 
 instances are shared with problems/miplib (download on first use).
 """
 
-import importlib.util
 import json
 import os
 import re
+import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 MIPLIB = os.path.join(os.path.dirname(HERE), "miplib")
@@ -17,14 +17,10 @@ BASELINE = os.path.join(HERE, "baseline.json")
 TABLE = os.path.join(HERE, "benchmark_table.json")
 
 
-def _sibling(name):
-    spec = importlib.util.spec_from_file_location("miplib_" + name, os.path.join(MIPLIB, name + ".py"))
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+if not __package__:
+    sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
+from problems.miplib import records as _R
 
-
-_R = _sibling("records")
 instance_path = _R.instance_path  # solvers: from records import instance_path
 
 

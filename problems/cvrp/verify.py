@@ -19,8 +19,11 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from records import instance_path  # noqa: E402
+if __package__:
+    from .records import instance_path
+else:  # direct ``python problems/cvrp/verify.py`` compatibility
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    from problems.cvrp.records import instance_path
 
 
 def _section(lines, header):

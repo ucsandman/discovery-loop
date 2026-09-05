@@ -1,0 +1,5 @@
+# Runtime versions used for the verified host and worker environment.
+numpy==2.4.6
+scipy==1.17.0
+highspy==1.15.1
+PYPOWER==5.1.21

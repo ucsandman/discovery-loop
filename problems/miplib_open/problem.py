@@ -16,12 +16,17 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
-import records  # noqa: E402
-import verify  # noqa: E402
+if __package__:
+    from . import records, verify
+else:
+    sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
+    from problems.miplib_open import records, verify
 
 TITLE = "MIPLIB 2017 OPEN instances vs published best-known"
 TARGETS = list(records.TARGETS)
+DEVELOPMENT = TARGETS
+VALIDATION = []
+RELEASE_HOLDOUT = []
 DEFAULTS = {"time": 600, "workers": 3}  # justified from a measured seed run in BASELINE.md
 MAXIMIZE = False  # value is min-sense (lower is better); the loop maximises total = minus the summed value
 FAIL_SCORE = -1.0  # a crash / timeout / infeasible output, in score space (worse than any clipped feasible gap)
@@ -31,6 +36,9 @@ GAP_CLIP = 1.0  # one hopeless instance (100% above best-known) cannot dominate 
 # means the objective beats best-known by more than that verification noise (exploiting the 1e-6 slack could
 # move the objective by at most ~1e-6 relative). A real submission is re-checked by ZIB's exact checker too.
 WIN_MARGIN = 1e-6
+RELEASE_FEASIBILITY_TOL = 1e-8
+RELEASE_OBJECTIVE_REL_MARGIN = 1e-10
+RELEASE_VALIDATION_SUPPORTED = True
 
 
 def _desc(name):
@@ -89,6 +97,49 @@ def beats(v, rec):
     return v < ref - WIN_MARGIN
 
 
+def validate_release(path, t, *, record=None):
+    try:
+        d = json.load(open(path))
+        if d.get("target", t) != t:
+            raise ValueError(f"candidate target {d.get('target')!r} does not match {t!r}")
+        result = verify.check(d["solution"], t, tol=RELEASE_FEASIBILITY_TOL)
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+        return {"ok": False, "supported": True, "error": f"invalid candidate: {exc}", "metrics": {}}
+    official = records.reference(t)
+    metrics = {
+        "objective": result["obj"],
+        "sense": result["sense"],
+        "best_known": result["best_known"],
+        "reference_uncertainty": official["uncertainty"],
+        "bound_violation": result["bound_viol"],
+        "integrality_violation": result["int_viol"],
+        "row_violation": result["row_viol"],
+        "feasibility_tolerance": RELEASE_FEASIBILITY_TOL,
+        "claim_scope": "official_miplib_open_record",
+    }
+    if not result["feasible"]:
+        return {
+            "ok": False,
+            "supported": True,
+            "error": "candidate fails strict original-MPS verification",
+            "metrics": metrics,
+        }
+    uncertainty = official["uncertainty"] or 0.0
+    numeric_margin = RELEASE_OBJECTIVE_REL_MARGIN * max(1.0, abs(result["best_known"]))
+    improvement = (
+        result["best_known"] - result["obj"] if result["sense"] == "min" else result["obj"] - result["best_known"]
+    )
+    metrics["improvement"] = improvement
+    if improvement <= uncertainty + numeric_margin:
+        return {
+            "ok": False,
+            "supported": True,
+            "error": "objective does not clear official best-known uncertainty",
+            "metrics": metrics,
+        }
+    return {"ok": True, "supported": True, "error": None, "metrics": metrics}
+
+
 def raw_path(t, best):
     return os.path.join(best, "sol", f"{t}.json")
 
@@ -137,6 +188,15 @@ INTERFACE CONTRACT (keep exactly):
 INSTANCE NOTES:
 """ + "\n".join(f"  {k}: {v}" for k, v in INFO.items())
 
+
+def prompt_for_targets(targets):
+    unknown = sorted(set(targets) - set(TARGETS))
+    if unknown:
+        raise ValueError(f"unknown target(s): {unknown}")
+    head = PROMPT.split("INSTANCE NOTES:\n", 1)[0] + "INSTANCE NOTES:\n"
+    return head + "\n".join(f"  {name}: {INFO[name]}" for name in targets)
+
+
 TASK = """TASK: write a complete replacement solver.py that reaches a smaller gap to best-known on as many targets as possible within
 the budget (champion total is minus the sum of gaps over the targets; beating a target counts positive). Make one substantive,
 general algorithmic improvement (or a coherent combination): large-neighbourhood search around the incumbent (RINS / relaxation-
@@ -165,12 +225,15 @@ def _objective(t, v):
     """Exact objective for the email: from the saved candidate if present, else derived from the gap value."""
     raw = os.path.join(HERE, "..", "..", "best-miplib_open", "sol", f"{t}.json")
     try:
-        return float(json.load(open(raw))["obj"])
+        saved = json.load(open(raw))
+        if abs(float(saved["value"]) - v) <= 1e-12:
+            return float(saved["obj"])
     except (OSError, KeyError, ValueError):
-        r = records.table().get(t, {})
-        bk = float(r.get("best_known", 0.0))
-        span = max(1.0, abs(bk))
-        return bk - v * span if r.get("sense") == "max" else bk + v * span
+        pass
+    r = records.table().get(t, {})
+    bk = float(r.get("best_known", 0.0))
+    span = max(1.0, abs(bk))
+    return bk - v * span if r.get("sense") == "max" else bk + v * span
 
 
 def email_subject(cands):

@@ -1,7 +1,52 @@
 {
- "slots": [
-  {"problem": "miplib_open", "minutes": 160, "budget": 15},
-  {"problem": "pglib_opf", "minutes": 160, "budget": 15},
-  {"problem": "cvrp", "minutes": 160, "budget": 15}
- ]
+  "schema_version": 2,
+  "night": {
+    "deadline_minutes": 480,
+    "budget_usd": 90.0,
+    "budget_accounting": "reported_total_cost_usd API-equivalent; monthly subscription CLIs only",
+    "provider_caps_usd": {"fable": 40.0, "astra": 40.0, "paired": 40.0},
+    "heartbeat_seconds": 15,
+    "evidence_root": "runs/research"
+  },
+  "trial": {
+    "anchor_date": "2026-09-05",
+    "cycle": [
+      {"cvrp": "fable", "miplib_heur": "astra", "order": ["cvrp", "miplib_heur"]},
+      {"cvrp": "astra", "miplib_heur": "fable", "order": ["miplib_heur", "cvrp"]},
+      {"cvrp": "paired", "miplib_heur": "fable", "order": ["cvrp", "miplib_heur"]},
+      {"cvrp": "fable", "miplib_heur": "paired", "order": ["miplib_heur", "cvrp"]},
+      {"cvrp": "astra", "miplib_heur": "paired", "order": ["cvrp", "miplib_heur"]},
+      {"cvrp": "paired", "miplib_heur": "astra", "order": ["miplib_heur", "cvrp"]},
+      {"cvrp": "fable", "miplib_heur": "astra", "order": ["miplib_heur", "cvrp"]},
+      {"cvrp": "astra", "miplib_heur": "fable", "order": ["cvrp", "miplib_heur"]},
+      {"cvrp": "paired", "miplib_heur": "fable", "order": ["miplib_heur", "cvrp"]},
+      {"cvrp": "fable", "miplib_heur": "paired", "order": ["cvrp", "miplib_heur"]},
+      {"cvrp": "astra", "miplib_heur": "paired", "order": ["miplib_heur", "cvrp"]},
+      {"cvrp": "paired", "miplib_heur": "astra", "order": ["cvrp", "miplib_heur"]},
+      {"cvrp": "fable", "miplib_heur": "astra", "order": ["cvrp", "miplib_heur"]},
+      {"cvrp": "astra", "miplib_heur": "fable", "order": ["miplib_heur", "cvrp"]}
+    ]
+  },
+  "slots": [
+    {
+      "id": "cvrp-research", "problem": "cvrp", "kind": "research",
+      "minutes": 210, "research_minutes": 180, "retro_minutes": 30,
+      "slot_budget_usd": 40.0, "per_call_budget_usd": 2.0, "retro_budget_usd": 5.0,
+      "iters": 200, "seed_count": 3, "min_effect": 0.0001,
+      "time_per_target": 120, "workers": 3
+    },
+    {
+      "id": "miplib-heur-research", "problem": "miplib_heur", "kind": "research",
+      "minutes": 210, "research_minutes": 180, "retro_minutes": 30,
+      "slot_budget_usd": 40.0, "per_call_budget_usd": 2.0, "retro_budget_usd": 5.0,
+      "iters": 200, "seed_count": 3, "min_effect": 0.0001,
+      "time_per_target": 60, "workers": 3
+    },
+    {
+      "id": "pglib-validation", "problem": "pglib_opf", "kind": "validation",
+      "minutes": 30, "slot_budget_usd": 0.0, "per_call_budget_usd": 0.0, "retro_budget_usd": 0.0,
+      "iters": 1, "seed_count": 1, "min_effect": 0.0001,
+      "time_per_target": 60, "workers": 2
+    }
+  ]
 }

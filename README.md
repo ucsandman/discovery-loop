@@ -1,107 +1,113 @@
 # discovery-loop
 
-An LLM evolves a solver program; a zero-tolerance checker scores it; winners survive. AlphaEvolve shape, one file.
+A local research lab for improving optimization solvers with Fable and Astra. Models propose programs; isolated workers execute them; independent mathematical checks and matched-seed experiments decide what survives. Benchmark progress is kept separate from claims of real-world benefit.
 
-Problems are plug-ins under `problems/<name>/problem.py` (targets, live records, independent verifier, submission format, prompt):
+## Morning review
 
-- **circle_packing**: Packomania csqv, pack N variable-radius circles in the unit square maximising the sum of radii.
-  Records fetched live from packomania.com; zero-tolerance stdlib checker; `.pck` submissions emailed to the maintainer.
-- **miplib**: MIPLIB 2017 *open* instances (real-world mixed-integer programs with no proven optimum). Best-known values from the
-  official `.solu` file; independent checker re-evaluates bounds, integrality and every row at 1e-6; `.sol` files emailed to
-  miplibsolutions@zib.de. Seed solver = HiGHS + adaptive LNS (`pip install highspy`).
+Open **dashboard.cmd** on Windows, or visit **http://localhost:8766** when the dashboard is running.
 
-```powershell
-python loop.py --problem miplib --eval-only               # score the champion solver, no model calls
-python loop.py --problem miplib --iters 20 --budget 30    # evolve (claude -p, Fable 5.1) until 20 iterations or $30
-start runs-miplib\status.html                             # human view: standings, iterations, ideas tried
-start runs\status.html                                    # same for circle_packing (legacy flat layout)
-```
+The dashboard shows completed work, incomplete stages, legacy observations, paired evidence, and the 14-night model comparison. You can request a pause, continue research, tune the next night's allowance, inspect evidence, and queue approval for an exact release. Continue clears a pause request; it does not start a new run. Approval is local and does not send messages or push results.
 
-Outputs per problem: `best*/solver.py` (champion), `best*/<sub>/` (candidates in the benchmark's submission format),
-`runs*/log.jsonl`, `runs*/status.html`. Verify any candidate with the problem's own `verify.py`.
+Historical scores remain visible as **unvalidated**. In particular, the earlier power-grid improvement depended on numerical tolerance and is not treated as a scientific discovery.
 
-## Publishing (nothing sits on this machine)
+“Mark for morning review” saves a human review bookmark and includes the problem in the morning report. It does not launch an extra model call.
 
-`publish.py` runs in two layers:
+## Developer setup
 
-1. `loop.py` fires `publish.py --push-only` after any iteration that improves a record-beating target and at the
-   end of a run: commit and push `best*/` to GitHub (public, timestamped ledger of every candidate). Never emails.
-2. `night.py` runs the full `publish.py` once after each slot (crashed slots included): every winner of the slot
-   goes to the maintainer in ONE email with ONE approval tap, through the governed `invoke-capability send-email`
-   seam. DashClaw opens a pending approval, Wes approves on Telegram (24h window, fail closed),
-   `moltfire@practicalsystems.io` sends with Wes cc'd. Every candidate is re-verified against the live table first;
-   `best*/submitted.json` records what went out; one email per 12h per problem.
+Requires Python 3.12, Docker with Linux containers, and the locally installed Claude and Codex CLIs authenticated through their subscriptions.
 
 ```powershell
-python publish.py --dry-run   # show what would go out
-python publish.py             # push + request approval for anything new
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+docker build -f worker.Dockerfile -t discovery-loop-worker:local .
+.venv\Scripts\python.exe dashboard.py --open
 ```
 
-## Retro (so tomorrow does not redo tonight)
+Runtime and worker dependencies are pinned. No API key is required. Provider preflight rejects API-key authentication and does not silently fall back to API billing. Research calls use `claude -p` with Fable and `codex exec` with Astra, with tools and external integrations disabled.
 
-`retro.py` runs once after every night slot (before the publish) and appends a dated section to `docs/retro/<problem>.md`:
-what worked (with the mechanism), what didn't (with the likely reason, duplicates grouped), three to six checkable
-lessons, and five **Next** directions that must differ in kind (algorithm family, time allocation, representation,
-instance structure, robustness), at least two far from anything tried, each with why it could beat the best-known and
-how we would know it failed. The brainstorming rules from the superpowers brainstorming skill are in the prompt.
-`loop.py` reads the newest section's Lessons and Next into every iteration prompt, shows a compressed list of every
-idea from earlier nights (not only the last 12), and asks the model to start its IDEA line with `[NEXT #k]` for the
-direction it takes, so the next retro sees what was consumed. One model call, about $0.50 to $1.30 per slot.
+The default nightly **research allowance is 90 accounting units**, shared across generation, reviews and retrospectives. This is not a cash budget. Claude's reported API-equivalent cost is an estimate of usage; Codex calls without a dollar estimate conservatively consume their reservation. Calls and token usage are retained. Subscription rate limits still apply.
+
+## Running research
 
 ```powershell
-python retro.py --problem cvrp --dry-run       # the prompt, no model call
-python retro.py --problem cvrp --since-iter 5  # review iterations 5 and later, append to docs/retro/cvrp.md
+python night.py --dry-run
+python night.py
+python night.py --resume
+python loop.py --problem cvrp --provider paired --iters 1 --budget 8 --no-publish
+python loop.py --problem cvrp --provider astra --eval-only --no-publish
+python trial_report.py
 ```
 
-## pglib_opf: AC optimal power flow on the PGLib-OPF benchmark
+All normal research runs stop at local evidence. `--no-publish` remains a compatibility flag and makes that intent explicit. Manual loop runs receive separate run identifiers; `--run-id` and `--ledger` connect scheduled work to a shared night. Per-invocation iteration and allowance limits do not count old runs. Resume preserves the existing night's ledger.
 
-IEEE PES PGLib-OPF v23.07 "typical operating conditions" cases, 3 to 793 buses. The value to beat per case is the
-AC-OPF objective PowerModels.jl + IPOPT reached (BASELINE.md, 5 significant figures, so a win must clear 1e-4
-relative). `problems/pglib_opf/verify.py` re-checks every constraint of the AC-OPF model with numpy at 1e-6 pu
-(voltage and P/Q bounds, nodal balance, apparent-power limits at both ends, angle limits, reference angle).
-Seed solver = PYPOWER PIPS interior point + Newton polish + random multi-start (`pip install PYPOWER`).
-Case files download on first use from the pinned tag. Nothing is emailed; wins go to the pglib-opf issue tracker by hand.
+A small development-only probe can select `--targets`, lower `--time`, and set `--wall-minutes`. Such a probe is not a claim of performance at the standard benchmark budget. Confirmation requires at least three distinct matched seeds.
+
+## How an experiment works
+
+1. Freeze the incumbent, inputs, comparison scope and resource limits.
+2. Give Fable and Astra the same development brief in paired mode. They do not see each other's initial proposals.
+3. Run incumbent and candidates in identical restricted workers; recompute objectives and feasibility outside generated code.
+4. Cross-review promising candidates. Model opinions never override mathematical checks.
+5. Confirm the best candidate on a separate target/seed matrix, requiring a minimum median effect, zero candidate failures, and no increased failure rate.
+6. For general MIP heuristics, compare against a freshly executed HiGHS baseline in the same worker environment before making a baseline-superiority claim.
+7. Preserve evidence and confirmed lineage for subsequent nights. Feed only development observations and sanitized lessons into future generation.
+
+Known benchmark targets remain labeled previously exposed. The existing MIP heuristic holdout is reusable confirmation data, not a sealed generalization test. There is currently no sealed release dataset.
+
+## Problems
+
+| Plugin | Purpose | Scientific checks |
+| --- | --- | --- |
+| cvrp | Capacitated vehicle routing | Exact rounded distances, customer coverage and vehicle capacity |
+| miplib_heur | General primal heuristics, 16 development and 10 reusable holdout instances | Original MPS feasibility, proven-optimum gap, fresh worker baseline comparison |
+| miplib_open | Open mixed-integer programs | Original bounds, integrality, row activities and objective |
+| miplib | Legacy open-instance experiments | Original MPS and uncertainty-aware record comparison |
+| pglib_opf | AC power-flow validation | Original-case residuals at 1e-8, baseline rounding uncertainty and reference polishing |
+| circle_packing | Geometric optimization | Finite values, containment, separation and an explicit improvement margin |
+
+The default nightly trial focuses on routing and general optimization, with a validation-only power-grid stage. See [research portfolio](docs/RESEARCH-PORTFOLIO.md) for intended beneficiaries, success measures, and evidence needed before claiming practical benefit.
+
+Problem helpers use isolated package namespaces. Legacy solvers can still import their documented local helpers inside workers.
+
+## Nightly integration
+
+`night.json` controls an eight-hour window, per-slot and per-call limits, and a 14-night counterbalanced Fable/Astra/paired trial. The runner uses an exclusive lock, checkpoints, heartbeat, pause handling, process-tree timeouts and explicit zero-work/partial/failure statuses.
+
+On Windows, preview the scheduled-task changes first:
 
 ```powershell
-python loop.py --problem pglib_opf --eval-only              # seed solver on all 21 cases, no model calls
-python loop.py --problem pglib_opf --wall-minutes 235 --budget 15
-python problems/pglib_opf/verify.py best-pglib_opf/sol/pglib_opf_case14_ieee.json
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-night-tasks.ps1
 ```
 
-## miplib_heur: a general primal heuristic vs HiGHS default
+The installer exports existing XML before any change. Its `-Apply` switch updates the 22:00 research task, connects the 06:40 meditation and 06:57 briefing to fresh evidence, and installs the localhost dashboard at logon. Rollback commands are printed with the backup paths. Scheduled catch-up is restricted to the overnight window. The original meditation runner is reused with sanitized research context injected in memory; no harness source file is modified.
 
-Instead of chasing open instances, this problem evolves a GENERAL primal heuristic (Python on highspy) and scores it by
-relative primal gap at 60 s on MIPLIB 2017 benchmark instances with PROVEN optima, so the checker is exact. The value to
-beat per instance is what plain HiGHS (default options, 2 threads) reaches on this machine in the same slot
-(`problems/miplib_heur/baseline.py --measure --assign` builds `baseline.json`: 20 train + 10 holdout instances).
-`holdout.py` scores a champion on instances the model never saw; name- or signature-keyed tricks are disqualified.
-Nothing is emailed; the champion solver.py is the deliverable and upstreaming to HiGHS is a human decision.
+A missing or partial research run is explicitly reported to meditation. The briefing requires a current meditation artifact rather than silently reusing yesterday's. The existing briefing's external delivery behavior is unchanged; installation does not send a message.
+
+## Evidence and publication
+
+Per-run files live under `runs/research/<run-id>/<problem>/`. `run.json` records progress; `evidence.json` binds the candidate, solution artifacts, paired comparisons and limitations. The shared ledger records reservations and usage. The morning report is numeric and sanitized.
+
+Publication requires a dashboard approval bound to the exact evidence, solver and solution hashes. Changed files invalidate approval. Current reference retrieval and independent revalidation fail closed.
 
 ```powershell
-python loop.py --problem miplib_heur --eval-only               # seed heuristic on the train set, no model calls
-python loop.py --problem miplib_heur --wall-minutes 235 --budget 15
-python problems/miplib_heur/holdout.py best-miplib_heur/solver.py
+python publish.py --problem cvrp --evidence <evidence.json> --approval <approval.json> --dry-run
 ```
 
-## cvrp: capacitated vehicle routing on the CVRPLIB X benchmark
+Without `--push-only`, an approved publication command prepares only a local bundle. `--push-only` explicitly commits and pushes the approved bundle after checking the exact committed file set and blob hashes. No research run invokes it automatically. A paired-incumbent improvement is not labeled a world record; record claims must beat the current reference.
 
-Vehicle routing is fuel, miles and delivery cost for every fleet. Targets are ten CVRPLIB X instances
-(Uchoa et al., 2017; 200–500 nodes) whose best known solution is **not proven optimal**, so a lower feasible
-cost is a genuine result. `problems/cvrp/records.py` fetches the best-known cost and optimality flag live from
-the CVRPLIB table and caches them; `verify.py` parses the TSPLIB `.vrp` and re-checks every customer served
-once, every route within capacity, and the rounded-EUC_2D cost — it reproduces all ten official best-known
-`.sol` costs exactly. Seed solver = Clarke-Wright savings + 2-opt / relocate / swap local search (pure python +
-numpy, no external solver). Instances download on first use. Nothing is emailed; the GitHub push of `best-cvrp/`
-is the publication and a verified improvement goes to CVRPLIB by hand. See `problems/cvrp/BASELINE.md` for seed
-gaps and the proposed night slot.
+Research email is unavailable: the existing governed sender approves file paths and reads their contents later, so it cannot guarantee that approved body and attachment bytes are the ones sent. `--send-email` stops before creating any external action. Restoring email requires immutable snapshots in that separate sender.
+
+## Verification
 
 ```powershell
-python loop.py --problem cvrp --eval-only                      # seed solver on all 10 targets, no model calls
-python loop.py --problem cvrp --iters 1 --time 60 --workers 2 --no-publish   # smoke run, publishing disabled
-python loop.py --problem cvrp --wall-minutes 180 --budget 15
-python problems/cvrp/verify.py best-cvrp/sol/X-n280-k17.json
-python problems/cvrp/test_cvrp.py                             # verifier + --no-publish tests
+python scripts/check.py
+python -m pytest tests/test_isolation.py -q -p no:xonsh
 ```
 
-`--no-publish` (on any problem) suppresses every `publish.py` call — no git commit/push, no maintainer email —
-for isolated experiments; the default behaviour is unchanged.
+`scripts/check.py` runs application tests, each unchanged legacy plugin suite in its own interpreter, Ruff, and compilation. The legacy test modules use bare helper imports, so combining them in one pytest process is not the supported verification entry point. Production multi-plugin loading is covered by shared-process regression tests.
+
+Optional real Docker tests are enabled by `RUN_DOCKER_TESTS=1` in the test process. They exercise resource restrictions, output limits, input/output path checks, network denial and timeout cleanup. Live CLI probes and browser interaction checks supplement unit tests; a mocked subprocess is not proof that a provider or worker works.
+
+The dashboard is an internal localhost surface, not a public website. No external analytics or frontend dependencies are required.
+
+See [decisions](docs/DECISIONS.md), [lessons](docs/ERRORS.md), and [changelog](CHANGELOG.md).

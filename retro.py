@@ -17,10 +17,12 @@ night.py runs this after each slot, before publish.py. By hand:
 import argparse
 import json
 import os
-import subprocess
 import time
+from datetime import datetime, timezone
+from pathlib import Path
 
 from loop import Loop, load_problem, retro_path, value_of
+from research_state import BudgetLedger, append_event, atomic_json, read_json
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 MODEL = "claude-fable-5-1"
@@ -67,7 +69,8 @@ PROBLEM CONTEXT:
 
 SCOREBOARD NOW ({"higher" if P.MAXIMIZE else "lower"} is better; champion total = {P.TOTAL_DESC}):
 {board}
-THIS RUN: iterations {since_iter}+ ({len(this_run)} iterations, {len(champions)} became champion, spend ${spend:.2f})
+THIS RUN: iterations {since_iter}+ ({len(this_run)} iterations, {len(champions)} became champion,
+reported total_cost_usd API-equivalent {spend:.2f}; subscription billing is not measured here)
 
 EVERY IDEA TRIED ON THIS PROBLEM, ALL TIME (iteration, verdict, total, idea):
 {history_lines(history)}
@@ -95,32 +98,11 @@ OUTPUT FORMAT, markdown, exactly these four headings and nothing before the firs
 
 
 def call_text(prompt, model=MODEL):
-    """One claude -p turn, tools off, returns (text, cost_usd, error)."""
-    env = {k: v for k, v in os.environ.items() if not (k.startswith("CLAUDE") or k.startswith("ANTHROPIC_"))}
-    cmd = ["claude", "-p", "--model", model, "--output-format", "json", "--max-turns", "1", "--setting-sources", ""]
-    cmd += ["--tools", "", "--no-session-persistence", "--system-prompt"]
-    cmd += ["You are an expert in numerical and combinatorial optimisation writing a terse engineering retro."]
-    try:
-        p = subprocess.run(
-            cmd,
-            input=prompt,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            env=env,
-            timeout=TIMEOUT,
-            shell=(os.name == "nt"),
-        )
-    except subprocess.TimeoutExpired:
-        return "", 0.0, f"cli timeout after {TIMEOUT}s"
-    except OSError as e:
-        return "", 0.0, f"cli error: {e}"
-    try:
-        j = json.loads(p.stdout)
-    except json.JSONDecodeError:
-        return "", 0.0, f"bad cli output: {p.stdout[-300:]} {p.stderr[-300:]}"
-    return (j.get("result") or "").strip(), float(j.get("total_cost_usd") or 0), ""
+    """Legacy text interface through the canonical subscription-only provider."""
+    from providers import call_model
+
+    result = call_model(prompt, provider="fable", model=model, timeout=TIMEOUT)
+    return result["text"], result["cost"] or 0.0, result["error"] or ""
 
 
 def section_header(name, history, since_iter, board_wins):
@@ -129,7 +111,10 @@ def section_header(name, history, since_iter, board_wins):
     spend = sum(h.get("cost", 0) for h in this_run)
     iters = f"iters {this_run[0]['iter']}-{this_run[-1]['iter']}" if this_run else "no iterations"
     wins = ", ".join(board_wins) if board_wins else "none"
-    return f"## {time.strftime('%Y-%m-%d %H:%M')} {name}: {iters}, spend ${spend:.2f}, champion {champ:.4f}, beating best-known: {wins}"
+    return (
+        f"## {time.strftime('%Y-%m-%d %H:%M')} {name}: {iters}, reported total_cost_usd API-equivalent "
+        f"{spend:.2f}, champion {champ:.4f}, beating best-known: {wins}"
+    )
 
 
 def append_section(path, header, body):
@@ -143,19 +128,200 @@ def append_section(path, header, body):
         f.write(f"\n{header}\n\n{body.strip()}\n")
 
 
+def _iso():
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def cross_model_provider(generation_provider, run_id):
+    """Return an independent analyst for a single or paired generation run."""
+    if generation_provider == "fable":
+        return "astra"
+    if generation_provider == "astra":
+        return "fable"
+    try:
+        ordinal = datetime.strptime(run_id, "%Y-%m-%d").date().toordinal()
+    except ValueError:
+        ordinal = sum(ord(char) for char in run_id)
+    return "fable" if ordinal % 2 == 0 else "astra"
+
+
+def build_research_retro_prompt(evidence, development_history=None):
+    """Build an analyst prompt without confirmation data, code or local paths."""
+    summary = {
+        key: evidence.get(key)
+        for key in (
+            "run_id",
+            "problem",
+            "provider",
+            "status",
+            "candidate_hash",
+            "usage",
+        )
+    }
+    history = development_history or []
+    return f"""Act as an independent optimization research analyst. Review the structured evidence below. The
+generation provider was {evidence.get("provider")}; do not trust its interpretation. Use development evidence only.
+No held-out target, confirmation metric, candidate code, or local path is present. Identify missing work and failed
+stages, and do not recommend publication.
+
+RUN METADATA:
+{json.dumps(summary, indent=2, sort_keys=True)}
+
+SANITIZED CROSS-NIGHT DEVELOPMENT HISTORY:
+{json.dumps(history[-200:], indent=2, sort_keys=True)}
+
+Return markdown with exactly these headings:
+### Evidence assessment
+State what completed and whether the evidence supports a real effect.
+### Failure analysis
+List model, evaluation, replication, budget, or data gaps. If none, say none observed.
+### Next experiment
+Give one bounded next experiment with a falsifiable stop condition.
+### Limitations
+List what this run cannot establish."""
+
+
+def run_research_retro(problem, run_id, evidence_root, ledger_path, call_budget, provider=None):
+    """Write a local retrospective record even when the analyst call fails."""
+    from providers import call_model
+
+    root = Path(evidence_root)
+    if not root.is_absolute():
+        root = Path(HERE) / root
+    problem_root = root / run_id / problem
+    evidence = read_json(problem_root / "evidence.json", {}) or {}
+    history_path = root / "development-history" / f"{problem}.jsonl"
+    history = []
+    if history_path.exists():
+        for line in history_path.read_text(encoding="utf-8").splitlines()[-200:]:
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(item, dict):
+                critique = item.get("critique") if isinstance(item.get("critique"), dict) else {}
+                history.append(
+                    {
+                        "run_id": item.get("run_id"),
+                        "iteration": item.get("iteration"),
+                        "provider": item.get("provider"),
+                        "idea": item.get("idea"),
+                        "status": item.get("status"),
+                        "median_gain": item.get("median_gain"),
+                        "candidate_hash": item.get("candidate_hash"),
+                        "critique": {
+                            "provider": critique.get("provider"),
+                            "text": critique.get("text"),
+                            "error": critique.get("error"),
+                        },
+                    }
+                )
+    generated_by = evidence.get("provider") or "paired"
+    analyst = provider or cross_model_provider(generated_by, run_id)
+    if generated_by in {"fable", "astra"} and analyst == generated_by:
+        raise ValueError("retrospective analyst must differ from the generation provider")
+    started = _iso()
+    result = {
+        "schema_version": 1,
+        "run_id": run_id,
+        "problem": problem,
+        "status": "failed",
+        "provider": analyst,
+        "model": None,
+        "reported_total_cost_usd_api_equivalent": None,
+        "usage": {},
+        "analysis": "",
+        "limitations": [],
+        "started_at": started,
+    }
+    if not evidence:
+        result["limitations"].append("research evidence is missing")
+    elif evidence.get("status") not in {"completed", "partial"}:
+        result["limitations"].append("research stage did not complete successfully")
+    try:
+        ledger_state = read_json(ledger_path, {}) or {}
+        ledger_limit = float(ledger_state.get("limit", 90.0))
+        ledger = BudgetLedger(ledger_path, ledger_limit)
+        response = call_model(
+            build_research_retro_prompt(evidence, history),
+            provider=analyst,
+            timeout=900,
+            max_cost=float(call_budget),
+            ledger=ledger,
+            purpose=f"retro:{problem}",
+        )
+        result.update(
+            model=response.get("model"),
+            reported_total_cost_usd_api_equivalent=response.get("cost"),
+            usage=response.get("usage") or {},
+            analysis=(response.get("text") or "").strip(),
+        )
+        if response.get("error"):
+            result["limitations"].append("analyst model call failed")
+        elif not result["analysis"]:
+            result["limitations"].append("analyst returned no text")
+        else:
+            result["status"] = "completed"
+    except Exception as exc:
+        result["limitations"].append(f"analyst stage failed: {type(exc).__name__}")
+    result["finished_at"] = _iso()
+    atomic_json(problem_root / "retro.json", result)
+    append_event(
+        history_path,
+        {
+            "run_id": run_id,
+            "iteration": "retro",
+            "provider": analyst,
+            "idea": "",
+            "status": "retrospective",
+            "median_gain": None,
+            "candidate_hash": evidence.get("candidate_hash"),
+            "critique": {
+                "provider": analyst,
+                "text": result["analysis"][:2000],
+                "error": None if result["status"] == "completed" else "; ".join(result["limitations"]),
+            },
+        },
+    )
+    return result
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--problem", required=True)
     ap.add_argument("--since-iter", type=int, default=None, help="first iteration of the run being reviewed")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--model", default=MODEL)
+    ap.add_argument("--run-id", help="dated research run; enables the bounded run-local retro")
+    ap.add_argument("--evidence-root", default="runs/research")
+    ap.add_argument("--ledger")
+    ap.add_argument("--provider", choices=("fable", "astra"))
+    ap.add_argument("--call-budget", type=float, default=2.5)
     a = ap.parse_args()
+    if a.run_id:
+        configured_root = Path(a.evidence_root)
+        evidence_root = configured_root if configured_root.is_absolute() else Path(HERE) / configured_root
+        ledger_path = Path(a.ledger) if a.ledger else evidence_root / a.run_id / "budget.json"
+        evidence = read_json(evidence_root / a.run_id / a.problem / "evidence.json", {}) or {}
+        if a.dry_run:
+            print(build_research_retro_prompt(evidence))
+            return 0
+        result = run_research_retro(
+            a.problem,
+            a.run_id,
+            evidence_root,
+            ledger_path,
+            a.call_budget,
+            provider=a.provider,
+        )
+        print(json.dumps({key: value for key, value in result.items() if key != "analysis"}, indent=2))
+        return 0 if result["status"] == "completed" else 1
     P = load_problem(a.problem)
     L = Loop(a.problem)
     history = [json.loads(l) for l in open(L.log_path, encoding="utf-8")] if os.path.exists(L.log_path) else []
     if not history:
         print("retro: no history, nothing to review")
-        return
+        return 1
     since = a.since_iter if a.since_iter is not None else max(0, history[-1]["iter"] - 11)
     try:
         rec = P.records_fetch()
@@ -174,16 +340,20 @@ def main():
     prompt = build_retro_prompt(P, a.problem, history, board, champ, since)
     if a.dry_run:
         print(prompt)
-        return
+        return 0
     print(f"retro {a.problem} {time.strftime('%Y-%m-%d %H:%M:%S')}: iterations {since}+ of {len(history)}", flush=True)
     text, cost, err = call_text(prompt, a.model)
     if err or "### Next" not in text:
         print(f"retro: NOT written ({err or 'model output lacks the Next heading'}): {text[-300:]}")
-        return
+        return 1
     path = retro_path(a.problem)
     append_section(path, section_header(a.problem, history, since, wins), text)
-    print(f"retro: appended to {os.path.relpath(path, HERE)} (${cost:.2f})")
+    print(
+        f"retro: appended to {os.path.relpath(path, HERE)} "
+        f"(reported total_cost_usd API-equivalent {cost:.2f}; subscription billing not measured)"
+    )
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

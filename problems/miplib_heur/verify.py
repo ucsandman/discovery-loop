@@ -4,24 +4,21 @@ primal gap to the proven optimum, in minimisation sense so that lower is always 
     python verify.py candidate.json      # {"target": name, "solution": {var: value}}
 """
 
-import importlib.util
 import json
 import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
-import records  # noqa: E402
+if __package__:
+    from . import records
+    from problems.miplib import verify as _V
+else:  # direct ``python problems/miplib_heur/verify.py`` compatibility
+    sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
+    sys.path.insert(0, HERE)
+    import records  # noqa: E402
 
+    from problems.miplib import verify as _V
 
-def _sibling(name):
-    spec = importlib.util.spec_from_file_location("miplib_" + name, os.path.join(records.MIPLIB, name + ".py"))
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-_V = _sibling("verify")
 to_sol = _V.to_sol
 
 
@@ -31,8 +28,8 @@ def gap(obj, optimum, sense):
     return d / max(1.0, abs(optimum))
 
 
-def check(solution, name):
-    res = _V.check(solution, name)
+def check(solution, name, tol=_V.TOL):
+    res = _V.check(solution, name, tol=tol)
     res["optimum"] = records.opt(name)
     res["gap"] = gap(res["obj"], res["optimum"], res["sense"]) if res["feasible"] else None
     return res

@@ -19,9 +19,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
-import records  # noqa: E402
-import verify  # noqa: E402
+ROOT = os.path.dirname(os.path.dirname(HERE))
+sys.path.insert(0, ROOT)
+from problems.miplib_heur import records, verify  # noqa: E402
 
 CAND = os.path.join(HERE, "candidates.json")
 WORK = os.path.join(os.path.dirname(os.path.dirname(HERE)), "tmp", "miplib_heur_baseline")

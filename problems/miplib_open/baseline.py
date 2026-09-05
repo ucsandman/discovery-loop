@@ -24,9 +24,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
-import records  # noqa: E402
-import verify  # noqa: E402
+ROOT = os.path.dirname(os.path.dirname(HERE))
+sys.path.insert(0, ROOT)
+from problems.miplib_open import records, verify  # noqa: E402
 
 CAND = os.path.join(HERE, "candidates.json")
 SCREEN_META = os.path.join(HERE, "screen_meta.json")

@@ -19,11 +19,11 @@ record to tie is 0.0 (negative = beats best-known). Real objectives live in reco
 
 import datetime
 import gzip
-import importlib.util
 import json
 import os
 import re
 import shutil
+import sys
 import urllib.request
 
 SITE = "https://miplib.zib.de"
@@ -51,14 +51,10 @@ TARGETS = [
 ]
 
 
-def _miplib(name):
-    spec = importlib.util.spec_from_file_location("miplib_" + name, os.path.join(MIPLIB, name + ".py"))
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+if not __package__:
+    sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
+from problems.miplib import records as _R
 
-
-_R = _miplib("records")
 instance_path = _R.instance_path  # solvers/verifier: from records import instance_path (shared .mps cache)
 
 
@@ -214,6 +210,11 @@ def best_known(name):
     if v is None:
         raise KeyError(f"{name} has no =best= objective in the .solu file")
     return v
+
+
+def reference(name):
+    """Official ``.solu`` value and its source-text decimal uncertainty."""
+    return _R.reference(name)
 
 
 # ── value space for the loop (the record to tie is 0.0; negative beats best-known) ──

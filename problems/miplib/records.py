@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import urllib.request
+from decimal import Decimal
 
 SITE = "https://miplib.zib.de"
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -24,6 +25,28 @@ def _parse(path):
         if len(p) >= 2 and p[0].startswith("="):
             rec[p[1]] = float(p[2]) if len(p) > 2 and p[0] in ("=opt=", "=best=") else None
     return rec
+
+
+def reference(name):
+    """Return official status, value, and decimal half-ULP from the source ``.solu`` text."""
+    path = solu_path()
+    if path is None:
+        fetch()
+        path = solu_path()
+    for line in open(path):
+        parts = line.split()
+        if len(parts) >= 2 and parts[1] == name:
+            status = parts[0].strip("=")
+            if len(parts) < 3 or parts[0] not in ("=opt=", "=best="):
+                return {"status": status, "value": None, "uncertainty": None}
+            printed = Decimal(parts[2])
+            last_place = printed.adjusted() - len(printed.as_tuple().digits) + 1
+            return {
+                "status": status,
+                "value": float(printed),
+                "uncertainty": float(Decimal("0.5") * (Decimal(10) ** last_place)),
+            }
+    raise KeyError(f"{name} is absent from {path}")
 
 
 def solu_path():

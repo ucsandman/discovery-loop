@@ -18,26 +18,22 @@ engine miplib_heur itself wraps, which is the same code path with no fork.
     python verify.py candidate.json      # {"target": name, "solution": {var: value}}
 """
 
-import importlib.util
 import json
 import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
-import records  # noqa: E402
+if __package__:
+    from . import records
+    from problems.miplib import verify as _V
+else:  # direct ``python problems/miplib_open/verify.py`` compatibility
+    sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
+    sys.path.insert(0, HERE)
+    import records  # noqa: E402
+
+    from problems.miplib import verify as _V
 
 MIPLIB = records.MIPLIB
-
-
-def _engine():
-    spec = importlib.util.spec_from_file_location("miplib_verify", os.path.join(MIPLIB, "verify.py"))
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-_V = _engine()
 to_sol = _V.to_sol
 
 
@@ -47,9 +43,9 @@ def value(obj, best, sense):
     return d / max(1.0, abs(best))
 
 
-def check(solution, name):
+def check(solution, name, tol=_V.TOL):
     """{feasible, obj, sense, value, best_known, bound_viol, int_viol, row_viol, ...}."""
-    res = _V.check(solution, name)
+    res = _V.check(solution, name, tol=tol)
     res["best_known"] = records.best_known(name)
     res["value"] = value(res["obj"], res["best_known"], res["sense"]) if res["feasible"] else None
     return res

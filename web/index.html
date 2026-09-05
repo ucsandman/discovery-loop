@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Local review of discovery-loop research runs, evidence, and release approvals.">
+  <title>Discovery review</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to research ledger</a>
+  <main class="shell" id="main">
+    <header class="masthead">
+      <div>
+        <p class="eyebrow" id="dateline">Discovery review</p>
+        <h1>Morning field notes</h1>
+        <p class="lede">A local record of what ran, what held up, and what still needs proof. Earlier benchmark claims remain historical and unvalidated.</p>
+      </div>
+      <div class="night-state" aria-live="polite">
+        <span class="stamp neutral" id="night-stamp"><span class="signal"></span>Reading status</span>
+        <strong id="night-summary">Loading the overnight record</strong>
+        <span class="subtle" id="night-usage">Usage is reported total_cost_usd API-equivalent, not a bill.</span>
+      </div>
+    </header>
+
+    <div class="workspace">
+      <section aria-labelledby="ledger-title">
+        <div class="section-head">
+          <div><p class="kicker">Research ledger</p><h2 id="ledger-title">Claims to examine</h2></div>
+          <span class="folio" id="ledger-count">Reading…</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Study</th><th>Evidence</th><th>Effect</th><th>Use</th></tr></thead>
+            <tbody id="run-list"><tr><td colspan="4" class="empty">Reading local evidence…</td></tr></tbody>
+          </table>
+        </div>
+        <section class="trial" aria-labelledby="trial-title">
+          <div class="minor-head"><div><p class="kicker">Equal-budget experiment</p><h3 id="trial-title">14-night provider comparison</h3></div><span class="folio" id="trial-count">Not started</span></div>
+          <p class="trial-note" id="trial-note">The scheduled Fable, Astra, and paired comparison has not started.</p>
+          <div class="table-wrap trial-table-wrap">
+            <table>
+              <thead><tr><th>Problem / mode</th><th>Completed / runs</th><th>Confirmed</th><th>Calls</th><th>Allowance charged</th><th>Solver hours, wall</th><th>Confirmed / charged unit</th></tr></thead>
+              <tbody id="trial-list"><tr><td colspan="7" class="empty">No scheduled trial evidence yet.</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <aside class="rail" aria-labelledby="controls-title">
+        <section>
+          <h3 id="controls-title">Night controls</h3>
+          <p class="rail-copy">Pause between safe checkpoints. A running isolated evaluation finishes before the pause takes effect. Continue clears that request; it does not start a new run.</p>
+          <div class="control-row">
+            <button class="rust" id="pause" type="button">Pause after checkpoint</button>
+            <button id="continue" type="button">Continue research</button>
+          </div>
+          <p class="notice" id="control-note" role="status"></p>
+        </section>
+        <section>
+          <h3>Tune the next run</h3>
+          <form id="schedule-form">
+            <div class="two">
+              <label class="field">Nightly research allowance<input id="budget" type="number" min="0.5" max="90" step="0.5" required></label>
+              <label class="field">Duration, minutes<input id="minutes" type="number" min="60" max="720" step="1" required></label>
+            </div>
+            <fieldset>
+              <legend>Mode allowance</legend>
+              <div class="three">
+                <label class="field">Fable<input id="cap-fable" type="number" min="0" max="90" step="0.5" required></label>
+                <label class="field">Astra<input id="cap-astra" type="number" min="0" max="90" step="0.5" required></label>
+                <label class="field">Paired<input id="cap-paired" type="number" min="0" max="90" step="0.5" required></label>
+              </div>
+              <p class="field-help">Accounting units for monthly subscription CLI usage, not a bill. API billing is not used. The nightly allowance remains the final limit.</p>
+            </fieldset>
+            <button type="submit">Save next-night settings</button>
+          </form>
+          <p class="notice" id="save-note" role="status"></p>
+        </section>
+      </aside>
+
+      <section class="evidence" aria-labelledby="evidence-title">
+        <div class="section-head">
+          <div><p class="kicker">Selected evidence</p><h2 id="evidence-title">No claim selected</h2></div>
+          <span class="folio" id="evidence-folio">Local record</span>
+        </div>
+        <div class="evidence-grid">
+          <div id="evidence-body" class="empty-state">
+            <h3>Confirmation evidence has not arrived yet.</h3>
+            <p>Historical counts remain available in the ledger, labeled unvalidated. New isolated runs will appear here with their confirmation record.</p>
+          </div>
+          <aside class="approval" id="approval-panel" hidden>
+            <p class="kicker">Local release gate</p>
+            <h3>Queue this exact result</h3>
+            <p id="approval-copy">This records approval for the candidate and evidence hashes shown here. Publication remains a separate action.</p>
+            <label class="check"><input id="approval-check" type="checkbox"><span>I reviewed the evidence and understand this does not publish anything.</span></label>
+            <button class="primary" id="approve" type="button" disabled>Queue local release approval</button>
+            <button class="text-button" id="request-review" type="button">Mark for morning review</button>
+            <p class="notice" id="approval-note" role="status"></p>
+          </aside>
+        </div>
+      </section>
+    </div>
+    <p class="footnote">Only confirmed, publishable evidence can enter the local release queue. Candidate and evidence files are re-hashed when approval is recorded.</p>
+  </main>
+</body>
+</html>

@@ -10,9 +10,11 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
-import records  # noqa: E402
-import verify  # noqa: E402
+if __package__:
+    from . import records, verify
+else:
+    sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
+    from problems.miplib import records, verify
 
 TITLE = "MIPLIB 2017 open instances"
 TARGETS = [
@@ -27,6 +29,9 @@ TARGETS = [
     "ramos3",
     "neos-5045105-creuse",
 ]
+DEVELOPMENT = TARGETS
+VALIDATION = []
+RELEASE_HOLDOUT = []
 INFO = {
     "assign1-10-4": "572 vars / 582 rows, set partitioning + cardinality, mixed binary; assignment structure",
     "milo-v13-4-3d-4-0": "688 vars / 1328 rows, aggregations + variable bounds, mixed binary; HiGHS incumbent is ~3x the best known, big room",
@@ -43,6 +48,9 @@ DEFAULTS = {"time": 400, "workers": 3}
 MAXIMIZE = False
 FAIL_SCORE = -10.0
 REL_TOL = 1e-6
+RELEASE_FEASIBILITY_TOL = 1e-8
+RELEASE_OBJECTIVE_REL_MARGIN = 1e-10
+RELEASE_VALIDATION_SUPPORTED = True
 
 
 def records_fetch():
@@ -80,6 +88,51 @@ def beats(v, rec):
     return rec is None or v < rec - REL_TOL * max(1.0, abs(rec))
 
 
+def validate_release(path, t, *, record=None):
+    try:
+        d = json.load(open(path))
+        if d.get("target", t) != t:
+            raise ValueError(f"candidate target {d.get('target')!r} does not match {t!r}")
+        result = verify.check(d["solution"], t, tol=RELEASE_FEASIBILITY_TOL)
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+        return {"ok": False, "supported": True, "error": f"invalid candidate: {exc}", "metrics": {}}
+    official = records.reference(t)
+    reference = official["value"]
+    uncertainty = official["uncertainty"] or 0.0
+    numeric_margin = RELEASE_OBJECTIVE_REL_MARGIN * max(1.0, abs(reference or 0.0))
+    metrics = {
+        "objective": result["obj"],
+        "sense": result["sense"],
+        "official_status": official["status"],
+        "reference": reference,
+        "reference_uncertainty": official["uncertainty"],
+        "bound_violation": result["bound_viol"],
+        "integrality_violation": result["int_viol"],
+        "row_violation": result["row_viol"],
+        "feasibility_tolerance": RELEASE_FEASIBILITY_TOL,
+        "claim_scope": "official_miplib_result",
+    }
+    if not result["feasible"]:
+        return {
+            "ok": False,
+            "supported": True,
+            "error": "candidate fails strict original-MPS verification",
+            "metrics": metrics,
+        }
+    if reference is None:
+        return {"ok": True, "supported": True, "error": None, "metrics": metrics}
+    improvement = reference - result["obj"] if result["sense"] == "min" else result["obj"] - reference
+    metrics["improvement"] = improvement
+    if improvement <= uncertainty + numeric_margin:
+        return {
+            "ok": False,
+            "supported": True,
+            "error": "objective does not clear official reference uncertainty",
+            "metrics": metrics,
+        }
+    return {"ok": True, "supported": True, "error": None, "metrics": metrics}
+
+
 def raw_path(t, best):
     return os.path.join(best, "sol", f"{t}.json")
 
@@ -111,6 +164,15 @@ INTERFACE CONTRACT (keep exactly):
 
 INSTANCE NOTES:
 """ + "\n".join(f"  {k}: {v}" for k, v in INFO.items())
+
+
+def prompt_for_targets(targets):
+    unknown = sorted(set(targets) - set(TARGETS))
+    if unknown:
+        raise ValueError(f"unknown target(s): {unknown}")
+    head = PROMPT.split("INSTANCE NOTES:\n", 1)[0] + "INSTANCE NOTES:\n"
+    return head + "\n".join(f"  {name}: {INFO[name]}" for name in targets)
+
 
 TASK = """TASK: write a complete replacement solver.py that lowers the objective on as many targets as possible (champion total is the
 negative relative gap to the best known incumbent, summed over targets). Make one substantive algorithmic improvement (or a coherent

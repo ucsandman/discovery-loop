@@ -5,15 +5,24 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
-import records  # noqa: E402
-import verify  # noqa: E402
+if __package__:
+    from . import records, verify
+else:
+    sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
+    from problems.circle_packing import records, verify
 
 TITLE = "circle packing (Packomania csqv)"
 TARGETS = ["26", "32", "101", "102", "103", "105", "106", "107", "108", "109", "111", "114"]
+DEVELOPMENT = TARGETS
+VALIDATION = []
+RELEASE_HOLDOUT = []
 DEFAULTS = {"time": 120, "workers": 3}
 MAXIMIZE = True
 FAIL_SCORE = 0.0
+WIN_MARGIN = 1e-10
+RELEASE_WALL_MARGIN = 1e-10
+RELEASE_PAIR_SQ_MARGIN = 1e-12
+RELEASE_VALIDATION_SUPPORTED = True
 
 
 def records_fetch():
@@ -45,7 +54,33 @@ def better(a, b):
 
 
 def beats(v, rec):
-    return rec is not None and v > rec
+    return rec is not None and v > rec + WIN_MARGIN
+
+
+def validate_release(path, t, *, record=None):
+    """Recheck a packing with clearance beyond float noise and the published table precision."""
+    try:
+        d = json.load(open(path))
+        result = verify.check(d["circles"], int(t))
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+        return {"ok": False, "supported": True, "error": f"invalid candidate: {exc}", "metrics": {}}
+    metrics = {k: result.get(k) for k in ("sum", "min_wall_slack", "min_pair_slack_sq")}
+    if not result.get("feasible"):
+        return {"ok": False, "supported": True, "error": result.get("error", "infeasible packing"), "metrics": metrics}
+    if result["min_wall_slack"] < RELEASE_WALL_MARGIN:
+        return {"ok": False, "supported": True, "error": "packing lacks required wall clearance", "metrics": metrics}
+    if result["min_pair_slack_sq"] < RELEASE_PAIR_SQ_MARGIN:
+        return {"ok": False, "supported": True, "error": "packing lacks required pair clearance", "metrics": metrics}
+    reference = records_load().get(str(t)) if record is None else record
+    metrics.update({"record": reference, "win_margin": WIN_MARGIN})
+    if not beats(result["sum"], reference):
+        return {
+            "ok": False,
+            "supported": True,
+            "error": "objective does not clear the record margin",
+            "metrics": metrics,
+        }
+    return {"ok": True, "supported": True, "error": None, "metrics": metrics}
 
 
 def raw_path(t, best):
@@ -73,6 +108,14 @@ INTERFACE CONTRACT (keep exactly):
   allowed imports: python stdlib, numpy, scipy (torch with an 8GB CUDA GPU is available but optional)
   the result must be STRICTLY feasible in float64 (wall slack >= 0, d^2 >= (ri+rj)^2 for all pairs, r > 0); keep a final shrink step
   a timeout, crash, or infeasible output scores 0 for that N, so reliability beats ambition"""
+
+
+def prompt_for_targets(targets):
+    unknown = sorted(set(targets) - set(TARGETS))
+    if unknown:
+        raise ValueError(f"unknown target(s): {unknown}")
+    return PROMPT
+
 
 TASK = """TASK: write a complete replacement solver.py that raises the total sum of radii across the target Ns.
 Make one substantive algorithmic improvement (or a coherent combination). Candidates: smarter initialisation (hex/square lattices with

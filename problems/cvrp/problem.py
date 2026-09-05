@@ -12,16 +12,22 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
-import records  # noqa: E402
-import verify  # noqa: E402
+if __package__:
+    from . import records, verify
+else:
+    sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
+    from problems.cvrp import records, verify
 
 TITLE = "CVRPLIB X capacitated vehicle routing (open instances)"
 TARGETS = list(records.TARGETS)
+DEVELOPMENT = TARGETS
+VALIDATION = []
+RELEASE_HOLDOUT = []
 DEFAULTS = {"time": 120, "workers": 3}
 MAXIMIZE = False
 FAIL_SCORE = -1.0  # a crash / timeout / infeasible output; strictly worse than any feasible run (gap clipped at 0.5)
 GAP_CLIP = 0.5
+RELEASE_VALIDATION_SUPPORTED = True
 
 
 def _info():
@@ -75,6 +81,30 @@ def beats(v, rec):
     return rec is not None and v < rec - 0.5
 
 
+def validate_release(path, t, *, record=None):
+    """Recompute exact rounded route cost and capacity/coverage against the original instance."""
+    try:
+        d = json.load(open(path))
+        result = verify.check(d["solution"], t)
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+        return {"ok": False, "supported": True, "error": f"invalid candidate: {exc}", "metrics": {}}
+    metrics = {
+        k: result.get(k) for k in ("obj", "n_routes", "duplicate_customers", "missing_customers", "over_capacity")
+    }
+    if not result.get("feasible"):
+        return {
+            "ok": False,
+            "supported": True,
+            "error": result.get("reason", "infeasible route set"),
+            "metrics": metrics,
+        }
+    reference = records_load().get(t) if record is None else record
+    metrics.update({"record": reference, "required_integer_improvement": 1})
+    if not beats(result["obj"], reference):
+        return {"ok": False, "supported": True, "error": "cost does not beat the integer record", "metrics": metrics}
+    return {"ok": True, "supported": True, "error": None, "metrics": metrics}
+
+
 def raw_path(t, best):
     return os.path.join(best, "sol", f"{t}.json")
 
@@ -116,6 +146,15 @@ INTERFACE CONTRACT (keep exactly):
 
 INSTANCE NOTES:
 """ + "\n".join(f"  {k}: {v}" for k, v in INFO.items())
+
+
+def prompt_for_targets(targets):
+    unknown = sorted(set(targets) - set(TARGETS))
+    if unknown:
+        raise ValueError(f"unknown target(s): {unknown}")
+    head = PROMPT.split("INSTANCE NOTES:\n", 1)[0] + "INSTANCE NOTES:\n"
+    return head + "\n".join(f"  {name}: {INFO[name]}" for name in targets)
+
 
 TASK = """TASK: write a complete replacement solver.py that lowers the verified route cost on as many targets as possible
 (champion total is the negative relative gap to the best known, summed over targets; beating a target counts positive).

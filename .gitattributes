@@ -1,0 +1,2 @@
+# Approved research bundles must retain their exact hashed bytes on every OS.
+releases/** -text

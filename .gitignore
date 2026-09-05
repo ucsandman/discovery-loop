@@ -5,6 +5,13 @@ __pycache__/
 .dashclaw-local/
 .offlocal/
 .ruff_cache/
+.pytest_cache/
+.venv/
+.env
+.env.*
+!.env.example
+.secrets.env
+best*/.promotion.lock
 problems/miplib/instances/
 problems/pglib_opf/instances/
 problems/cvrp/instances/

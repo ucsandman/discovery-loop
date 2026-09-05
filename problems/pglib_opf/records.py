@@ -7,6 +7,7 @@ it by more than that rounding (see problem.WIN_MARGIN). Cases (.m, MATPOWER form
 import os
 import re
 import urllib.request
+from decimal import Decimal
 
 VERSION = "v23.07"  # the tag BASELINE.md was computed against; case files are pinned to it
 RAW = f"https://raw.githubusercontent.com/power-grid-lib/pglib-opf/{VERSION}/"
@@ -39,6 +40,17 @@ def _parse(path):
 
 def table():
     return _parse(BASELINE) if os.path.exists(BASELINE) else fetch_table()
+
+
+def baseline_uncertainty(name):
+    """Half one unit in the last printed AC-objective digit for ``name``."""
+    for line in open(BASELINE, encoding="utf-8"):
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) >= 5 and cells[0] == name:
+            value = Decimal(cells[4])
+            last_place = value.adjusted() - len(value.as_tuple().digits) + 1
+            return float(Decimal("0.5") * (Decimal(10) ** last_place))
+    raise KeyError(f"{name} has no printed AC objective in {BASELINE}")
 
 
 def fetch_table():

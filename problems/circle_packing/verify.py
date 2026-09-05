@@ -4,6 +4,7 @@ Feasible = every circle inside (wall slack >= 0), no pair overlapping (d^2 >= (r
 """
 
 import json
+import math
 import sys
 
 
@@ -12,8 +13,10 @@ def check(circles, n=None):
         return {"feasible": False, "error": f"expected {n} circles, got {len(circles)}"}
     if any(len(c) != 3 for c in circles):
         return {"feasible": False, "error": "each circle must be [x, y, r]"}
-    if any(not (c[2] > 0) or c[2] != c[2] for c in circles):
-        return {"feasible": False, "error": "non-positive or NaN radius"}
+    if any(not all(isinstance(v, (int, float)) and math.isfinite(v) for v in c) for c in circles):
+        return {"feasible": False, "error": "every x, y, and radius must be finite numbers"}
+    if any(not (c[2] > 0) for c in circles):
+        return {"feasible": False, "error": "non-positive radius"}
     wall = min(min(x - r, 1 - x - r, y - r, 1 - y - r) for x, y, r in circles)
     pair2 = float("inf")
     for i in range(len(circles)):

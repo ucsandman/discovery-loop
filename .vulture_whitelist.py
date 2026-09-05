@@ -33,3 +33,16 @@ _.RATE_C
 _.STARTUP
 _.SHUTDOWN
 _.author
+# stdlib HTTPServer/BaseHTTPRequestHandler dispatch these by name.
+_.daemon_threads
+_.allow_reuse_address
+_.server_version
+_.log_message
+_.do_GET
+_.do_POST
+# Compatibility helpers exercised by unchanged tests outside staged-file scans.
+_.retro_slot
+_.publish_slot
+_.official_solution_path
+# pytest invokes this autouse fixture by registration.
+_.subscription_auth

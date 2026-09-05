@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Discovery review — interactive mock</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: oklch(96% 0.018 83);
+      --paper-deep: oklch(91% 0.025 81);
+      --ink: oklch(24% 0.018 68);
+      --muted: oklch(46% 0.02 70);
+      --line: oklch(77% 0.03 80);
+      --green: oklch(42% 0.073 150);
+      --green-pale: oklch(89% 0.045 143);
+      --rust: oklch(48% 0.11 43);
+      --rust-pale: oklch(90% 0.055 57);
+      --serif: Charter, "Bitstream Charter", "Iowan Old Style", Georgia, serif;
+      --sans: Aptos, Candara, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--paper-deep); }
+    body {
+      margin: 0;
+      min-width: 20rem;
+      color: var(--ink);
+      background:
+        linear-gradient(90deg, transparent 0 3.45rem, color-mix(in oklch, var(--rust) 22%, transparent) 3.45rem 3.5rem, transparent 3.5rem),
+        repeating-linear-gradient(var(--paper) 0 2.95rem, color-mix(in oklch, var(--line) 34%, var(--paper)) 2.95rem 3rem);
+      font-family: var(--sans);
+      font-size: 1rem;
+      line-height: 1.5;
+      font-kerning: normal;
+    }
+    button, input, select { font: inherit; }
+    button, input, select, summary { min-height: 2.75rem; }
+    button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible {
+      outline: 3px solid color-mix(in oklch, var(--green) 68%, white);
+      outline-offset: 3px;
+    }
+    .skip { position: fixed; left: 1rem; top: -5rem; background: var(--ink); color: var(--paper); padding: .75rem 1rem; z-index: 10; }
+    .skip:focus { top: 1rem; }
+    .shell { width: min(92rem, 100%); margin: 0 auto; padding: clamp(1rem, 3vw, 3rem) clamp(1rem, 4vw, 4rem) 5rem; }
+    .masthead {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: end;
+      gap: 1.5rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 3px double var(--ink);
+    }
+    .eyebrow, .folio, th, label, legend, .kicker { font-size: .75rem; font-weight: 720; letter-spacing: .09em; text-transform: uppercase; }
+    .eyebrow { color: var(--rust); margin: 0 0 .25rem; }
+    h1, h2, h3 { font-family: var(--serif); font-weight: 650; line-height: 1.05; letter-spacing: -.025em; }
+    h1 { font-size: clamp(2.35rem, 6vw, 5.5rem); margin: 0 0 -.08em -.04em; }
+    h2 { font-size: clamp(1.85rem, 3.6vw, 3.3rem); margin: 0; }
+    h3 { font-size: 1.35rem; margin: 0; }
+    p { margin: 0; }
+    .night-state { text-align: right; max-width: 22rem; }
+    .night-state strong { display: block; font-family: var(--serif); font-size: 1.45rem; }
+    .signal { display: inline-block; width: .68rem; height: .68rem; margin-right: .45rem; border-radius: 50%; background: var(--green); }
+    .lede { max-width: 66ch; color: var(--muted); margin-top: .65rem; }
+    .workspace { display: grid; grid-template-columns: minmax(0, 2.25fr) minmax(18rem, .75fr); gap: clamp(2rem, 5vw, 5rem); padding-top: clamp(2rem, 5vw, 4.5rem); }
+    .section-head { display: flex; justify-content: space-between; gap: 1rem; align-items: end; margin-bottom: 1.5rem; }
+    .folio { color: var(--muted); }
+    .table-wrap { overflow-x: auto; border-top: 2px solid var(--ink); border-bottom: 1px solid var(--ink); background: color-mix(in oklch, var(--paper) 90%, transparent); }
+    table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    th { color: var(--muted); text-align: left; padding: .75rem .65rem; border-bottom: 1px solid var(--ink); }
+    td { padding: 1rem .65rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+    tr:last-child td { border-bottom: 0; }
+    tbody tr { cursor: pointer; }
+    tbody tr:hover, tbody tr[aria-selected="true"] { background: var(--green-pale); }
+    .run-name { font-family: var(--serif); font-size: 1.08rem; font-weight: 650; }
+    .subtle { color: var(--muted); font-size: .875rem; }
+    .stamp { display: inline-flex; align-items: center; min-height: 1.65rem; padding: .1rem .48rem; border: 1px solid currentColor; border-radius: 999px; font-size: .72rem; font-weight: 750; letter-spacing: .045em; text-transform: uppercase; white-space: nowrap; }
+    .stamp.good { color: var(--green); }
+    .stamp.warn { color: var(--rust); }
+    .rail { border-top: 5px solid var(--ink); padding-top: 1rem; }
+    .rail section + section { border-top: 1px solid var(--line); margin-top: 2rem; padding-top: 1.5rem; }
+    .rail h3 { margin-bottom: .45rem; }
+    .rail-copy { color: var(--muted); font-size: .9rem; margin-bottom: 1rem; }
+    .control-row { display: flex; flex-wrap: wrap; gap: .6rem; }
+    button {
+      border: 1px solid var(--ink);
+      border-radius: 2px;
+      background: var(--paper);
+      color: var(--ink);
+      padding: .62rem .9rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 140ms cubic-bezier(.16, 1, .3, 1), background 140ms ease, color 140ms ease;
+    }
+    button:hover { transform: translateY(-1px); background: var(--paper-deep); }
+    button:active { transform: translateY(1px); }
+    button.primary { background: var(--green); border-color: var(--green); color: var(--paper); }
+    button.rust { color: var(--rust); border-color: var(--rust); }
+    button:disabled { opacity: .46; cursor: not-allowed; transform: none; }
+    .field { display: grid; gap: .3rem; margin-top: .85rem; }
+    input, select { width: 100%; border: 1px solid var(--line); border-radius: 2px; background: color-mix(in oklch, var(--paper) 87%, white); color: var(--ink); padding: .55rem .65rem; }
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+    .notice { margin-top: 1rem; min-height: 1.5rem; color: var(--green); font-weight: 650; }
+    .evidence { grid-column: 1 / -1; margin-top: clamp(2rem, 4vw, 4rem); padding-top: 2rem; border-top: 3px double var(--ink); }
+    .evidence-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(18rem, .7fr); gap: clamp(2rem, 5vw, 5rem); margin-top: 1.5rem; }
+    .finding { display: grid; grid-template-columns: minmax(10rem, .75fr) 2fr; gap: 1.5rem; padding: 1.15rem 0; border-top: 1px solid var(--line); }
+    .finding dt { font-size: .78rem; font-weight: 750; letter-spacing: .07em; text-transform: uppercase; }
+    .finding dd { margin: 0; }
+    .metric { font-family: var(--serif); font-size: 1.4rem; font-variant-numeric: tabular-nums; }
+    details { border-top: 1px solid var(--line); margin-top: 1.25rem; }
+    summary { display: flex; align-items: center; cursor: pointer; font-weight: 700; }
+    pre { overflow: auto; padding: 1rem; background: var(--ink); color: var(--paper); font-size: .78rem; line-height: 1.55; }
+    .approval { background: var(--rust-pale); border-top: 5px solid var(--rust); padding: 1.25rem; align-self: start; }
+    .approval p { margin: .5rem 0 1rem; }
+    .check { display: grid; grid-template-columns: auto 1fr; gap: .6rem; align-items: start; margin-bottom: 1rem; font-size: .9rem; }
+    .check input { width: 1.15rem; min-height: 1.15rem; margin-top: .15rem; }
+    .footnote { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line); color: var(--muted); font-family: var(--serif); font-style: italic; }
+    @media (max-width: 56rem) {
+      .workspace, .evidence-grid { grid-template-columns: 1fr; }
+      .evidence { grid-column: auto; }
+      .rail { order: -1; }
+    }
+    @media (max-width: 38rem) {
+      body { background: repeating-linear-gradient(var(--paper) 0 2.95rem, color-mix(in oklch, var(--line) 34%, var(--paper)) 2.95rem 3rem); }
+      .masthead { grid-template-columns: 1fr; }
+      .night-state { text-align: left; }
+      .two, .finding { grid-template-columns: 1fr; gap: .35rem; }
+      th:nth-child(3), td:nth-child(3) { display: none; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; } }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to research ledger</a>
+  <main class="shell" id="main">
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">Discovery review · 05 September 2026</p>
+        <h1>Morning field notes</h1>
+        <p class="lede">A local record of what ran, what held up, and what still needs proof. Earlier benchmark claims remain historical and unvalidated.</p>
+      </div>
+      <div class="night-state" aria-live="polite">
+        <span class="stamp good"><span class="signal"></span>Run complete</span>
+        <strong>3 of 3 studies finished</strong>
+        <span class="subtle">15 iterations · 13.85 reported total_cost_usd API-equivalent</span>
+      </div>
+    </header>
+
+    <div class="workspace">
+      <section aria-labelledby="ledger-title">
+        <div class="section-head">
+          <div><p class="kicker">Overnight ledger</p><h2 id="ledger-title">Three claims to examine</h2></div>
+          <span class="folio">Page 01</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Study</th><th>Evidence</th><th>Effect</th><th>Use</th></tr></thead>
+            <tbody id="mock-runs">
+              <tr tabindex="0" aria-selected="true" data-run="opf"><td><span class="run-name">Power grid feasibility</span><br><span class="subtle">Astra · 12 seeds</span></td><td><span class="stamp good">Confirmed</span></td><td>+2.6% median</td><td><button class="select-run">Review</button></td></tr>
+              <tr tabindex="0" aria-selected="false" data-run="cvrp"><td><span class="run-name">Rural route allocation</span><br><span class="subtle">Paired · 8 seeds</span></td><td><span class="stamp warn">Needs replication</span></td><td>+0.8% median</td><td><button class="select-run">Review</button></td></tr>
+              <tr tabindex="0" aria-selected="false" data-run="legacy"><td><span class="run-name">Legacy benchmark record</span><br><span class="subtle">Prior pipeline · 1 seed</span></td><td><span class="stamp warn">Unvalidated</span></td><td>Reported +1.3%</td><td><button class="select-run">Review</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <aside class="rail" aria-labelledby="controls-title">
+        <section>
+          <h3 id="controls-title">Night controls</h3>
+          <p class="rail-copy">Pause between safe checkpoints. A running isolated evaluation finishes before the pause takes effect.</p>
+          <div class="control-row"><button class="rust" id="pause">Pause after checkpoint</button><button id="continue" disabled>Continue research</button></div>
+          <p class="notice" id="control-note" role="status"></p>
+        </section>
+        <section>
+          <h3>Tune the next run</h3>
+          <div class="two">
+            <label class="field">Nightly research allowance<input id="budget" type="number" value="90" min="0" max="90" step="1"></label>
+            <label class="field">Duration, minutes<input id="minutes" type="number" value="480" min="15" max="1440" step="15"></label>
+          </div>
+          <label class="field">Provider mode<select id="provider"><option>Balanced trial</option><option>Fable only</option><option>Astra only</option><option>Paired</option></select></label>
+          <button id="save" style="margin-top: 1rem">Save next-night settings</button>
+          <p class="notice" id="save-note" role="status"></p>
+        </section>
+      </aside>
+
+      <section class="evidence" aria-labelledby="evidence-title">
+        <div class="section-head"><div><p class="kicker">Selected evidence</p><h2 id="evidence-title">Power grid feasibility</h2></div><span class="folio">Run 2026-09-05 / OPF</span></div>
+        <div class="evidence-grid">
+          <div>
+            <dl>
+              <div class="finding"><dt>Claim</dt><dd>The candidate reduced the median objective while preserving independent feasibility checks across the confirmation matrix.</dd></div>
+              <div class="finding"><dt>Confirmation</dt><dd><span class="metric">+2.6%</span><br><span class="subtle">12 paired seeds · 0 failures · minimum effect 1.0%</span></dd></div>
+              <div class="finding"><dt>Limits</dt><dd>Measured on the sealed benchmark split. No real-world operating data or deployment behavior was tested.</dd></div>
+              <div class="finding"><dt>Candidate</dt><dd><code>problems/pglib_opf/candidates/solver.py</code><br><span class="subtle">SHA-256 · f3b9…61a2</span></dd></div>
+            </dl>
+            <details>
+              <summary>Technical evidence and raw record</summary>
+              <pre>{
+  "confirmed": true,
+  "publishable": true,
+  "confirmation": {
+    "median_gain": 0.026,
+    "seeds": 12,
+    "failures": 0
+  }
+}</pre>
+            </details>
+          </div>
+          <aside class="approval">
+            <p class="kicker">Local release gate</p>
+            <h3>Queue this exact result</h3>
+            <p>This records approval for the candidate and evidence hashes shown here. Publication remains a separate action.</p>
+            <label class="check"><input id="approval-check" type="checkbox"><span>I reviewed the evidence and understand this does not publish anything.</span></label>
+            <button class="primary" id="approve" disabled>Queue local release approval</button>
+            <p class="notice" id="approval-note" role="status"></p>
+          </aside>
+        </div>
+      </section>
+    </div>
+    <p class="footnote">Only confirmed, publishable evidence can enter the local release queue. Files are re-hashed when approval is recorded.</p>
+  </main>
+  <script>
+    const pause = document.querySelector('#pause');
+    const resume = document.querySelector('#continue');
+    const controlNote = document.querySelector('#control-note');
+    pause.addEventListener('click', () => { pause.disabled = true; resume.disabled = false; controlNote.textContent = 'Pause requested for the next checkpoint.'; });
+    resume.addEventListener('click', () => { pause.disabled = false; resume.disabled = true; controlNote.textContent = 'Research can continue at the next checkpoint.'; });
+    document.querySelector('#save').addEventListener('click', () => { document.querySelector('#save-note').textContent = `Saved ${document.querySelector('#budget').value} allowance units, ${document.querySelector('#minutes').value} minutes, ${document.querySelector('#provider').value.toLowerCase()}.`; });
+    const check = document.querySelector('#approval-check');
+    const approve = document.querySelector('#approve');
+    check.addEventListener('change', () => { approve.disabled = !check.checked; });
+    approve.addEventListener('click', () => { approve.disabled = true; check.disabled = true; document.querySelector('#approval-note').textContent = 'Approval queued locally. No publication occurred.'; });
+    document.querySelectorAll('.select-run').forEach((button) => button.addEventListener('click', () => {
+      document.querySelectorAll('#mock-runs tr').forEach((row) => row.setAttribute('aria-selected', String(row.contains(button))));
+      document.querySelector('#evidence-title').textContent = button.closest('tr').querySelector('.run-name').textContent;
+      document.querySelector('.evidence').scrollIntoView({ behavior: 'smooth' });
+    }));
+  </script>
+</body>
+</html>

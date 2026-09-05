@@ -1,0 +1,4 @@
+highspy==1.15.1
+numpy==2.4.6
+PYPOWER==5.1.21
+scipy==1.17.0

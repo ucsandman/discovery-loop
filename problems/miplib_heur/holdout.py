@@ -15,8 +15,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-sys.path.insert(0, HERE)
-import problem  # noqa: E402
+sys.path.insert(0, ROOT)
+from problems.miplib_heur import problem  # noqa: E402
 
 
 def run(solver, t, secs, seed, out):

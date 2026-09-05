@@ -13,15 +13,20 @@ import os
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, HERE)
-import records  # noqa: E402
-import verify  # noqa: E402
+if __package__:
+    from . import records, verify
+else:
+    sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
+    from problems.miplib_heur import records, verify
 
 TITLE = "MIPLIB 2017 primal heuristic vs HiGHS default (60 s)"
 _BASE = json.load(open(records.BASELINE)) if os.path.exists(records.BASELINE) else {}
 _TABLE = records.benchmark_table() if os.path.exists(records.TABLE) else {}
 TARGETS = sorted(k for k, v in _BASE.items() if v.get("set") == "train")
 HOLDOUT = sorted(k for k, v in _BASE.items() if v.get("set") == "holdout")
+DEVELOPMENT = TARGETS
+VALIDATION = HOLDOUT
+RELEASE_HOLDOUT = []
 
 
 def _desc(name):
@@ -44,6 +49,8 @@ DEFAULTS = {"time": 60, "workers": 3}
 MAXIMIZE = False
 FAIL_SCORE = -1.0  # added to the champion total directly (score space), so a failed target costs a 100% gap
 WIN_MARGIN = 1e-4  # gap must improve on HiGHS default by 0.01% of the objective to count (timing noise floor)
+RELEASE_FEASIBILITY_TOL = 1e-8
+RELEASE_VALIDATION_SUPPORTED = True
 
 
 def records_fetch():
@@ -77,6 +84,38 @@ def better(a, b):
 
 def beats(v, rec):
     return v < (rec - WIN_MARGIN if rec is not None else 1e9)
+
+
+def validate_release(path, t, *, record=None):
+    try:
+        d = json.load(open(path))
+        if d.get("target", t) != t:
+            raise ValueError(f"candidate target {d.get('target')!r} does not match {t!r}")
+        result = verify.check(d["solution"], t, tol=RELEASE_FEASIBILITY_TOL)
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+        return {"ok": False, "supported": True, "error": f"invalid candidate: {exc}", "metrics": {}}
+    reference = records_load().get(t) if record is None else record
+    metrics = {
+        "objective": result["obj"],
+        "gap": result["gap"],
+        "historical_baseline_gap": reference,
+        "bound_violation": result["bound_viol"],
+        "integrality_violation": result["int_viol"],
+        "row_violation": result["row_viol"],
+        "feasibility_tolerance": RELEASE_FEASIBILITY_TOL,
+        "validation_count": len(VALIDATION),
+        "release_holdout_count": 0,
+        "claim_scope": "feasible_benchmark_solution",
+        "warning": "stored baseline is historical; superiority requires a fresh paired worker baseline",
+    }
+    if not result["feasible"]:
+        return {
+            "ok": False,
+            "supported": True,
+            "error": "candidate fails strict original-MPS verification",
+            "metrics": metrics,
+        }
+    return {"ok": True, "supported": True, "error": None, "metrics": metrics}
 
 
 def raw_path(t, best):
@@ -117,6 +156,15 @@ INTERFACE CONTRACT (keep exactly):
 
 INSTANCE NOTES (train set):
 """ + "\n".join(f"  {k}: {v}" for k, v in INFO.items())
+
+
+def prompt_for_targets(targets):
+    unknown = sorted(set(targets) - set(DEVELOPMENT))
+    if unknown:
+        raise ValueError(f"generation prompt requested non-development target(s): {unknown}")
+    head = PROMPT.split("INSTANCE NOTES (train set):\n", 1)[0] + "INSTANCE NOTES (development set):\n"
+    return head + "\n".join(f"  {name}: {INFO[name]}" for name in targets)
+
 
 TASK = """TASK: write a complete replacement solver.py that reaches a smaller primal gap on as many targets as possible within 60 s
 (champion total is minus the sum of gaps over the train set). Make one substantive algorithmic improvement (or a coherent
