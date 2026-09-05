@@ -16,3 +16,5 @@
 - Subscription limits must stop work, not burn the remaining allowance on repeated rejections. Provider-limit errors are sanitized and stop the affected research invocation without API fallback.
 - A mutable Docker tag could change the worker between paired evaluations. Each experiment now resolves and records an immutable image ID and uses it throughout the comparison and resume.
 - The mobile empty state fit, but real evidence expanded the grid to 622px on a 390px screen. Zero-minimum grid tracks and children now contain the table scroll area; populated mobile rendering measured 390px with no page overflow.
+- The release hook identified obsolete runner code and dynamically dispatched HTTP/pytest names. Removed the obsolete runner and unused send options; the existing whitelist now names only verified dynamic entry points. Existing test assertions were preserved.
+- A review button originally saved a request with no worker consuming it. It now explicitly marks a human-review bookmark, shows that state persistently, and includes the selected problem in the morning report without implying an extra model run.
