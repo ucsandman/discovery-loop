@@ -104,7 +104,8 @@ def _resolved_command(command):
     else:
         resolved = shutil.which(executable)
     if not resolved:
-        raise OSError(f"{executable} executable not found")
+        # Let the subprocess boundary report a missing executable consistently.
+        return list(command)
     if os.name == "nt" and Path(resolved).suffix.lower() in (".cmd", ".bat"):
         return [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/s", "/c", resolved, *command[1:]]
     return [resolved, *command[1:]]

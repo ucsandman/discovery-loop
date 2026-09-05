@@ -46,3 +46,6 @@ _.publish_slot
 _.official_solution_path
 # pytest invokes this autouse fixture by registration.
 _.subscription_auth
+# Canonical provider API callers may be outside an incremental staged-file scan.
+_.preflight
+_.call_model
