@@ -1,67 +1,67 @@
 {
  "pglib_opf_case3_lmbd": {
-  "value": 5812.623287779303,
-  "iter": 6,
+  "value": 5812.62321118076,
+  "iter": 8,
   "record": 5812.6
  },
  "pglib_opf_case5_pjm": {
-  "value": 17551.871728938975,
-  "iter": 6,
+  "value": 17551.87167107383,
+  "iter": 8,
   "record": 17552.0
  },
  "pglib_opf_case14_ieee": {
-  "value": 2178.063659872662,
-  "iter": 6,
+  "value": 2178.063590726099,
+  "iter": 8,
   "record": 2178.1
  },
  "pglib_opf_case24_ieee_rts": {
-  "value": 63351.974100018335,
-  "iter": 6,
+  "value": 63351.97323382149,
+  "iter": 8,
   "record": 63352.0
  },
  "pglib_opf_case30_as": {
-  "value": 803.116349533954,
-  "iter": 6,
+  "value": 803.1163000499258,
+  "iter": 8,
   "record": 803.13
  },
  "pglib_opf_case30_ieee": {
-  "value": 8208.347701371331,
-  "iter": 6,
+  "value": 8208.34710189762,
+  "iter": 8,
   "record": 8208.5
  },
  "pglib_opf_case39_epri": {
-  "value": 138415.41947335223,
-  "iter": 6,
+  "value": 138415.41904005606,
+  "iter": 8,
   "record": 138420.0
  },
  "pglib_opf_case57_ieee": {
-  "value": 37589.11423365839,
-  "iter": 6,
+  "value": 37589.113456432475,
+  "iter": 8,
   "record": 37589.0
  },
  "pglib_opf_case60_c": {
-  "value": 92693.58218638359,
-  "iter": 6,
+  "value": 92693.58192208428,
+  "iter": 8,
   "record": 92694.0
  },
  "pglib_opf_case73_ieee_rts": {
-  "value": 189763.39080869933,
-  "iter": 6,
+  "value": 189763.38872606715,
+  "iter": 8,
   "record": 189760.0
  },
  "pglib_opf_case89_pegase": {
-  "value": 107285.42659064606,
-  "iter": 6,
+  "value": 107285.42575908056,
+  "iter": 8,
   "record": 107290.0
  },
  "pglib_opf_case118_ieee": {
-  "value": 97213.1165737466,
-  "iter": 6,
+  "value": 97213.11509388537,
+  "iter": 8,
   "record": 97214.0
  },
  "pglib_opf_case162_ieee_dtc": {
-  "value": 108074.76439545989,
-  "iter": 6,
+  "value": 108074.76158563816,
+  "iter": 8,
   "record": 108080.0
  },
  "pglib_opf_case179_goc": {
@@ -70,13 +70,13 @@
   "record": 754270.0
  },
  "pglib_opf_case197_snem": {
-  "value": 1.497104656292309,
-  "iter": 6,
+  "value": 1.49709077124821,
+  "iter": 8,
   "record": 1.5017
  },
  "pglib_opf_case200_activ": {
-  "value": 27557.390063250652,
-  "iter": 6,
+  "value": 27557.389312507737,
+  "iter": 8,
   "record": 27558.0
  },
  "pglib_opf_case240_pserc": {
@@ -85,13 +85,13 @@
   "record": 3329700.0
  },
  "pglib_opf_case300_ieee": {
-  "value": 565205.3047449737,
-  "iter": 6,
+  "value": 565205.2601595528,
+  "iter": 8,
   "record": 565220.0
  },
  "pglib_opf_case500_goc": {
-  "value": 454943.3031186501,
-  "iter": 6,
+  "value": 454943.2950372829,
+  "iter": 8,
   "record": 454950.0
  },
  "pglib_opf_case588_sdet": {
@@ -100,8 +100,8 @@
   "record": 313140.0
  },
  "pglib_opf_case793_goc": {
-  "value": 260196.88156514804,
-  "iter": 6,
+  "value": 260196.8786457022,
+  "iter": 8,
   "record": 260200.0
  }
 }

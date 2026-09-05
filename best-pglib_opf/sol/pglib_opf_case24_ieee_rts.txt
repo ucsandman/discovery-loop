@@ -1,5 +1,5 @@
 # Wes Sander, MoltFire
-pglib_opf_case24_ieee_rts: AC-OPF objective 63351.974100 $/h (verified feasible at 1e-06 pu)
+pglib_opf_case24_ieee_rts: AC-OPF objective 63351.973234 $/h (verified feasible at 1e-06 pu)
 
 gen  bus  Pg[MW]  Qg[MVAr]
   0    1    15.9999     4.3517

@@ -1,17 +1,21 @@
-"""AC-OPF solver: PIPS interior point + basin-hopping multi-start + continuation restarts + dual-guided margin polish.
+"""AC-OPF solver: PIPS interior point + basin-hopping multi-start + continuation restarts + cost-scale path
+diversification + dual-guided margin polish.
 
 Phase 1: PIPS from the file's start point, a flat start and a DC-OPF start; Newton power-flow polish; if the
 independent verifier rejects the point at 1e-6, first re-solve with tight (1e-9) interior-point tolerances, then
 warm re-solve with ONLY the near-binding constraints tightened.
 Phase 2: until the time budget, restart PIPS from (a) Latin-hypercube samples over generator voltage set-points and
 dispatch, (b) small/large perturbations of the incumbent (basin hopping with adaptive step), (c) dispatch corners
-(random subsets of generators pinned to Pmin/Pmax), and (d) continuation paths (relax-then-tighten limits, load
-ramp, re-weighted cost).
+(random subsets of generators pinned to Pmin/Pmax), (d) continuation paths (relax-then-tighten limits, load
+ramp, re-weighted cost) and (e) COST-SCALE PATH DIVERSIFICATION: the same problem with all cost curves multiplied
+by 10^u, u in [-3, 3] (identical optimum set, different interior-point central path), followed by a true-cost
+re-solve from the point reached.
 Every new incumbent gets a high-precision PIPS polish followed by a DUAL-GUIDED MARGIN POLISH: the same basin is
 re-solved with all inequality limits relaxed by a margin m < 1e-6 (the checker's tolerance) and every nodal P/Q
 load shifted by m in the direction the nodal multipliers LAM_P / LAM_Q say lowers cost, on an ASCENDING,
-warm-started ladder of m up to 9.95e-7; only points the verifier accepts are ever kept.  Best verified solution
-is saved atomically on every improvement.
+warm-started ladder of m up to 9.98e-7, topped by cheap warm-started Newton power-flow rungs at 9.99e-7 and
+9.995e-7; only points the verifier accepts are ever kept.  Best verified solution is saved atomically on every
+improvement.
 
     python solver.py --target pglib_opf_case14_ieee --time 60 --seed 1 --out sol.json
 """
@@ -37,7 +41,8 @@ from pypower.idx_brch import F_BUS, T_BUS, RATE_A, ANGMIN, ANGMAX, PF, QF, PT, Q
 
 np.seterr(all="ignore")
 
-MARGINS = (4e-7, 7e-7, 8.8e-7, 9.6e-7, 9.9e-7, 9.95e-7)  # ascending ladder, all strictly below the 1e-6 tolerance
+MARGINS = (4e-7, 7e-7, 8.8e-7, 9.6e-7, 9.9e-7, 9.95e-7, 9.98e-7)  # ascending interior-point ladder, all < 1e-6
+PF_MARGINS = (9.99e-7, 9.995e-7)  # Newton power-flow rungs on top of the ladder
 
 
 # ----------------------------------------------------------------------------------------------------- case handling
@@ -195,6 +200,20 @@ def perturbed_cost(ppc, rng, sigma):
     return p
 
 
+def scaled_cost(ppc, fac):
+    """Uniformly scale every cost curve by fac: same optimum set, different interior-point central path."""
+    p = cp(ppc)
+    gc = p["gencost"]
+    for i in range(gc.shape[0]):
+        model = int(gc[i, 0])
+        nc = int(gc[i, 3])
+        if model == 2 and gc.shape[1] >= 4 + nc:
+            gc[i, 4 : 4 + nc] *= fac
+        elif model == 1 and gc.shape[1] >= 4 + 2 * nc:
+            gc[i, 5 : 4 + 2 * nc : 2] *= fac
+    return p
+
+
 # ----------------------------------------------------------------------------------------------------------- solving
 def pips(ppc, max_it, feastol=1e-7, gradtol=1e-6, comptol=1e-6, costtol=1e-6):
     """PIPS OPF then a Newton power-flow polish (nodal balance to 1e-10, Pg and gen-bus Vm kept => cost unchanged).
@@ -240,6 +259,18 @@ def pips(ppc, max_it, feastol=1e-7, gradtol=1e-6, comptol=1e-6, costtol=1e-6):
 
 def pips_tight(ppc, max_it):
     return pips(ppc, max_it, feastol=1e-9, gradtol=1e-8, comptol=1e-9, costtol=1e-10)
+
+
+def newton_pf(ppc):
+    """Plain Newton power flow of ppc from its own start point (Pg and gen voltages kept); None on failure."""
+    try:
+        with redirect_stdout(sys.stderr):
+            pf, ok = runpf(ppc, ppoption(VERBOSE=0, OUT_ALL=0, PF_TOL=1e-10, PF_MAX_IT=30, ENFORCE_Q_LIMS=0))
+    except Exception:
+        return None
+    if not ok:
+        return None
+    return pf
 
 
 def extract(r):
@@ -419,6 +450,18 @@ def main():
             r = r2
         return None
 
+    def pf_rung(m, sp, sq, prev):
+        """Newton power-flow rung of the margined ladder: nodal balance at exactly margin m, dispatch of prev kept
+        (only the slack absorbs the tiny load change); accepted only if the verifier passes it."""
+        pf = newton_pf(warm(margined(ppc, m, sp, sq), prev))
+        if pf is None:
+            return None
+        pf["lam_p"] = prev.get("lam_p")
+        pf["lam_q"] = prev.get("lam_q")
+        if check(pf, True) is None:
+            return None
+        return pf
+
     def margin_polish(dirs_from=None):
         """Ascending, warm-started ladder of margined re-solves of the incumbent's basin; loads are shifted in the
         direction the nodal multipliers of dirs_from (default: the incumbent) indicate; keep only verified points."""
@@ -443,6 +486,13 @@ def main():
                 fails += 1
                 if fails >= 2:
                     break
+        if prev is not base_r:
+            for m in PF_MARGINS:
+                if time.time() > deadline:
+                    break
+                r = pf_rung(m, sp, sq, prev)
+                if r is not None:
+                    prev = r
         margin_done[0] = best
 
     def polish():
@@ -482,8 +532,18 @@ def main():
             return None
         return attempt(warm(ppc, r), max_it)
 
+    def scale_attempt(start, max_it):
+        """Cost-scale path diversification: solve with all costs scaled by 10^u (same optimum set, different
+        central path), check the point reached, then re-solve the true problem from it."""
+        fac = float(10.0 ** rng.uniform(-3.0, 3.0))
+        r = pips(warm(scaled_cost(ppc, fac), start), max_it)
+        if r is None or time.time() > deadline:
+            return None
+        check(r)
+        return attempt(warm(ppc, r), max_it)
+
     # Phase 1: file start, flat start, DC-OPF start, then precision + margin polish
-    est = {"single": 0.0, "cont": 0.0}
+    est = {"single": 0.0, "cont": 0.0, "scale": 0.0}
     ts = time.time()
     attempt(ppc, 500)
     est["single"] = max(est["single"], time.time() - ts)
@@ -503,7 +563,7 @@ def main():
         if best is not None and (before is None or best < before - 1e-9):
             polish()
 
-    # Phase 2: continuation restarts + basin hopping + dispatch corners + LHS restarts
+    # Phase 2: continuation restarts + basin hopping + dispatch corners + LHS restarts + cost-scale paths
     non = int((ppc["gen"][:, GEN_STATUS] > 0).sum())
     try:
         from scipy.stats import qmc
@@ -513,20 +573,23 @@ def main():
         lhs = rng.random((128, 2 * non))
     k_lhs = 0
     k_cont = 0
+    k_scale = 0
     tries = 0
     stagnant = 0
     hop_scale = 0.25
-    schedule = ["cont", "small", "lhs", "corner", "cont", "small", "large", "corner"]
+    schedule = ["cont", "small", "lhs", "scale", "corner", "cont", "small", "scale", "large", "corner"]
     while True:
         mode = schedule[tries % len(schedule)]
         if best_r is None:
             mode = "large"
         if mode == "cont":
             need = est["cont"] if est["cont"] > 0 else 4.0 * est["single"]
+        elif mode == "scale":
+            need = est["scale"] if est["scale"] > 0 else 2.5 * est["single"]
         else:
             need = est["single"]
         if time.time() + 1.3 * need + 1.0 > deadline:
-            if mode == "cont" and time.time() + 1.3 * est["single"] + 1.0 < deadline:
+            if mode in ("cont", "scale") and time.time() + 1.3 * est["single"] + 1.0 < deadline:
                 mode = "small"
             else:
                 break
@@ -537,6 +600,15 @@ def main():
             cont_attempt(k_cont % 3, 250)
             k_cont += 1
             est["cont"] = max(est["cont"], time.time() - ts)
+        elif mode == "scale":
+            if k_scale % 2 == 0:
+                start = perturb(ppc, best_r, rng, max(hop_scale, 0.3))
+            else:
+                start = lhs_start(ppc, lhs[k_lhs % len(lhs)])
+                k_lhs += 1
+            k_scale += 1
+            scale_attempt(start, 250)
+            est["scale"] = max(est["scale"], time.time() - ts)
         else:
             if best_r is None:
                 p = perturb(ppc, None, rng, 1.0 if tries % 4 else 2.5)

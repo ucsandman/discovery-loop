@@ -1,5 +1,5 @@
 # Wes Sander, MoltFire
-pglib_opf_case5_pjm: AC-OPF objective 17551.871729 $/h (verified feasible at 1e-06 pu)
+pglib_opf_case5_pjm: AC-OPF objective 17551.871671 $/h (verified feasible at 1e-06 pu)
 
 gen  bus  Pg[MW]  Qg[MVAr]
   0    1    40.0001    30.0001

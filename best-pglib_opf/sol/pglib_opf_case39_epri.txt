@@ -1,5 +1,5 @@
 # Wes Sander, MoltFire
-pglib_opf_case39_epri: AC-OPF objective 138415.419473 $/h (verified feasible at 1e-06 pu)
+pglib_opf_case39_epri: AC-OPF objective 138415.419040 $/h (verified feasible at 1e-06 pu)
 
 gen  bus  Pg[MW]  Qg[MVAr]
   0   30   889.0445   139.9999
