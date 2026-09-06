@@ -25,6 +25,41 @@ LOCK = ROOT / "runs" / "night.lock"
 SUCCESS_STATUSES = {"completed"}
 
 
+def limit_cpu(fraction=0.5):
+    """Pin this process (and every child it spawns) to a fraction of the logical CPUs at below-normal priority.
+
+    Two hard power-offs on 2026-09-05 happened while the night ran all-core alongside a game and coding agents.
+    Solvers and CLIs inherit the affinity mask and priority class, so the whole night stays under the cap.
+    Returns a small record for the status file; never raises.
+    """
+    total = os.cpu_count() or 1
+    allowed = max(1, int(total * fraction))
+    record = {"logical_cpus": total, "allowed_cpus": allowed, "fraction": fraction, "applied": False}
+    try:
+        if os.name == "nt":
+            import ctypes
+
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+            kernel32.SetProcessAffinityMask.argtypes = (ctypes.c_void_p, ctypes.c_size_t)
+            kernel32.SetProcessAffinityMask.restype = ctypes.c_int
+            kernel32.SetPriorityClass.argtypes = (ctypes.c_void_p, ctypes.c_uint32)
+            kernel32.SetPriorityClass.restype = ctypes.c_int
+            handle = kernel32.GetCurrentProcess()
+            mask = (1 << allowed) - 1
+            record["applied"] = bool(kernel32.SetProcessAffinityMask(handle, mask))
+            if not record["applied"]:
+                record["error"] = f"SetProcessAffinityMask failed: {ctypes.get_last_error()}"
+            kernel32.SetPriorityClass(handle, 0x00004000)  # BELOW_NORMAL_PRIORITY_CLASS
+        elif hasattr(os, "sched_setaffinity"):
+            os.sched_setaffinity(0, set(range(allowed)))
+            os.nice(5)
+            record["applied"] = True
+    except (OSError, AttributeError, ValueError) as exc:
+        record["error"] = str(exc)[:200]
+    return record
+
+
 def layout(problem):
     suf = "" if problem == "circle_packing" else "-" + problem
     return os.path.join(HERE, "best" + suf), os.path.join(HERE, "runs" + suf)
@@ -286,6 +321,8 @@ def _research_command(slot, run_id, ledger_path, evidence_root, minutes):
         str(slot.get("workers", 1)),
         "--wall-minutes",
         str(max(0.01, minutes)),
+        "--max-generation-failures",
+        str(slot.get("max_generation_failures", 2)),
         "--no-publish",
     ]
     if slot["kind"] == "validation":
@@ -560,6 +597,10 @@ def main():
     if not evidence_root.is_absolute():
         evidence_root = ROOT / evidence_root
     resume = a.resume or (a.scheduled and (evidence_root / run_id / "night.json").is_file())
+    cpu_limit = None
+    if not a.dry_run:
+        cpu_limit = limit_cpu(float(config["night"].get("cpu_fraction", 0.5)))
+        os.environ["DISCOVERY_CPU_LIMIT"] = json.dumps(cpu_limit)
     status = run_night(
         config,
         run_id,
@@ -567,6 +608,8 @@ def main():
         dry_run=a.dry_run,
         deadline_cap=deadline_cap,
     )
+    if cpu_limit is not None and isinstance(status, dict):
+        status["cpu_limit"] = cpu_limit
     print(json.dumps(status, indent=2))
     return 0 if a.dry_run or status.get("status") == "completed" else 1
 

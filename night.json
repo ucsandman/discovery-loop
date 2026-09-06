@@ -6,6 +6,7 @@
     "budget_accounting": "reported_total_cost_usd API-equivalent; monthly subscription CLIs only",
     "provider_caps_usd": {"fable": 40.0, "astra": 40.0, "paired": 40.0},
     "heartbeat_seconds": 15,
+    "cpu_fraction": 0.5,
     "evidence_root": "runs/research"
   },
   "trial": {

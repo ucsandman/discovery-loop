@@ -9,6 +9,7 @@ import shutil
 import signal
 import subprocess
 import tempfile
+import time
 
 
 DEFAULT_MODELS = {"fable": "claude-fable-5-1", "astra": "gpt-6-astra"}
@@ -133,6 +134,43 @@ def _run_cli(command, *, prompt, cwd, env, timeout):
         process.communicate()
         raise ProviderTimeout from None
     return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
+
+
+DIAGNOSTICS_DIR = Path(__file__).resolve().parent / "runs" / "provider-diagnostics"
+
+
+def _write_diagnostic(provider, completed, limit=4000):
+    """Keep the CLI's stderr/stdout tail on disk for a failed call.
+
+    The error string stays concise and private; this file is the place to look
+    when a night reports "exited with status 1" (2026-09-05 lost three failures
+    with no captured cause).  Returns the file path, or None when nothing was
+    captured or the write failed.
+    """
+    stderr = (completed.stderr or "")[-limit:]
+    stdout = (completed.stdout or "")[-limit:]
+    if not stderr.strip() and not stdout.strip():
+        return None
+    try:
+        DIAGNOSTICS_DIR.mkdir(parents=True, exist_ok=True)
+        stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
+        path = DIAGNOSTICS_DIR / f"{stamp}-{provider}-{os.getpid()}-{_diagnostic_counter()}.txt"
+        path.write_text(
+            f"provider: {provider}\nreturncode: {completed.returncode}\n\n--- stderr (tail) ---\n{stderr}\n\n--- stdout (tail) ---\n{stdout}\n",
+            encoding="utf-8",
+        )
+        return str(path)
+    except OSError:
+        return None
+
+
+_DIAGNOSTIC_SEQUENCE = 0
+
+
+def _diagnostic_counter():
+    global _DIAGNOSTIC_SEQUENCE
+    _DIAGNOSTIC_SEQUENCE += 1
+    return _DIAGNOSTIC_SEQUENCE
 
 
 def _run_auth_command(command, provider):
@@ -442,6 +480,8 @@ def call_model(prompt, provider="fable", model=None, timeout=900, max_cost=2.0, 
             parsed = _parse_fable(completed) if provider == "fable" else _parse_astra(completed)
             text, code, idea, cost, usage, error = parsed
             result.update(text=text, code=code, idea=idea, cost=cost, usage=usage, error=error)
+            if error:
+                result["diagnostic_path"] = _write_diagnostic(provider, completed)
             if error and re.search(
                 r"usage[_ ]limit|rate[_ ]limit|quota[_ ]exceeded|insufficient_quota",
                 completed.stdout + completed.stderr,

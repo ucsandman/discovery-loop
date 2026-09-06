@@ -577,6 +577,7 @@ def run_research(
     paused_fn=None,
     targets=None,
     refresh_records=False,
+    max_generation_failures=2,
 ):
     """Run isolated discovery and write reviewable evidence without publishing.
 
@@ -604,6 +605,12 @@ def run_research(
         raise ValueError("generation requires positive call and invocation budgets")
     if isinstance(seed_count, bool) or not isinstance(seed_count, int) or seed_count < 1:
         raise ValueError("seed_count must be a positive integer")
+    if (
+        isinstance(max_generation_failures, bool)
+        or not isinstance(max_generation_failures, int)
+        or max_generation_failures < 0
+    ):
+        raise ValueError("max_generation_failures must be a non-negative integer (0 disables)")
     root = os.path.abspath(root or HERE)
     if deadline is not None and (
         isinstance(deadline, bool) or not isinstance(deadline, (int, float)) or not math.isfinite(deadline)
@@ -737,6 +744,7 @@ def run_research(
     development_matrix = []
     incumbent_rows = []
     generation_stop = None
+    consecutive_generation_failures = 0
     started_at = _utc_now()
     state = {
         "run_id": run_id,
@@ -845,15 +853,18 @@ def run_research(
                     "idea": response.get("idea") or "",
                     "model": response.get("model"),
                     "generation_error": response.get("error"),
+                    "generation_diagnostic": response.get("diagnostic_path"),
                 }
                 code = response.get("code")
                 if response.get("error") or not code:
+                    consecutive_generation_failures += 1
                     record.update(status="generation_failed", median_gain=None)
                     history_entry = _history_entry(record, run_id, hidden_targets)
                     append_event(development_history_path, history_entry)
                     development_history.append(history_entry)
                     candidate_records.append(record)
                     continue
+                consecutive_generation_failures = 0
                 candidate_dir = os.path.join(run_dir, "candidates", f"iter{iteration:03d}-{name}")
                 os.makedirs(candidate_dir, exist_ok=True)
                 candidate_path = os.path.join(candidate_dir, "solver.py")
@@ -925,6 +936,15 @@ def run_research(
                 updated_at=_utc_now(),
             )
             atomic_json(run_path, state)
+            if max_generation_failures and consecutive_generation_failures >= max_generation_failures:
+                # Stop burning subscription quota on a provider that keeps failing
+                # (2026-09-05: three "exited with status 1" calls in a row before the crash).
+                generation_stop = {
+                    "reason": "generation_failures",
+                    "consecutive_failures": consecutive_generation_failures,
+                    "limit": max_generation_failures,
+                }
+                break
 
         eligible = [record for record in candidate_records if record.get("status") == "promising"]
         best = max(eligible, key=lambda record: record["median_gain"], default=None)
@@ -1347,6 +1367,12 @@ def cli_main(argv=None):
     parser.add_argument("--eval-only", action="store_true")
     parser.add_argument("--refresh-records", action="store_true")
     parser.add_argument(
+        "--max-generation-failures",
+        type=int,
+        default=2,
+        help="stop generating after this many consecutive provider failures; 0 disables",
+    )
+    parser.add_argument(
         "--no-publish",
         action="store_true",
         help="compatibility flag; research runs always stop at local evidence",
@@ -1379,6 +1405,7 @@ def cli_main(argv=None):
         deadline=deadline,
         targets=args.targets.split(",") if args.targets else None,
         refresh_records=args.refresh_records,
+        max_generation_failures=args.max_generation_failures,
     )
     print(json.dumps({key: evidence.get(key) for key in ("run_id", "problem", "status", "confirmed", "publishable")}))
     return 0 if evidence["status"] in ("completed", "partial") else 1

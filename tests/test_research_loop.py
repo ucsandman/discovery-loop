@@ -11,9 +11,9 @@ from research_state import BudgetLedger
 
 class FakeProblem:
     TARGETS = ["dev", "validation"]
-    DEVELOPMENT_TARGETS = ["dev"]
-    VALIDATION_TARGETS = ["validation"]
-    HOLDOUT = ["holdout"]
+    DEVELOPMENT_TARGETS = ["dev"]  # noqa: vulture (read by loop.py via the plugin)
+    VALIDATION_TARGETS = ["validation"]  # noqa: vulture
+    HOLDOUT = ["holdout"]  # noqa: vulture
     DEFAULTS = {"time": 1, "workers": 2}
     FAIL_SCORE = -100.0
     PROMPT = "legacy prompt"
@@ -477,3 +477,50 @@ def test_eval_only_run_accepts_zero_ledger_without_model_call(tmp_path):
     assert evidence["status"] == "completed"
     assert evidence["usage"]["calls"] == 0
     assert evidence["solver_evaluations"] == 1
+
+
+def test_consecutive_generation_failures_stop_the_run(tmp_path):
+    _fixture_root(tmp_path)
+    calls = []
+
+    def failed_call(_prompt, provider, max_cost, ledger, purpose, **_kwargs):
+        calls.append(purpose)
+        reservation = ledger.reserve(max_cost, f"{provider}:{purpose}")
+        ledger.settle(reservation, cost=0.1)
+        return {
+            "text": "",
+            "code": None,
+            "idea": None,
+            "provider": provider,
+            "model": provider + "-model",
+            "cost": 0.1,
+            "usage": {},
+            "error": "provider failed",
+            "diagnostic_path": "runs/provider-diagnostics/example.txt",
+        }
+
+    evidence = loop.run_research(
+        "fake",
+        provider="fable",
+        run_id="failure-stop",
+        call_budget=0.5,
+        seed_count=2,
+        min_effect=0.1,
+        evidence_root=tmp_path / "runs" / "research",
+        iters=10,
+        invocation_budget=20.0,
+        root=tmp_path,
+        problem_module=FakeProblem,
+        call_model_fn=failed_call,
+        solver_runner=_runner,
+        ledger=BudgetLedger(tmp_path / "ledger.json", 20.0),
+        paused_fn=lambda _root: False,
+        max_generation_failures=2,
+    )
+    assert evidence["status"] == "partial"
+    assert calls == ["generation", "generation"]
+    assert evidence["generation_stop"]["reason"] == "generation_failures"
+    assert evidence["generation_stop"]["consecutive_failures"] == 2
+    candidates = evidence["development"]["candidates"]
+    assert len(candidates) == 2
+    assert candidates[0]["generation_diagnostic"] == "runs/provider-diagnostics/example.txt"
