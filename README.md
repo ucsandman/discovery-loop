@@ -9,6 +9,7 @@
 ![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![Docker workers](https://img.shields.io/badge/Workers-Docker-2496ED?logo=docker&logoColor=white)
 ![Subscription CLI](https://img.shields.io/badge/Models-Subscription_CLI-526B4E)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
 [Paper](https://arxiv.org/abs/2609.05093) · [Quick start](#developer-setup) · [How it works](#how-an-experiment-works) · [Results](#published-result-circle-packing) · [Nightly routine](#nightly-integration) · [Documentation](docs/README.md) · [Contributing](CONTRIBUTING.md)
 
@@ -227,3 +228,7 @@ If you use Discovery Loop or its results, please cite the paper:
 ```
 
 GitHub's "Cite this repository" widget reads [`CITATION.cff`](CITATION.cff).
+
+## License
+
+Released under the [MIT License](LICENSE). The paper (arXiv:2609.05093) is separately licensed CC BY 4.0.
