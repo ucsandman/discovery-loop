@@ -4,14 +4,17 @@
 
 **A local optimization research lab powered by Fable and Astra.**
 
+[![arXiv 2609.05093](https://img.shields.io/badge/arXiv-2609.05093-b31b1b?logo=arxiv&logoColor=white)](https://arxiv.org/abs/2609.05093)
 [![Verify research pipeline](https://github.com/ucsandman/discovery-loop/actions/workflows/verify.yml/badge.svg)](https://github.com/ucsandman/discovery-loop/actions/workflows/verify.yml)
 ![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![Docker workers](https://img.shields.io/badge/Workers-Docker-2496ED?logo=docker&logoColor=white)
 ![Subscription CLI](https://img.shields.io/badge/Models-Subscription_CLI-526B4E)
 
-[Quick start](#developer-setup) · [How it works](#how-an-experiment-works) · [Nightly routine](#nightly-integration) · [Documentation](docs/README.md) · [Contributing](CONTRIBUTING.md)
+[Paper](https://arxiv.org/abs/2609.05093) · [Quick start](#developer-setup) · [How it works](#how-an-experiment-works) · [Results](#published-result-circle-packing) · [Nightly routine](#nightly-integration) · [Documentation](docs/README.md) · [Contributing](CONTRIBUTING.md)
 
 </div>
+
+> **Published result:** [*LLM-Guided Program Evolution for Circle Packing: Breaking 10 Packomania Records for $28*](https://arxiv.org/abs/2609.05093) (arXiv:2609.05093). Discovery Loop improved the best-known solutions for **10 values of N in the range 101–114** on the Packomania [csqv benchmark](https://www.packomania.com/csqv/csqv.html), by **2.4%–5.4%** over prior records, all within **15 iterations** and at a total LLM cost of **$27.72**. The results were independently reviewed and accepted by Packomania. See [Published result: circle packing](#published-result-circle-packing).
 
 A local research lab for improving optimization solvers with Fable and Astra. Models propose programs; isolated workers execute them; independent mathematical checks and matched-seed experiments decide what survives. Benchmark progress is kept separate from claims of real-world benefit.
 
@@ -27,6 +30,20 @@ A local research lab for improving optimization solvers with Fable and Astra. Mo
 | Human review | Evidence inspection and approvals bound to exact files, with no automatic publication. |
 
 > **Release status:** The pipeline and dashboard are implemented. The operator installation activated the Windows research, morning-integration and dashboard tasks on 2026-09-05, with rollback backups. New installations still preview before applying task changes. No sealed release dataset or validated real-world impact claim is available.
+
+## Published result: circle packing
+
+The one problem that has cleared external review is circle packing. Discovery Loop evolved a solver for the Packomania **csqv** benchmark (variable-sized circles in a unit square, maximize the sum of radii) and improved the best-known solutions for **10 values of N**: 101, 102, 103, 105, 106, 107, 108, 109, 111 and 114. Gains ran **2.4%–5.4%** over the prior records, reached within **15 iterations**, at a total LLM cost of **$27.72**.
+
+The solutions were submitted to and accepted by [Packomania](https://www.packomania.com/csqv/csqv.html), the long-running database of best-known circle packings. Packomania reference [14] credits *"Wes Sander, MoltFire, discovery-loop and private communication, September 2026."*
+
+| Resource | Link |
+| --- | --- |
+| Paper | [arXiv:2609.05093](https://arxiv.org/abs/2609.05093) ([PDF](https://arxiv.org/pdf/2609.05093)) |
+| Benchmark | [Packomania csqv](https://www.packomania.com/csqv/csqv.html) |
+| Accepted solutions | [`best/`](best/) (Packomania `.pck` submission files) |
+
+This is the only domain in the repository with an externally accepted, published result. The other problem plugins (`miplib_heur`, `miplib_open`, `pglib_opf`, `cvrp`) remain benchmark-only and are explicitly treated as unvalidated; see [Problems](#problems) and the [research portfolio](docs/RESEARCH-PORTFOLIO.md).
 
 ## Morning review
 
@@ -192,3 +209,21 @@ The dashboard is an internal localhost surface, not a public website. No externa
 | [Documentation index](docs/README.md) | Current guides and historical records |
 
 Bug reports should include a sanitized reproduction, the problem and provider mode, and the failing verification output. Never attach credentials or private run inputs. See the [issue tracker](https://github.com/ucsandman/discovery-loop/issues).
+
+## Citation
+
+If you use Discovery Loop or its results, please cite the paper:
+
+```bibtex
+@misc{sander2026discoveryloop,
+  title         = {LLM-Guided Program Evolution for Circle Packing: Breaking 10 Packomania Records for \$28},
+  author        = {Sander, Wes},
+  year          = {2026},
+  eprint        = {2609.05093},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.AI},
+  url           = {https://arxiv.org/abs/2609.05093}
+}
+```
+
+GitHub's "Cite this repository" widget reads [`CITATION.cff`](CITATION.cff).

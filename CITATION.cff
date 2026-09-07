@@ -1,0 +1,32 @@
+cff-version: 1.2.0
+message: "If you use Discovery Loop or its results, please cite the paper below."
+title: "Discovery Loop"
+abstract: "A local optimization research lab in which large language models iteratively evolve optimization solvers, with isolated execution and independent verification. Its circle-packing results improved 10 best-known Packomania solutions."
+type: software
+authors:
+  - family-names: Sander
+    given-names: Wes
+    email: wes@practicalsystems.io
+    affiliation: Practical Systems
+repository-code: "https://github.com/ucsandman/discovery-loop"
+url: "https://arxiv.org/abs/2609.05093"
+keywords:
+  - large language models
+  - program evolution
+  - optimization
+  - circle packing
+  - AlphaEvolve
+preferred-citation:
+  type: article
+  title: "LLM-Guided Program Evolution for Circle Packing: Breaking 10 Packomania Records for $28"
+  authors:
+    - family-names: Sander
+      given-names: Wes
+      email: wes@practicalsystems.io
+      affiliation: Practical Systems
+  year: 2026
+  identifiers:
+    - type: other
+      value: "arXiv:2609.05093"
+      description: "arXiv preprint identifier"
+  url: "https://arxiv.org/abs/2609.05093"

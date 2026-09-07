@@ -1,5 +1,12 @@
 # Changelog
 
+## Paper published, 2026-09-07
+
+- The circle-packing work went live on arXiv as [2609.05093](https://arxiv.org/abs/2609.05093): *LLM-Guided Program Evolution for Circle Packing: Breaking 10 Packomania Records for $28*.
+- Added an arXiv badge, a "Published result: circle packing" section and a Citation section to the README, keeping the other problem domains marked benchmark-only.
+- Added `CITATION.cff` so GitHub shows a "Cite this repository" widget.
+- Committed the paper source and PDF under `paper/`.
+
 ## Operator task activation, 2026-09-05
 
 - Activated the bounded 22:00 research task, morning evidence wrappers and dashboard-at-logon task after confirmation, retaining rollback exports.
