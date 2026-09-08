@@ -11,8 +11,13 @@ import subprocess
 import tempfile
 import time
 
+from model_registry import MODEL_REGISTRY, alias_for_model, model_spec
 
-DEFAULT_MODELS = {"fable": "claude-fable-5-1", "astra": "gpt-6-astra"}
+DEFAULT_MODELS = {
+    provider: next(item["model"] for item in MODEL_REGISTRY.values() if item["transport"] == provider)
+    for provider in ("fable", "astra")
+}
+_PROVIDER_TRANSPORT = {"fable": "fable", "anthropic": "fable", "astra": "astra", "openai": "astra"}
 _CLAUDE_SUBSCRIPTIONS = {"max", "pro", "team", "enterprise"}
 _CLAUDE_SYSTEM_PROMPT = (
     "You are an expert in numerical and combinatorial optimisation. Answer the request directly without using "
@@ -139,6 +144,25 @@ def _run_cli(command, *, prompt, cwd, env, timeout):
 DIAGNOSTICS_DIR = Path(__file__).resolve().parent / "runs" / "provider-diagnostics"
 
 
+def _redact_diagnostic(value):
+    """Remove credentials and machine paths from retained CLI diagnostics."""
+    value = re.sub(
+        r"(?im)\b(authorization|proxy-authorization)\b\s*[:=]\s*(?:bearer|basic)\s+[^\r\n]*",
+        r"\1: [REDACTED]",
+        value,
+    )
+    value = re.sub(
+        r"(?im)\b(api[_ -]?key|access[_ -]?token|authorization|bearer|password|secret|cookie|credential)\b"
+        r"(\s*[:=]\s*)([^\s,;]+)",
+        r"\1\2[REDACTED]",
+        value,
+    )
+    value = re.sub(r"(?i)\bbearer\s+[a-z0-9._-]{8,}", "Bearer [REDACTED]", value)
+    value = re.sub(r"\bsk-[A-Za-z0-9_-]{8,}\b", "[REDACTED]", value)
+    value = re.sub(r"(?i)(?:[a-z]:\\|/)(?:[^\s\"']+[\\/])*(?:[^\s\"']*)", "<local-path>", value)
+    return value
+
+
 def _write_diagnostic(provider, completed, limit=4000):
     """Keep the CLI's stderr/stdout tail on disk for a failed call.
 
@@ -147,8 +171,8 @@ def _write_diagnostic(provider, completed, limit=4000):
     with no captured cause).  Returns the file path, or None when nothing was
     captured or the write failed.
     """
-    stderr = (completed.stderr or "")[-limit:]
-    stdout = (completed.stdout or "")[-limit:]
+    stderr = _redact_diagnostic((completed.stderr or "")[-limit:])
+    stdout = _redact_diagnostic(_structured_failure_text(provider, completed)[-limit:])
     if not stderr.strip() and not stdout.strip():
         return None
     try:
@@ -159,7 +183,10 @@ def _write_diagnostic(provider, completed, limit=4000):
             f"provider: {provider}\nreturncode: {completed.returncode}\n\n--- stderr (tail) ---\n{stderr}\n\n--- stdout (tail) ---\n{stdout}\n",
             encoding="utf-8",
         )
-        return str(path)
+        try:
+            return str(path.relative_to(Path(__file__).resolve().parent))
+        except ValueError:
+            return None
     except OSError:
         return None
 
@@ -188,8 +215,9 @@ def _run_auth_command(command, provider):
 
 def auth_status(provider):
     """Return sanitized subscription status; API-key and unknown authentication fail closed."""
-    if provider not in DEFAULT_MODELS:
-        raise ValueError(f"unknown provider {provider!r}; expected fable or astra")
+    if provider not in _PROVIDER_TRANSPORT:
+        raise ValueError(f"unknown provider {provider!r}; expected anthropic, openai, fable or astra")
+    provider = _PROVIDER_TRANSPORT[provider]
     try:
         if provider == "fable":
             completed = _run_auth_command(["claude", "auth", "status", "--json"], provider)
@@ -224,8 +252,14 @@ def auth_status(provider):
     }
 
 
-def preflight(providers=("fable", "astra")):
-    """Verify every selected CLI uses subscription authentication without making a model request."""
+def preflight(providers=("fable", "astra"), *, models=None, probe_models=False, probe_budget=0.25, ledger=None):
+    """Verify subscription auth, optionally making a minimal configured-model acceptance probe.
+
+    The default remains auth-only for cheap diagnostics. Callers must label it as such;
+    ``probe_models=True`` records whether the exact configured model accepted a real call.
+    """
+    if probe_models and ledger is None:
+        raise ValueError("model acceptance probes require a shared accounting ledger")
     details = {}
     for provider in providers:
         status = auth_status(provider)
@@ -235,7 +269,145 @@ def preflight(providers=("fable", "astra")):
             "auth_method": status["auth_method"],
             "subscription_status": status["subscription_status"],
         }
+        if probe_models and status["ok"]:
+            selected = (models or {}).get(provider, DEFAULT_MODELS[_PROVIDER_TRANSPORT[provider]])
+            response = call_model(
+                "Return the single word ready.",
+                provider=provider,
+                model=selected,
+                timeout=60,
+                max_cost=probe_budget,
+                ledger=ledger,
+                purpose="preflight",
+            )
+            details[provider].update(
+                model=selected,
+                model_acceptance="accepted" if not response.get("error") else "rejected",
+                model_error_kind=response.get("error_kind"),
+            )
+            details[provider]["ok"] = details[provider]["ok"] and not response.get("error")
     return {"ok": bool(details) and all(item["ok"] for item in details.values()), "details": details}
+
+
+def _structured_failure_text(provider, completed):
+    """Extract only CLI-owned error fields, never generated response prose."""
+    fragments = [completed.stderr or ""]
+    if provider == "fable":
+        try:
+            payload = json.loads(completed.stdout)
+        except (json.JSONDecodeError, TypeError):
+            payload = {}
+        if isinstance(payload, dict) and payload.get("is_error") is True:
+            for key in ("error", "message", "error_type", "code", "subtype", "errors"):
+                fragments.extend(_error_envelope_fragments(payload.get(key)))
+            # Claude's JSON print envelope places CLI failures in ``result`` only
+            # when it also marks the response as an error.  A normal model answer
+            # must never influence transport/fallback classification.
+            if "structured_output" not in payload and isinstance(payload.get("result"), str):
+                fragments.append(payload["result"])
+    else:
+        for line in (completed.stdout or "").splitlines():
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(event, dict) or event.get("type") not in {"error", "turn.failed"}:
+                continue
+            for value in (event.get("message"), event.get("error"), event.get("code"), event.get("subtype")):
+                if isinstance(value, str):
+                    fragments.append(value)
+                elif isinstance(value, dict):
+                    fragments.extend(str(value[key]) for key in ("message", "type", "code") if key in value)
+    return "\n".join(fragments)
+
+
+def _error_envelope_fragments(value):
+    """Return conventional error values from a CLI error envelope only."""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [
+            value[key] for key in ("message", "type", "code", "subtype", "error") if isinstance(value.get(key), str)
+        ]
+    if isinstance(value, list):
+        fragments = []
+        for item in value:
+            fragments.extend(_error_envelope_fragments(item))
+        return fragments
+    return []
+
+
+def _failure_kind(provider, completed, error):
+    """Classify a failed CLI call without retaining provider text or inventing reset data."""
+    raw = _structured_failure_text(provider, completed)
+    if re.search(
+        r"usage[_ -]?limit|out of usage credits|quota[_ -]?(?:exceeded|exhausted)|insufficient_quota|(?:you have|you've) hit your[^\n]{0,40}limit|(?:usage|limit|quota|credits?|window)[^\n]{0,48}reset(?:s|ting)?\s+(?:at|on|in)|reset(?:s|ting)?\s+(?:at|on|in)[^\n]{0,48}(?:usage|limit|quota|credits?|window)",
+        raw,
+        re.I,
+    ):
+        return "usage_limit", f"{provider} subscription usage limit reached"
+    if re.search(r"rate[_ -]?limit|too many requests|http\s*429", raw, re.I):
+        return "rate_limited_unclassified", f"{provider} subscription rate limited"
+    if re.search(
+        r"capacity(?:[_ -]?(?:error|exceeded))?|overload(?:ed)?|service unavailable|temporarily unavailable|http\s*5(?:0[0-9]|[1-9][0-9])",
+        raw,
+        re.I,
+    ):
+        return "capacity", f"{provider} provider capacity unavailable"
+    if re.search(
+        r"(?:unknown[_ -]?model|model[^\n]{0,80}(?:not found|unavailable|unsupported|does not exist))", raw, re.I
+    ):
+        return "model_unavailable", f"{provider} model unavailable"
+    if re.search(r"unauthori[sz]ed|authentication|invalid[_ -]?grant|login required|http\s*401", raw, re.I):
+        return "authentication", f"{provider} subscription authentication required"
+    if "attempted prohibited tool use" in (error or ""):
+        return "prohibited_tool", error
+    if "malformed output" in (error or ""):
+        return "malformed_response", error
+    if "ended before completing" in (error or ""):
+        return "incomplete_response", error
+    if _contains_model_output(provider, completed):
+        return "malformed_response", f"{provider} CLI returned malformed output"
+    if completed.returncode != 0:
+        return "infrastructure_error", error
+    return None, error
+
+
+def _contains_model_output(provider, completed):
+    """Recognize a model response without treating its text as a CLI error."""
+    if provider == "fable":
+        try:
+            payload = json.loads(completed.stdout)
+        except (json.JSONDecodeError, TypeError):
+            return False
+        return (
+            isinstance(payload, dict)
+            and payload.get("is_error") is not True
+            and any(key in payload for key in ("result", "structured_output"))
+        )
+    for line in (completed.stdout or "").splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, dict):
+            continue
+        item = event.get("item")
+        if event.get("type") == "item.completed" and isinstance(item, dict) and item.get("type") == "agent_message":
+            return True
+    return False
+
+
+def _model_for_provider(model, provider):
+    """Normalize registered aliases and reject a model from the other family."""
+    family = "anthropic" if provider == "fable" else "openai"
+    if model in MODEL_REGISTRY:
+        spec = model_spec(model)
+        if spec["family"] != family:
+            raise ValueError(f"model {model!r} is absent from the canonical registry for this family")
+        return spec["model"]
+    alias_for_model(model, family)
+    return model
 
 
 def _usage(value):
@@ -354,8 +526,10 @@ def _parse_astra(completed):
 
 def call_model(prompt, provider="fable", model=None, timeout=900, max_cost=2.0, ledger=None, purpose="generation"):
     """Call a logged-in provider CLI and return one provider-neutral response dictionary."""
-    if provider not in DEFAULT_MODELS:
-        raise ValueError(f"unknown provider {provider!r}; expected fable or astra")
+    requested_provider = provider
+    if provider not in _PROVIDER_TRANSPORT:
+        raise ValueError(f"unknown provider {provider!r}; expected anthropic, openai, fable or astra")
+    provider = _PROVIDER_TRANSPORT[provider]
     if not isinstance(prompt, str) or not prompt.strip():
         raise ValueError("prompt must be a nonempty string")
     timeout = _finite_positive(timeout, "timeout")
@@ -363,12 +537,14 @@ def call_model(prompt, provider="fable", model=None, timeout=900, max_cost=2.0, 
     model = model or DEFAULT_MODELS[provider]
     if not isinstance(model, str) or not model.strip():
         raise ValueError("model must be a nonempty string")
+    model = _model_for_provider(model, provider)
+    canonical_family_request = requested_provider in {"anthropic", "openai"}
 
     result = {
         "text": "",
         "code": None,
         "idea": None,
-        "provider": provider,
+        "provider": requested_provider,
         "model": model,
         "cost": None,
         "usage": {},
@@ -376,6 +552,11 @@ def call_model(prompt, provider="fable", model=None, timeout=900, max_cost=2.0, 
         "billing_mode": "subscription",
         "cost_basis": "reserved_allowance",
     }
+    if canonical_family_request:
+        # Routing uses these fields instead of a shared-ledger snapshot, which
+        # races when multiple model attempts are active.  Legacy callers keep
+        # their exact response shape.
+        result.update(_accounting_reserved=0.0, _accounting_charged=0.0)
     authentication = auth_status(provider)
     if not authentication["ok"]:
         result["error"] = f"{provider} subscription authentication required"
@@ -385,6 +566,8 @@ def call_model(prompt, provider="fable", model=None, timeout=900, max_cost=2.0, 
         return result
 
     reservation = ledger.reserve(max_cost, f"{purpose}:{provider}:{model}") if ledger is not None else None
+    if canonical_family_request:
+        result["_accounting_reserved"] = max_cost
     try:
         with tempfile.TemporaryDirectory(prefix=f"discovery-{provider}-", ignore_cleanup_errors=True) as temporary:
             temporary_path = Path(temporary)
@@ -482,13 +665,10 @@ def call_model(prompt, provider="fable", model=None, timeout=900, max_cost=2.0, 
             result.update(text=text, code=code, idea=idea, cost=cost, usage=usage, error=error)
             if error:
                 result["diagnostic_path"] = _write_diagnostic(provider, completed)
-            if error and re.search(
-                r"usage[_ ]limit|rate[_ ]limit|quota[_ ]exceeded|insufficient_quota",
-                completed.stdout + completed.stderr,
-                re.I,
-            ):
-                result["error"] = f"{provider} subscription usage limit reached"
-                result["error_kind"] = "usage_limit"
+                kind, message = _failure_kind(provider, completed, error)
+                result["error"] = message
+                if kind:
+                    result["error_kind"] = kind
             if provider == "fable" and cost is not None:
                 result["cost_basis"] = "reported_api_equivalent"
     except ProviderTimeout:
@@ -499,5 +679,13 @@ def call_model(prompt, provider="fable", model=None, timeout=900, max_cost=2.0, 
         result["error_kind"] = "unavailable"
     finally:
         if ledger is not None:
-            ledger.settle(reservation, cost=result["cost"], usage=result["usage"])
+            settled = ledger.settle(reservation, cost=result["cost"], usage=result["usage"])
+            if canonical_family_request:
+                result["_accounting_charged"] = (
+                    float(settled)
+                    if isinstance(settled, (int, float)) and not isinstance(settled, bool)
+                    else (result["cost"] if result["cost"] is not None else max_cost)
+                )
+        elif canonical_family_request:
+            result["_accounting_charged"] = result["cost"] if result["cost"] is not None else max_cost
     return result

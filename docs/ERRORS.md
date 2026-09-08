@@ -1,5 +1,17 @@
 # Errors and lessons
 
+## 2026-09-08: Fixed routing must survive the operator interface
+
+A requested Astra, Sol, Opus sequence could not be represented faithfully by adaptive or role-based routing. Added an ordered policy and tested all three research roles. A real CLI dry-run then exposed parsed overrides being validated without installing them into the runtime configuration; the corrected assignment now has a CLI regression. Future routing changes must verify the effective dry-run configuration as well as the routing helper.
+
+## 2026-09-07: Two provider labels hid the executed route
+
+The prior documentation and evidence vocabulary reduced execution to Fable and Astra even though subscription availability can differ by model and family. The routing registry now records requested arm, actual model/family, physical attempts, fallback reason, and allowance in a run-scoped journal shared with retro and resume. A real routed request classified Fable's explicit usage-exhaustion response, then completed through Opus; the corrected provider pattern recognizes that wording while preserving the earlier journal's original infrastructure-error classification. Reports separate historical unverified rows from clean and operationally degraded routed rows.
+
+## 2026-09-07: Integration interruptions exposed missing routing and memory distinctions
+
+The paired-generation crash and evaluation-validity regression stopped the final integration pass until their core paths were corrected. Development-memory integration also initially conflated algorithmic idea families with provider-family provenance and allowed mature selection before all enabled choices reached the minimum sample count. The repaired path keeps those fields separate, prioritizes every under-sampled enabled model-role through three attributable development attempts, and excludes promotion and holdout data from those statistics. Final verification ran only after those interruptions were resolved.
+
 ## 2026-09-05: Baseline and implementation review
 
 - Lifetime spend and iteration counters were reused as invocation limits. Separate historical totals from each run's allowance and preserve the shared ledger only when explicitly resuming that run.

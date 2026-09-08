@@ -16,7 +16,7 @@ For worker changes, build the Docker image and run the optional real-worker chec
 python -c "import os, subprocess, sys; env = dict(os.environ, RUN_DOCKER_TESTS='1'); sys.exit(subprocess.call([sys.executable, '-m', 'pytest', 'tests/test_isolation.py', '-q', '-p', 'no:xonsh'], env=env))"
 ```
 
-For dashboard changes, inspect populated desktop and mobile views and exercise the affected controls. For provider changes, unit mocks supplement a real subscription probe; they do not replace it.
+For dashboard changes, inspect populated desktop and mobile views and exercise the affected controls. For provider or routing changes, unit mocks supplement a real subscription probe; they do not replace it. Record actual model/family, attempted fallbacks, and whether an observed failure is a quota condition or still unclassified.
 
 ## Preserve the research contract
 
@@ -24,6 +24,8 @@ For dashboard changes, inspect populated desktop and mobile views and exercise t
 - Recompute feasibility and objectives independently of generated programs.
 - Keep confirmation observations out of generation and retrospective feedback.
 - Preserve reservations, image identity and evidence lineage on resume.
+- Preserve the configured routing policy, model chain, disabled families, run-scoped breaker journal, and the distinction between requested trial arm and actual execution identity.
+- Keep development-memory prompts and automatic allocation development-only; never feed confirmation, promotion, holdout, code, paths, or reward outcomes back into them.
 - Keep generated code inside restricted workers and publication separate from research.
 - Label known targets, historical scores and accounting estimates accurately.
 

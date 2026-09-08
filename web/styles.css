@@ -101,7 +101,7 @@ button.rust { color: var(--rust); border-color: var(--rust); }
 button.text-button { display: block; border: 0; min-height: 2.75rem; padding: .5rem 0; margin-top: .6rem; background: transparent; text-decoration: underline; text-underline-offset: .2em; }
 button:disabled { opacity: .46; cursor: not-allowed; transform: none; }
 .field { display: grid; gap: .3rem; margin-top: .85rem; }
-input { width: 100%; border: 1px solid var(--line); border-radius: 2px; background: color-mix(in oklch, var(--paper) 87%, white); color: var(--ink); padding: .55rem .65rem; font-variant-numeric: tabular-nums; }
+input, select { width: 100%; border: 1px solid var(--line); border-radius: 2px; background: color-mix(in oklch, var(--paper) 87%, white); color: var(--ink); padding: .55rem .65rem; font-variant-numeric: tabular-nums; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
 .three { display: grid; grid-template-columns: repeat(3, 1fr); gap: .55rem; }
 fieldset { border: 0; margin: 1rem 0; padding: 0; }
@@ -123,6 +123,8 @@ code { overflow-wrap: anywhere; }
 .approval p { margin: .5rem 0 1rem; }
 .check { display: grid; grid-template-columns: auto 1fr; gap: .6rem; align-items: start; margin-bottom: 1rem; font-size: .9rem; }
 .check input { width: 1.15rem; min-height: 1.15rem; margin-top: .15rem; }
+.check-row { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; margin-top: .75rem; }
+.check-row .check { margin-bottom: 0; }
 .empty { color: var(--muted); font-family: var(--serif); font-style: italic; padding: 2rem .65rem; }
 .empty-state { border-top: 1px solid var(--line); padding-top: 1.2rem; max-width: 48rem; }
 .empty-state p { margin-top: .65rem; color: var(--muted); }
@@ -140,10 +142,10 @@ code { overflow-wrap: anywhere; }
   body { background: repeating-linear-gradient(var(--paper) 0 2.95rem, color-mix(in oklch, var(--line) 34%, var(--paper)) 2.95rem 3rem); }
   .masthead { grid-template-columns: 1fr; }
   .night-state { text-align: left; }
-  .two, .three, .finding { grid-template-columns: 1fr; gap: .35rem; }
+  .two, .three, .finding, .check-row { grid-template-columns: 1fr; gap: .35rem; }
   th:nth-child(3), td:nth-child(3) { display: none; }
   .trial-table-wrap th:nth-child(3), .trial-table-wrap td:nth-child(3),
   .trial-table-wrap th:nth-child(6), .trial-table-wrap td:nth-child(6) { display: table-cell; }
 }
-@media (pointer: coarse) { button, input, summary { min-height: 3rem; } }
+@media (pointer: coarse) { button, input, select, summary { min-height: 3rem; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }

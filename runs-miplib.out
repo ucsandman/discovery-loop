@@ -1,0 +1,21 @@
+[iter 0] seed total=-10.9658 wins=[] improved=['assign1-10-4', 'milo-v13-4-3d-4-0', 'neos-3009394-lami', 'dfn-bwin-DBE', 'liu', 'neos-1420790', 'set3-16', 'ramos3', 'neos-5045105-creuse']
+[iter 1] rejected total=-65.8269 champ=-10.9658 cost=$1.00 wins=[] improved=[] | Multi-neighbourhood adaptive LNS (random / RINS via root LP / row-based / local branching, bandit-weighted, objective-cutoff sub-MIPs) with LP-polished + independently verified solutions, and a feasibility-pump + restart fallback so supportcase30 always yields a file and never crashes.
+[iter 2] rejected total=-16.8668 champ=-10.9658 cost=$3.33 wins=[] improved=['neos-5045105-creuse'] | Independently verified (rows/bounds/integrality re-checked in numpy before any save) multi-neighbourhood LNS — random, RINS via root LP, row-BFS, active-column-seeded and solution-pool crossover neighbourhoods chosen by a success-weighted bandit with adaptive size — plus 1-opt descent and LP polishing on every incumbent, stall-interrupted HiGHS phase 1 via callbacks, and a slack-penalty repair MIP/LNS for targets where HiGHS finds no incumbent.
+[iter 3] champion total=-10.8454 champ=-10.8454 cost=$5.78 wins=[] improved=['dfn-bwin-DBE', 'liu', 'neos-1420790', 'set3-16'] | Keep the HiGHS incumbent + LNS skeleton but make every save independently verified (rows/bounds/integrality re-checked in numpy, LP re-polish of continuous variables when needed, best-effort file always written) and replace the single random-fix neighbourhood with a success-weighted portfolio of neighbourhoods (random, root-LP/RINS disagreement, row-BFS, active-column and cost-guided column neighbourhoods, local branching via a temporary Hamming row) each with its own adaptive size, plus a slack-minimisation MIP/LNS fallback so supportcase30 always produces a file.
+[iter 4] champion total=-10.6304 champ=-10.6304 cost=$7.32 wins=[] improved=['liu', 'set3-16'] | Detect pure set-covering structure (all-binary, unit-coefficient ≥1 rows, nonnegative costs: ramos3, supportcase30) and run a dedicated row-weighting local search (RWLS-style: weighted loss/gain scores, timestamp tie-breaking, tabu, uncovered-row weight bumps) between the HiGHS phase and the LNS, with every improved cover independently verified before saving.
+[iter 5] model returned no code ((no idea line))
+[iter 6] model returned no code ((no idea line))
+[iter 7] model returned no code ((no idea line))
+[iter 8] model returned no code ((no idea line))
+[iter 9] model returned no code ((no idea line))
+[iter 10] model returned no code ((no idea line))
+[iter 11] model returned no code ((no idea line))
+[iter 12] model returned no code ((no idea line))
+[iter 13] model returned no code ((no idea line))
+[iter 14] model returned no code ((no idea line))
+[iter 15] model returned no code ((no idea line))
+[iter 16] model returned no code ((no idea line))
+[iter 17] model returned no code ((no idea line))
+[iter 18] model returned no code ((no idea line))
+[iter 19] model returned no code ((no idea line))
+done. champion total=-10.6304 spend=$7.32

@@ -7,7 +7,12 @@
     "provider_caps_usd": {"fable": 40.0, "astra": 40.0, "paired": 40.0},
     "heartbeat_seconds": 15,
     "cpu_fraction": 0.5,
-    "evidence_root": "runs/research"
+    "evidence_root": "runs/research",
+    "routing": {
+      "policy": "scheduled",
+      "chain": ["fable", "opus", "astra", "sol"],
+      "disabled_families": []
+    }
   },
   "trial": {
     "anchor_date": "2026-09-05",

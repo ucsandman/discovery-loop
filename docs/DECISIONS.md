@@ -1,5 +1,15 @@
 # Research decisions
 
+## 2026-09-07: Route execution separately from trial assignment
+
+Keep the historical Fable/Astra/paired arm as the scheduled experiment identity, while recording the exact configured model and provider family that executed each physical call. The registry is Fable/Opus in Anthropic and Astra/Sol in OpenAI. The default route is Fable, Opus, Astra, Sol, with requested-model then same-family then other-family fallback. Policies may restrict the route or preserve the scheduled arm; disabled families are explicit.
+
+The routing journal is run-scoped and shared by research, review, retro, and resume. It records attempts and allowance so unavailable paths never become invisible work. A fallback, explicit routing/model override, paired degradation, or incomplete retro makes a record operationally useful but ineligible for a clean formal-trial comparison. Historical evidence without routing records remains historical and unverified.
+
+## 2026-09-07: Compact development memory before adaptive allocation
+
+Use exact AST deduplication and bounded, sanitized development observations to reduce repeated work and make future operational allocation auditable. Retain docstrings and changed near-similar code. Do not feed confirmation, promotion, holdout results, candidate code, or paths into prompts or allocation. Prioritize every enabled under-sampled model-role until it has three attributable development attempts; only then choose a primary automatically. Do not introduce bandits or reward optimization until the data supports them.
+
 ## 2026-09-05: Independent proposals and evidence-based promotion
 
 Extend the existing Python loop and problem interface. Both Fable and Astra can propose independently from the same incumbent; opposite-provider critique is advisory. Matched target/seed experiments and the independent verifier decide promotion. Previously exposed benchmark instances are never described as unseen holdouts.

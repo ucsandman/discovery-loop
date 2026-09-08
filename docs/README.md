@@ -4,8 +4,8 @@ Start with the [project README](../README.md) for setup and the dashboard previe
 
 ## Current guides
 
-- [Operations](OPERATIONS.md): nightly execution, accounting, recovery and scheduled tasks.
-- [Architecture and contracts](RESEARCH-IMPLEMENTATION.md): providers, workers, experiments and evidence.
+- [Operations](OPERATIONS.md): nightly execution, subscription routing, accounting, recovery and scheduled tasks.
+- [Architecture and contracts](RESEARCH-IMPLEMENTATION.md): model registry, routing, workers, experiments, development memory and evidence.
 - [Research portfolio](RESEARCH-PORTFOLIO.md): intended benefit and the evidence needed to demonstrate it.
 - [Decisions](DECISIONS.md): design choices and publication boundaries.
 - [Errors and lessons](ERRORS.md): concrete failures and prevention measures.

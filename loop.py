@@ -29,6 +29,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import evaluation
+from model_registry import (
+    DEFAULT_CHAIN,
+    MODEL_REGISTRY,
+    VALID_ROUTING_POLICIES,
+    alias_for_model,
+    model_spec,
+    validate_routing_config,
+)
+from research_memory import analyze_candidate, operational_stats, rank_auto_allocation, summarize_development
+from routing import RoutingJournal, route_call, routing_summary
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 AUTHOR = "Wes Sander, MoltFire"
@@ -313,7 +323,7 @@ th{{background:#eee}}.win{{background:#c8f7c5}}h1{{margin:0}}</style>
         self.solver_seconds += sum(float(result.get("secs", 0.0)) for result in results)
         return results
 
-    def build_research_prompt(self, incumbent, targets, records, history, hidden_targets=()):
+    def build_research_prompt(self, incumbent, targets, records, history, hidden_targets=(), retro_memory=None):
         """Build a prompt from development data only."""
         if hasattr(self.P, "prompt_for_targets"):
             context = self.P.prompt_for_targets(list(targets))
@@ -323,15 +333,21 @@ th{{background:#eee}}.win{{background:#c8f7c5}}h1{{margin:0}}</style>
                 line for line in self.P.PROMPT.splitlines() if not any(target in line for target in hidden)
             )
         board = "\n".join(f"{target}: reference={records.get(target)}" for target in targets)
-        prior = (
-            "\n".join(
-                f"iter {entry['iteration']} {entry['provider']}: median development gain="
-                f"{entry.get('median_gain')} idea={entry.get('idea', '')} "
-                f"review={entry.get('critique', {}).get('text', '')[:600]}"
-                for entry in history[-20:]
+        memory = summarize_development(history, hidden_targets=hidden_targets, limit=20, family_limit=12)
+        for entry in memory["entries"]:
+            entry["idea"] = entry["idea"][:300]
+            entry["negative_result"] = entry["negative_result"][:160]
+            entry["critique"]["text"] = entry["critique"]["text"][:400]
+            entry["critique"]["error"] = entry["critique"]["error"][:120]
+        prior = json.dumps(memory, sort_keys=True, separators=(",", ":")) if memory["entries"] else "(none yet)"
+        retro = {key: str((retro_memory or {}).get(key, ""))[:1000] for key in ("lessons", "next_experiment")}
+        for key, value in retro.items():
+            for target in hidden_targets:
+                value = value.replace(str(target), "[withheld reference removed]")
+            retro[key] = re.sub(
+                r"(?<![:\w])(?:[A-Za-z]:[\\/]|/(?!/))[A-Za-z0-9_.~\\/-]+", "[local path removed]", value
             )
-            or "(none in this invocation)"
-        )
+        retro_text = json.dumps(retro, sort_keys=True, separators=(",", ":")) if any(retro.values()) else "(none yet)"
         prompt = f"""{context}
 
 CURRENT INCUMBENT solver.py:
@@ -345,9 +361,14 @@ DEVELOPMENT REFERENCES ONLY:
 DEVELOPMENT HISTORY ONLY:
 {prior}
 
+PRIOR RETROSPECTIVE NOTES (the next experiment is an untested hypothesis, not evidence):
+{retro_text}
+
 {self.P.TASK}
 
-OUTPUT FORMAT: first line "IDEA: <one sentence>", then exactly one ```python block with the full file. Nothing else."""
+Begin the idea with an algorithm-family tag: "IDEA: [kind: <algorithm family>] <one sentence>".
+
+OUTPUT FORMAT: the tagged IDEA line, then exactly one ```python block with the full file. Nothing else."""
         leaked = [str(target) for target in hidden_targets if str(target) in prompt]
         if leaked:
             raise ValueError(f"generation prompt exposes withheld targets: {leaked}")
@@ -423,27 +444,10 @@ def _read_development_history(path):
 
 
 def _history_entry(record, run_id, hidden_targets):
-    def filtered(value, limit):
-        value = str(value or "")[:limit]
-        for target in hidden_targets:
-            value = value.replace(str(target), "[withheld reference removed]")
-        return value
-
-    critique = record.get("critique") or {}
-    return {
-        "run_id": run_id,
-        "iteration": record["iteration"],
-        "provider": record["provider"],
-        "idea": filtered(record.get("idea"), 500),
-        "status": record.get("status"),
-        "median_gain": record.get("median_gain"),
-        "candidate_hash": record.get("candidate_hash"),
-        "critique": {
-            "provider": critique.get("provider"),
-            "text": filtered(critique.get("text"), 2000),
-            "error": filtered(critique.get("error"), 300),
-        },
-    }
+    projected = summarize_development(
+        [{**record, "run_id": run_id}], hidden_targets=hidden_targets, limit=1, family_limit=1
+    )["entries"]
+    return projected[0]
 
 
 def _incumbent_provenance(loop, root, read_json):
@@ -479,9 +483,21 @@ def _incumbent_provenance(loop, root, read_json):
     }
 
 
-def _validate_completed_evidence(evidence, root, problem, provider, model):
+def _validate_completed_evidence(
+    evidence, root, problem, provider, model, routing_policy, routing_chain, disabled_families
+):
     if evidence.get("problem") != problem or evidence.get("provider") != provider or evidence.get("model") != model:
         raise ValueError("completed run id belongs to different problem or provider settings")
+    routing = evidence.get("routing")
+    if routing:
+        if (
+            routing.get("mode") != routing_policy
+            or routing.get("configured_chain") != list(routing_chain)
+            or routing.get("disabled_families") != list(disabled_families)
+        ):
+            raise ValueError("completed run id belongs to different routing settings")
+    elif routing_policy != "scheduled" or tuple(routing_chain) != tuple(DEFAULT_CHAIN) or disabled_families:
+        raise ValueError("historical evidence has no routing metadata for the requested settings")
     candidate_path = evidence.get("candidate_path")
     if candidate_path:
         candidate = Path(root, candidate_path).resolve()
@@ -506,26 +522,117 @@ def _opposite_provider(provider):
     return "astra" if provider == "fable" else "fable"
 
 
-def _call_with_budget(call_model_fn, prompt, provider, ledger, call_budget, purpose, usage, deadline=None, model=None):
+def _paired_iterations_complete(records):
+    by_iteration = {}
+    for record in records:
+        families = by_iteration.setdefault(record.get("iteration"), set())
+        if not record.get("generation_error") and record.get("family"):
+            families.add(record["family"])
+    return bool(by_iteration) and all(families == {"anthropic", "openai"} for families in by_iteration.values())
+
+
+def _auto_route_chain(problem, history, chain, disabled_families=()):
+    enabled = [alias for alias in chain if model_spec(alias)["family"] not in set(disabled_families)]
+    choices = [
+        {"alias": alias, "problem": problem, "actual_model": model_spec(alias)["model"], "role": "generation"}
+        for alias in enabled
+    ]
+    allocation = rank_auto_allocation(operational_stats(history), choices)
+    selected = (allocation["exploration"][0] if allocation["exploration"] else None) or allocation["primary"]
+    if selected is None:
+        return tuple(chain), allocation
+    primary = selected["alias"]
+    return (primary, *(alias for alias in chain if alias != primary)), allocation
+
+
+def _call_with_budget(
+    call_model_fn,
+    prompt,
+    provider,
+    ledger,
+    call_budget,
+    purpose,
+    usage,
+    deadline=None,
+    model=None,
+    *,
+    routing_policy="scheduled",
+    routing_chain=DEFAULT_CHAIN,
+    disabled_families=(),
+    routing_journal=None,
+    routing_checkpoint=None,
+    routing_scope=None,
+    legacy_provider_callback=False,
+    allowance_remaining=None,
+):
     before = ledger.snapshot()
     timeout = 900.0 if deadline is None else min(900.0, deadline - time.time())
     if timeout <= 0:
         raise _ResearchStop("timeout", "research deadline reached before model call")
-    response = call_model_fn(
-        prompt,
-        provider=provider,
-        model=model,
-        timeout=timeout,
-        max_cost=call_budget,
-        ledger=ledger,
-        purpose=purpose,
-    )
+    if routing_journal is None:
+        response = call_model_fn(
+            prompt,
+            provider=provider,
+            model=model,
+            timeout=timeout,
+            max_cost=call_budget,
+            ledger=ledger,
+            purpose=purpose,
+        )
+        attempts = [{"family": model_spec(provider)["family"], "model": response.get("model"), "status": "completed"}]
+    else:
+        requested_alias = provider
+        if model:
+            requested_alias = alias_for_model(model)
+        response = route_call(
+            prompt,
+            requested_alias=requested_alias,
+            policy=routing_policy,
+            chain=routing_chain,
+            disabled_families=disabled_families,
+            ledger=ledger,
+            max_cost=call_budget,
+            purpose=purpose,
+            call_fn=call_model_fn,
+            journal=routing_journal,
+            deadline=deadline,
+            checkpoint=routing_checkpoint,
+            scope=routing_scope,
+            legacy_provider_callback=legacy_provider_callback,
+            allowance_remaining=allowance_remaining,
+        )
+        attempts = response.get("_routing_attempts", [])
     after = ledger.snapshot()
-    usage["calls"] += 1
-    usage["by_purpose"][purpose] = usage["by_purpose"].get(purpose, 0) + 1
-    usage["by_provider"][provider] = usage["by_provider"].get(provider, 0) + 1
-    usage["charged"] = round(usage["charged"] + max(0.0, after["spent"] - before["spent"]), 8)
-    if response.get("error_kind") in ("usage_limit", "authentication", "unavailable"):
+    physical = [item for item in attempts if item.get("physical", item.get("status") != "skipped")]
+    usage["calls"] += len(physical)
+    usage["by_purpose"][purpose] = usage["by_purpose"].get(purpose, 0) + len(physical)
+    for attempt in physical:
+        family = attempt.get("family")
+        actual_model = attempt.get("model")
+        if family:
+            usage["by_family"][family] = usage["by_family"].get(family, 0) + 1
+        if actual_model:
+            usage["by_model"][actual_model] = usage["by_model"].get(actual_model, 0) + 1
+    usage["by_provider"][response.get("provider", provider)] = usage["by_provider"].get(
+        response.get("provider", provider), 0
+    ) + len(physical)
+    routed_charge = sum(float(item.get("charged_allowance") or 0.0) for item in physical)
+    usage["charged"] = round(
+        usage["charged"]
+        + (routed_charge if routing_journal is not None else max(0.0, after["spent"] - before["spent"])),
+        8,
+    )
+    if response.get("error_kind") == "budget_exhausted":
+        raise _ResearchStop("budget_exhausted", response.get("error") or "model allowance exhausted")
+    if response.get("error_kind") in (
+        "usage_limit",
+        "quota_exhausted",
+        "authentication",
+        "unavailable",
+        "model_unavailable",
+        "rate_limited_unclassified",
+        "routing_unavailable",
+    ):
         raise _ResearchStop("provider_unavailable", response.get("error") or "subscription provider unavailable")
     return response
 
@@ -578,6 +685,11 @@ def run_research(
     targets=None,
     refresh_records=False,
     max_generation_failures=2,
+    routing_policy="scheduled",
+    routing_chain=DEFAULT_CHAIN,
+    disabled_families=(),
+    routing_journal_path=None,
+    routing_override=False,
 ):
     """Run isolated discovery and write reviewable evidence without publishing.
 
@@ -592,6 +704,14 @@ def run_research(
         raise ValueError("model must be a nonempty string")
     if provider == "paired" and model is not None:
         raise ValueError("an explicit model is only valid for a single-provider run")
+    routing_settings = validate_routing_config(
+        {"policy": routing_policy, "chain": list(routing_chain), "disabled_families": list(disabled_families)}
+    )
+    routing_policy = routing_settings["policy"]
+    routing_chain = tuple(routing_settings["chain"])
+    disabled_families = tuple(routing_settings["disabled_families"])
+    if not isinstance(routing_override, bool):
+        raise ValueError("routing_override must be a boolean")
     if isinstance(iters, bool) or not isinstance(iters, int) or iters < 0:
         raise ValueError("iters must be a non-negative integer")
     numeric = (call_budget, invocation_budget, min_effect)
@@ -622,6 +742,9 @@ def run_research(
 
     from research_state import BudgetExceeded, BudgetLedger, FileLock, append_event, atomic_json, paused, read_json
 
+    legacy_provider_callback = call_model_fn is not None
+    explicit_routing_journal = routing_journal_path is not None
+    compatibility_callback = legacy_provider_callback and not explicit_routing_journal
     if call_model_fn is None:
         from providers import call_model as call_model_fn
     paused_fn = paused_fn or paused
@@ -640,14 +763,32 @@ def run_research(
     if not os.path.isabs(ledger_path):
         ledger_path = os.path.join(root, ledger_path)
     ledger_path = os.path.abspath(ledger_path)
+    routing_journal_path = (
+        os.fspath(routing_journal_path)
+        if routing_journal_path is not None
+        else os.path.join(evidence_base, run_id, "routing.json")
+    )
+    if not os.path.isabs(routing_journal_path):
+        routing_journal_path = os.path.join(root, routing_journal_path)
+    routing_journal_path = os.path.abspath(routing_journal_path)
+    _repo_relative(routing_journal_path, root)
     if ledger is None:
         previous = read_json(ledger_path)
         ledger_limit = previous["limit"] if previous is not None else invocation_budget
         ledger = BudgetLedger(ledger_path, ledger_limit)
     starting_ledger = ledger.snapshot()
+    routing_journal = RoutingJournal(routing_journal_path, disabled_families)
+    routing_journal.recover_interrupted(scope=problem)
+    starting_scope_charge = sum(
+        float(item.get("charged_allowance") or 0.0)
+        for item in routing_journal.state["attempts"]
+        if item.get("scope") == problem and item.get("physical") is True
+    )
     prior_evidence = read_json(evidence_path)
     if isinstance(prior_evidence, dict) and prior_evidence.get("status") in ("completed", "partial"):
-        _validate_completed_evidence(prior_evidence, root, problem, provider, model)
+        _validate_completed_evidence(
+            prior_evidence, root, problem, provider, model, routing_policy, routing_chain, disabled_families
+        )
         return prior_evidence
 
     worker_environment = {"mode": "injected verification runner"}
@@ -687,18 +828,22 @@ def run_research(
         incumbent_source = os.path.join(root, "problems", problem, "seed_solver.py")
     if not os.path.exists(incumbent_source):
         raise FileNotFoundError("no historical champion or seed solver exists")
-    if incumbent_source == loop.champ:
+    incumbent_snapshot = os.path.join(run_dir, "legacy_incumbent.py")
+    if isinstance(prior_evidence, dict) and os.path.isfile(incumbent_snapshot):
+        prior_incumbent = prior_evidence.get("legacy_incumbent") or {}
+        if prior_incumbent.get("sha256") not in (None, _sha256(incumbent_snapshot)):
+            raise ValueError("resume incumbent does not match the recorded snapshot")
+        incumbent_provenance = {key: value for key, value in prior_incumbent.items() if key not in {"path", "sha256"}}
+    elif incumbent_source == loop.champ:
         with FileLock(os.path.join(loop.best, ".promotion.lock")):
             incumbent_provenance = _incumbent_provenance(loop, root, read_json)
     else:
         incumbent_provenance = {"classification": "seed_baseline_unvalidated"}
-    incumbent_snapshot = os.path.join(run_dir, "legacy_incumbent.py")
-    shutil.copyfile(incumbent_source, incumbent_snapshot)
-    if isinstance(prior_evidence, dict):
-        prior_incumbent = prior_evidence.get("legacy_incumbent") or {}
-        if prior_incumbent.get("sha256") not in (None, _sha256(incumbent_snapshot)):
-            raise ValueError("resume incumbent does not match the recorded snapshot")
+    if not os.path.exists(incumbent_snapshot):
+        shutil.copyfile(incumbent_source, incumbent_snapshot)
     incumbent_text = open(incumbent_snapshot, encoding="utf-8").read()
+    incumbent_analysis = analyze_candidate(incumbent_text)
+    known_fingerprints = {incumbent_analysis["fingerprint"]} if incumbent_analysis["fingerprint"] else set()
     records = plugin.records_fetch() if refresh_records else plugin.records_load()
     budget = plugin.DEFAULTS["time"] if time_budget is None else time_budget
     workers = plugin.DEFAULTS["workers"] if workers is None else workers
@@ -706,11 +851,26 @@ def run_research(
         raise ValueError("time budget must be a finite positive number")
     if isinstance(workers, bool) or not isinstance(workers, int) or workers < 1:
         raise ValueError("workers must be a positive integer")
-    invocation_limit = min(float(invocation_budget), float(starting_ledger["remaining"]))
+    invocation_limit = float(invocation_budget)
     usage = {"calls": 0, "charged": 0.0, "by_purpose": {}, "by_provider": {}}
+    usage.update(by_family={}, by_model={})
     development_history_path = os.path.join(evidence_base, "development-history", f"{problem}.jsonl")
     development_history = _read_development_history(development_history_path)
+    retro_memory = read_json(os.path.join(evidence_base, "development-history", f"{problem}-retro.json"), {}) or {}
+    if not isinstance(retro_memory, dict) or retro_memory.get("schema_version") not in (None, 1):
+        retro_memory = {}
+    effective_routing_chain = routing_chain
+    auto_allocation = None
+    if routing_policy == "auto":
+        prior_effective = (prior_evidence.get("routing") or {}).get("effective_chain") if prior_evidence else None
+        if prior_effective:
+            effective_routing_chain = tuple(validate_routing_config({"chain": prior_effective})["chain"])
+        else:
+            effective_routing_chain, auto_allocation = _auto_route_chain(
+                problem, development_history, routing_chain, disabled_families
+            )
     candidate_records = []
+    pending_generations = []
     if isinstance(prior_evidence, dict):
         if (
             prior_evidence.get("problem") != problem
@@ -718,11 +878,28 @@ def run_research(
             or prior_evidence.get("model") != model
         ):
             raise ValueError("resume run id belongs to different problem or provider settings")
+        prior_routing = prior_evidence.get("routing") or {}
+        if prior_routing and (
+            prior_routing.get("mode") != routing_policy
+            or prior_routing.get("configured_chain") != list(routing_chain)
+            or prior_routing.get("disabled_families") != list(disabled_families)
+        ):
+            raise ValueError("resume must preserve routing policy, chain and disabled families")
         prior_development = prior_evidence.get("development") or {}
         if prior_development.get("targets") not in (None, development_targets):
             raise ValueError("resume must preserve its development target scope")
+        for pending in prior_development.get("pending_generations", []):
+            item = dict(pending)
+            candidate_file = Path(root, item.get("candidate_path", "")).resolve()
+            _repo_relative(candidate_file, root)
+            if not candidate_file.is_file() or _sha256(candidate_file) != item.get("candidate_hash"):
+                raise ValueError("resume pending generation does not match recorded hash")
+            item["_candidate_file"] = os.fspath(candidate_file)
+            pending_generations.append(item)
         for prior in prior_development.get("candidates", []):
             record = dict(prior)
+            if record.get("status") == "promising" and not record.get("critique"):
+                record.update(status="promising_unreviewed", negative_result="review was not durably completed")
             comparison = record.get("comparison") or {}
             if comparison and comparison.get("min_effect") != float(min_effect):
                 raise ValueError("resume must preserve its minimum-effect threshold")
@@ -739,7 +916,16 @@ def run_research(
         for record in candidate_records
         if isinstance(record.get("iteration"), int) and not isinstance(record.get("iteration"), bool)
     ]
-    iteration_offset = max(numeric_iterations, default=-1) + 1
+    known_fingerprints.update(
+        record["fingerprint"]
+        for record in candidate_records
+        if isinstance(record.get("fingerprint"), str) and len(record["fingerprint"]) == 64
+    )
+    iteration_offset = (
+        min(item["iteration"] for item in pending_generations)
+        if pending_generations
+        else max(numeric_iterations, default=-1) + 1
+    )
     promotion_candidate = None
     development_matrix = []
     incumbent_rows = []
@@ -751,6 +937,9 @@ def run_research(
         "problem": problem,
         "provider": provider,
         "model": model,
+        "routing_policy": routing_policy,
+        "routing_chain": list(routing_chain),
+        "disabled_families": list(disabled_families),
         "status": "running",
         "iterations": 0,
         "usage": usage,
@@ -778,7 +967,7 @@ def run_research(
         "publishable_reason": "No candidate has passed confirmation and plugin release validation.",
         "claim_type": "benchmark_tuning",
         "worker_environment": worker_environment,
-        "development": {},
+        "development": dict(prior_evidence.get("development") or {}) if isinstance(prior_evidence, dict) else {},
         "confirmation": {},
         "usage": usage,
         "limitations": list(manifest["limitations"]),
@@ -791,6 +980,26 @@ def run_research(
         "resumed_at": started_at if prior_evidence else None,
         "finished_at": None,
     }
+
+    def scoped_routing_attempts():
+        return [item for item in routing_journal.state["attempts"] if item.get("scope") == problem]
+
+    def checkpoint_routing():
+        evidence["routing"] = routing_summary(
+            scoped_routing_attempts(),
+            requested_arm=provider,
+            mode=routing_policy,
+            configured_chain=routing_chain,
+            disabled_families=disabled_families,
+            explicit_override=routing_override or routing_policy != "scheduled",
+            model_override=model is not None,
+        )
+        evidence["routing"]["effective_chain"] = list(effective_routing_chain)
+        if auto_allocation is not None:
+            evidence["routing"]["auto_allocation"] = auto_allocation
+        atomic_json(evidence_path, evidence)
+
+    checkpoint_routing()
 
     try:
         _check_research_control(root, deadline, paused_fn)
@@ -806,7 +1015,7 @@ def run_research(
         )
         incumbent_rows = evaluation.score_rows(plugin, records, incumbent_rows)
         _check_research_control(root, deadline, paused_fn)
-        for local_iteration in range(iters):
+        for local_iteration in range(max(iters, 1 if pending_generations else 0)):
             iteration = iteration_offset + local_iteration
             _check_research_control(root, deadline, paused_fn)
             confirmation_reserve = _confirmation_reserve_seconds(
@@ -818,21 +1027,46 @@ def run_research(
                     "reserved_seconds": confirmation_reserve,
                 }
                 break
-            names = _provider_names(provider)
-            required = call_budget * len(names)
-            if usage["charged"] + required > invocation_limit + 1e-9 or ledger.remaining + 1e-9 < required:
+            names = _provider_names("paired" if routing_policy == "paired" else provider)
+            pending_names = {item.get("provider") for item in pending_generations if item.get("iteration") == iteration}
+            required = call_budget * sum(name not in pending_names for name in names)
+            if (
+                starting_scope_charge + usage["charged"] + required > invocation_limit + 1e-9
+                or ledger.remaining + 1e-9 < required
+            ):
                 generation_stop = {
                     "reason": "budget_exhausted",
                     "required_call_allowance": required,
                 }
                 break
             prompt = loop.build_research_prompt(
-                incumbent_text, development_targets, records, development_history, hidden_targets
+                incumbent_text, development_targets, records, development_history, hidden_targets, retro_memory
             )
-            responses = [
-                (
-                    name,
-                    _call_with_budget(
+            responses = []
+            deferred_stop = None
+            for name in names:
+                pending = next(
+                    (
+                        item
+                        for item in pending_generations
+                        if item.get("iteration") == iteration and item.get("provider") == name
+                    ),
+                    None,
+                )
+                if pending is not None:
+                    response = {
+                        "code": open(pending["_candidate_file"], encoding="utf-8").read(),
+                        "idea": pending.get("idea"),
+                        "model": pending.get("actual_model"),
+                        "family": pending.get("family"),
+                        "provider": pending.get("actual_provider", name),
+                        "error": None,
+                        "_routing_attempts": pending.get("routing_attempts", []),
+                    }
+                    responses.append((name, response))
+                    continue
+                try:
+                    response = _call_with_budget(
                         call_model_fn,
                         prompt,
                         name,
@@ -842,29 +1076,114 @@ def run_research(
                         usage,
                         deadline,
                         model,
-                    ),
-                )
-                for name in names
-            ]
+                        routing_policy=(f"{name}_only" if compatibility_callback else routing_policy),
+                        routing_chain=effective_routing_chain,
+                        disabled_families=disabled_families,
+                        routing_journal=routing_journal,
+                        routing_checkpoint=checkpoint_routing,
+                        routing_scope=problem,
+                        legacy_provider_callback=legacy_provider_callback,
+                        allowance_remaining=lambda: invocation_limit - starting_scope_charge - usage["charged"],
+                    )
+                except _ResearchStop as exc:
+                    deferred_stop = exc
+                    break
+                responses.append((name, response))
+                if not response.get("error") and response.get("code"):
+                    pending_dir = os.path.join(run_dir, "candidates", f"iter{iteration:03d}-{name}")
+                    os.makedirs(pending_dir, exist_ok=True)
+                    pending_path = os.path.join(pending_dir, "solver.py")
+                    with open(pending_path, "w", encoding="utf-8", newline="\n") as stream:
+                        stream.write(response["code"])
+                    pending_generations.append(
+                        {
+                            "iteration": iteration,
+                            "provider": name,
+                            "actual_provider": response.get("provider"),
+                            "actual_model": response.get("model"),
+                            "family": response.get("family"),
+                            "idea": response.get("idea") or "",
+                            "candidate_path": _repo_relative(pending_path, root),
+                            "candidate_hash": _sha256(pending_path),
+                            "routing_attempts": response.get("_routing_attempts", []),
+                            "_candidate_file": pending_path,
+                        }
+                    )
+                    evidence["development"]["pending_generations"] = [
+                        {key: value for key, value in item.items() if key != "_candidate_file"}
+                        for item in pending_generations
+                    ]
+                    checkpoint_routing()
             for name, response in responses:
+                response_attempts = response.get("_routing_attempts", [])
+                physical_attempts = [item for item in response_attempts if item.get("physical") is True]
                 record = {
+                    "problem": problem,
                     "iteration": iteration,
                     "provider": name,
                     "idea": response.get("idea") or "",
                     "model": response.get("model"),
+                    "actual_model": response.get("model"),
+                    "family": response.get("family") or model_spec(name)["family"],
+                    "role": "generation",
+                    "routing_attempts": response_attempts,
+                    "cost_usd": round(
+                        sum(float(item.get("charged_allowance") or 0.0) for item in physical_attempts), 8
+                    ),
+                    "elapsed_seconds": round(
+                        sum(float(item.get("elapsed_seconds") or 0.0) for item in physical_attempts), 6
+                    ),
                     "generation_error": response.get("error"),
                     "generation_diagnostic": response.get("diagnostic_path"),
                 }
                 code = response.get("code")
                 if response.get("error") or not code:
                     consecutive_generation_failures += 1
-                    record.update(status="generation_failed", median_gain=None)
+                    record.update(
+                        status="generation_failed",
+                        median_gain=None,
+                        valid=False,
+                        novel=False,
+                        promising=False,
+                        negative_result=response.get("error") or "model returned no code",
+                    )
                     history_entry = _history_entry(record, run_id, hidden_targets)
                     append_event(development_history_path, history_entry)
                     development_history.append(history_entry)
                     candidate_records.append(record)
+                    pending_generations[:] = [
+                        item
+                        for item in pending_generations
+                        if not (item.get("iteration") == iteration and item.get("provider") == name)
+                    ]
+                    checkpoint_routing()
                     continue
                 consecutive_generation_failures = 0
+                analysis = analyze_candidate(code, () if compatibility_callback else known_fingerprints)
+                record.update(
+                    fingerprint=analysis["fingerprint"],
+                    valid=False,
+                    novel=bool(analysis["valid"] and not analysis["duplicate"]),
+                    promising=False,
+                )
+                if not analysis["valid"] or analysis["duplicate"]:
+                    record.update(
+                        status="syntax_error" if not analysis["valid"] else "duplicate",
+                        negative_result=analysis["syntax_error"] or "exact AST duplicate",
+                        median_gain=None,
+                    )
+                    history_entry = _history_entry(record, run_id, hidden_targets)
+                    append_event(development_history_path, history_entry)
+                    development_history.append(history_entry)
+                    candidate_records.append(record)
+                    pending_generations[:] = [
+                        item
+                        for item in pending_generations
+                        if not (item.get("iteration") == iteration and item.get("provider") == name)
+                    ]
+                    checkpoint_routing()
+                    continue
+                known_fingerprints.add(analysis["fingerprint"])
                 candidate_dir = os.path.join(run_dir, "candidates", f"iter{iteration:03d}-{name}")
                 os.makedirs(candidate_dir, exist_ok=True)
                 candidate_path = os.path.join(candidate_dir, "solver.py")
@@ -888,35 +1207,85 @@ def run_research(
                     candidate_hash=_sha256(candidate_path),
                     median_gain=comparison["median_gain"],
                     comparison=comparison,
+                    valid=comparison["candidate_failures"] == 0,
+                    promising=bool(comparison["passes"]),
                 )
+                if comparison["candidate_failures"]:
+                    record.update(
+                        status="evaluation_failed",
+                        negative_result=f"{comparison['candidate_failures']} development evaluation failures",
+                    )
+                candidate_records.append(record)
+                pending_generations[:] = [
+                    item
+                    for item in pending_generations
+                    if not (item.get("iteration") == iteration and item.get("provider") == name)
+                ]
+                evidence["development"] = {
+                    "targets": development_targets,
+                    "matrix": development_matrix,
+                    "incumbent": _evidence_rows(incumbent_rows, root),
+                    "pending_generations": [
+                        {key: value for key, value in item.items() if key != "_candidate_file"}
+                        for item in pending_generations
+                    ],
+                    "candidates": [
+                        {key: value for key, value in item.items() if key != "_candidate_file"}
+                        for item in candidate_records
+                    ],
+                }
+                checkpoint_routing()
                 if comparison["passes"]:
                     _check_research_control(root, deadline, paused_fn)
                     if (
-                        usage["charged"] + call_budget <= invocation_limit + 1e-9
+                        starting_scope_charge + usage["charged"] + call_budget <= invocation_limit + 1e-9
                         and ledger.remaining + 1e-9 >= call_budget
                     ):
-                        critic = _opposite_provider(name)
+                        critic = "astra" if record["family"] == "anthropic" else "fable"
                         critique_prompt = (
                             "Review this promising solver change for correctness, benchmark-specific tuning, and likely "
                             "failure modes. Do not write replacement code.\n\n" + code
                         )
-                        critique = _call_with_budget(
-                            call_model_fn,
-                            critique_prompt,
-                            critic,
-                            ledger,
-                            call_budget,
-                            "critique",
-                            usage,
-                            deadline,
-                            None,
-                        )
+                        try:
+                            critique = _call_with_budget(
+                                call_model_fn,
+                                critique_prompt,
+                                critic,
+                                ledger,
+                                call_budget,
+                                "critique",
+                                usage,
+                                deadline,
+                                None,
+                                routing_policy=(f"{critic}_only" if compatibility_callback else routing_policy),
+                                routing_chain=effective_routing_chain,
+                                disabled_families=disabled_families,
+                                routing_journal=routing_journal,
+                                routing_checkpoint=checkpoint_routing,
+                                routing_scope=problem,
+                                legacy_provider_callback=legacy_provider_callback,
+                                allowance_remaining=lambda: invocation_limit - starting_scope_charge - usage["charged"],
+                            )
+                        except _ResearchStop as exc:
+                            record["critique"] = {"provider": critic, "error": str(exc), "independent": None}
+                            record["status"] = "promising_unreviewed"
+                            history_entry = _history_entry(record, run_id, hidden_targets)
+                            append_event(development_history_path, history_entry)
+                            development_history.append(history_entry)
+                            checkpoint_routing()
+                            raise
                         record["critique"] = {
                             "provider": critic,
                             "model": critique.get("model"),
+                            "family": critique.get("family"),
                             "text": critique.get("text") or critique.get("idea") or "",
                             "error": critique.get("error"),
+                            "routing_attempts": critique.get("_routing_attempts", []),
                         }
+                        if critique.get("family") == record["family"]:
+                            record["critique"]["independent"] = False
+                        else:
+                            record["critique"]["independent"] = True
                         if critique.get("error"):
                             record["status"] = "promising_unreviewed"
                     else:
@@ -925,7 +1294,22 @@ def run_research(
                 history_entry = _history_entry(record, run_id, hidden_targets)
                 append_event(development_history_path, history_entry)
                 development_history.append(history_entry)
-                candidate_records.append(record)
+                evidence["development"] = {
+                    "targets": development_targets,
+                    "matrix": development_matrix,
+                    "incumbent": _evidence_rows(incumbent_rows, root),
+                    "pending_generations": [
+                        {key: value for key, value in item.items() if key != "_candidate_file"}
+                        for item in pending_generations
+                    ],
+                    "candidates": [
+                        {key: value for key, value in item.items() if key != "_candidate_file"}
+                        for item in candidate_records
+                    ],
+                }
+                checkpoint_routing()
+            if deferred_stop is not None:
+                raise deferred_stop
             state.update(
                 iterations=local_iteration + 1,
                 usage=usage,
@@ -955,6 +1339,9 @@ def run_research(
             "targets": development_targets,
             "matrix": development_matrix,
             "incumbent": _evidence_rows(incumbent_rows, root),
+            "pending_generations": [
+                {key: value for key, value in item.items() if key != "_candidate_file"} for item in pending_generations
+            ],
             "candidates": evidence_candidates,
             "best_median_gain": best["median_gain"] if best else None,
         }
@@ -1100,7 +1487,7 @@ def run_research(
         evidence["status"] = "error"
         evidence["error"] = f"{type(exc).__name__}: {exc}"[:800]
 
-    if not evidence["development"] and incumbent_rows:
+    if incumbent_rows:
         evidence_candidates = [
             {key: value for key, value in record.items() if key != "_candidate_file"} for record in candidate_records
         ]
@@ -1116,6 +1503,21 @@ def run_research(
         }
     if generation_stop and "generation_stop" not in evidence:
         evidence["generation_stop"] = generation_stop
+
+    checkpoint_routing()
+    routing_record = evidence["routing"]
+    extra_reasons = []
+    if any((record.get("critique") or {}).get("independent") is False for record in candidate_records):
+        extra_reasons.append("critique_not_independent")
+    if provider == "paired" or routing_policy == "paired":
+        if not _paired_iterations_complete(candidate_records):
+            extra_reasons.append("paired_iteration_not_independent")
+    if extra_reasons:
+        routing_record["ineligibility_reasons"] = list(
+            dict.fromkeys(routing_record["ineligibility_reasons"] + extra_reasons)
+        )
+        routing_record["formal_trial_eligible"] = False
+        routing_record["degraded"] = True
 
     finished = _utc_now()
     ending_ledger = ledger.snapshot()
@@ -1354,6 +1756,12 @@ def cli_main(argv=None):
     parser.add_argument("--model", help="legacy explicit model; implies its matching single provider")
     parser.add_argument("--run-id")
     parser.add_argument("--ledger")
+    parser.add_argument("--routing", choices=sorted(VALID_ROUTING_POLICIES), default="scheduled")
+    parser.add_argument("--model-chain", nargs="+", choices=sorted(MODEL_REGISTRY), default=list(DEFAULT_CHAIN))
+    parser.add_argument("--disable-family", action="append", choices=("anthropic", "openai"), default=[])
+    parser.add_argument("--routing-journal")
+    parser.add_argument("--routing-override", action="store_true")
+    parser.add_argument("--deadline-epoch", type=float)
     parser.add_argument("--call-budget", type=float, default=2.0)
     parser.add_argument("--seed-count", type=int, default=3)
     parser.add_argument("--min-effect", type=float, default=1e-4)
@@ -1380,14 +1788,18 @@ def cli_main(argv=None):
     args = parser.parse_args(argv)
     provider = args.provider
     if args.model:
-        inferred = "fable" if args.model.startswith("claude-") else "astra" if args.model.startswith("gpt-") else None
-        if inferred is None:
-            parser.error("--model must identify a claude-* (fable) or gpt-* (astra) model")
+        try:
+            spec = model_spec(alias_for_model(args.model))
+        except ValueError as exc:
+            parser.error(str(exc))
+        inferred = spec["transport"]
         if provider is not None and provider != inferred:
             parser.error("--model conflicts with --provider")
         provider = inferred
     provider = provider or "paired"
     deadline = time.time() + args.wall_minutes * 60 if args.wall_minutes else None
+    if args.deadline_epoch is not None:
+        deadline = min(deadline, args.deadline_epoch) if deadline is not None else args.deadline_epoch
     evidence = run_research(
         args.problem,
         provider=provider,
@@ -1406,6 +1818,11 @@ def cli_main(argv=None):
         targets=args.targets.split(",") if args.targets else None,
         refresh_records=args.refresh_records,
         max_generation_failures=args.max_generation_failures,
+        routing_policy=args.routing,
+        routing_chain=args.model_chain,
+        disabled_families=args.disable_family,
+        routing_journal_path=args.routing_journal,
+        routing_override=args.routing_override,
     )
     print(json.dumps({key: evidence.get(key) for key in ("run_id", "problem", "status", "confirmed", "publishable")}))
     return 0 if evidence["status"] in ("completed", "partial") else 1

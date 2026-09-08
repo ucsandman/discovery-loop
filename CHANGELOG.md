@@ -1,5 +1,14 @@
 # Changelog
 
+## Subscription routing and research continuity, 2026-09-08
+
+- Separate provider families, registered models, routing policies and formal trial identity.
+- Add durable fallback, bounded retries, run-scoped availability breakers and per-attempt accounting across generation, review, retrospective and resume.
+- Preserve proposals across interruptions and exclude fallback-contaminated runs from clean provider comparisons.
+- Add exact candidate deduplication, bounded development-only research memory, retrospective feedback and cautious automatic model allocation.
+- Expose actual models, fallback transitions and routing controls in the local dashboard and reports. Ordered routing preserves an operator's exact model chain across all roles.
+- Preserve subscription authentication, isolated workers, matched-seed confirmation and explicit publication approval.
+
 ## Paper published, 2026-09-07
 
 - The circle-packing work went live on arXiv as [2609.05093](https://arxiv.org/abs/2609.05093): *LLM-Guided Program Evolution for Circle Packing: Breaking 10 Packomania Records for $28*.

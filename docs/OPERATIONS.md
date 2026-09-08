@@ -8,7 +8,7 @@ Follow the [README setup](../README.md#developer-setup), then use its activated 
 python night.py --dry-run
 ```
 
-Inspect the selected trial modes and limits. Real execution performs provider and Docker preflight. Both CLIs must already be authenticated through their subscriptions. API-key and unknown authentication are rejected; there is no paid API fallback. Build the worker image after changing worker dependencies.
+Inspect the selected trial modes, routing policy and limits. Real execution performs provider and Docker preflight only for enabled route families. Both CLIs must already be authenticated through their subscriptions when their family is enabled. API-key and unknown authentication are rejected; there is no paid API fallback. Build the worker image after changing worker dependencies.
 
 The default [schedule](../night.json) allows 480 minutes and 90 accounting units: two research slots receive 40 units each, with 5 units each for retrospectives. Power-grid validation uses no model allowance. The JSON retains legacy `_usd` field names; the numbers are accounting estimates, not additional subscription charges. Claude reports API-equivalent estimates; unavailable estimates consume the reserved allowance. Provider rate limits still apply and stop affected work.
 
@@ -23,13 +23,23 @@ The dashboard shows evidence, partial stages, usage and limitations. Pause reque
 
 A confirmed candidate advances the incumbent with confirmation evidence. Development observations and sanitized lessons can inform later proposals. Reused confirmation targets remain disclosed; they are not a sealed test set.
 
+## Routing and recovery
+
+`night.json` stores `night.routing`: `policy`, `chain`, and `disabled_families`. The default is the `scheduled` policy with `fable, opus, astra, sol`; Fable/Opus are Anthropic-family execution identities and Astra/Sol are OpenAI-family identities. Valid policies are `scheduled`, `ordered`, `auto`, `openai_only`, `anthropic_only`, `astra_only`, `fable_only`, and `paired`. `--routing`, `--model-chain`, and `--disable-family` provide a per-run override.
+
+The assigned 14-night trial arm remains Fable, Astra, or paired. Routing chooses the actual execution identity. A single scheduled arm follows requested model, same-family fallback, then other-family fallback; a paired request retains independent Fable/Astra proposal roles. `ordered` follows the configured chain without role-based or history-based reordering and is operational rather than formal-trial eligible. `astra_only` and `fable_only` are intentionally single-model routes. Use `--routing ordered --model-chain astra sol opus` when every generation, critique, and retro call must try Astra, then Sol, then Opus, with no Fable route.
+
+`runs/research/<run-id>/routing.json` is a process-safe journal shared by research, review and retro. It records every started, failed, completed, and breaker-skipped attempt with requested and actual model/family, reason, and charged allowance. Family breakers cover authentication and unavailable CLI errors. Model breakers cover quota, usage-limit, and model-unavailable errors. They survive resume; changing the configured route or disabled families on an existing checkpoint is rejected. A malformed candidate is evaluated as a candidate failure and does not trigger model switching. If all enabled routes are unavailable, work stops cleanly.
+
+The dashboard and `trial_report.py` show historical rows without routing provenance separately from clean formal-trial rows and recorded-but-ineligible operational rows. A fallback, a routing/model override, a paired degradation, or an incomplete retro makes a run ineligible for formal trial comparison. Actual model counts, failed attempts, fallback reasons, and routing allowance remain visible for operations.
+
 ## Resume and diagnose
 
 ```powershell
 python night.py --resume
 ```
 
-Resume preserves the dated checkpoint and ledger and skips completed stages. Do not remove a lock or reset accounting to bypass an active run. Inspect `runs/night-status.json`, the dated checkpoint, and `runs/research/<run-id>/<problem>/run.json` when a stage is partial or failed. `evidence.json` records comparisons and the worker image identity. A zero-work result is not success.
+Resume preserves the dated checkpoint, ledger, and routing journal, and skips completed stages. Do not remove a lock or reset accounting to bypass an active run. Inspect `runs/night-status.json`, the dated checkpoint, `runs/research/<run-id>/routing.json`, and `runs/research/<run-id>/<problem>/run.json` when a stage is partial or failed. `evidence.json` records comparisons and the worker image identity. A zero-work result is not success.
 
 Authentication, unavailable CLI, usage-limit and timeout errors have distinct provider classifications. Restore subscription access or worker availability before starting more research. Workers have no host execution fallback. A small `--targets` probe tests development behavior only and cannot establish a benchmark improvement.
 

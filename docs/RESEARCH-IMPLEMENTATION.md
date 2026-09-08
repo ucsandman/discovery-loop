@@ -7,7 +7,7 @@ This extends loop.py, night.py, the problem plugins, and their existing status p
 ## Acceptance criteria
 
 1. Per-invocation budgets and iteration counts, including generation, review and retrospective usage. Unknown charges reserve the full configured call allowance.
-2. Fable and Astra providers return the same response contract; errors never become successful zero-cost work. Single-provider and paired experiments use configured accounting allowances.
+2. Subscription routes preserve a common response contract across the four canonical model identities. Errors never become successful zero-cost work; requested trial arms, actual execution identity, fallback, and allowance are recorded separately.
 3. Candidate and incumbent use identical target/seed matrices, independent feasibility checking, minimum effect and replication gates. Held-out confirmation data never enters generation prompts.
 4. Generated programs execute in disposable, network-disabled Docker workers with read-only inputs and bounded CPU, memory, processes and time. No host execution fallback.
 5. Night scheduling has one deadline, an exclusive lock, dated checkpoints, resume, heartbeat, pause, partial-failure status and zero-work detection.
@@ -32,9 +32,13 @@ This extends loop.py, night.py, the problem plugins, and their existing status p
 
 ## Provider and accounting contract
 
-`call_model(prompt, provider='fable', model=None, timeout=900, max_cost=2.0, ledger=None, purpose='generation')` returns text, code, idea, provider, model, cost, usage and error fields. Accounting includes `billing_mode` and `cost_basis`; failures carry an `error_kind`, including authentication, unavailable, usage_limit or timeout. Defaults are `claude-fable-5-1` and `gpt-6-astra`. Provider selection never silently falls back.
+The canonical registry is Fable (`claude-fable-5-1`) and Opus (`claude-opus-5`) in the Anthropic family, plus Astra (`gpt-6-astra`) and Sol (`gpt-5.6-sol`) in the OpenAI family. The transport is family-specific subscription CLI authentication, not an API credential. `call_model(...)` returns text, code, idea, provider, family, model, cost, usage and error fields. Accounting includes `billing_mode` and `cost_basis`; failures carry an `error_kind`, including authentication, unavailable, usage_limit or timeout.
 
-`BudgetLedger` reserves before a call and settles using reported API-equivalent usage, or the full reservation when no estimate is available. Unresolved reservations survive a crash. These amounts are not monthly-subscription bills. Equal configured allowances do not normalize provider token usage.
+`route_call(...)` makes the execution choice explicit. A route policy is one of `scheduled`, `auto`, `openai_only`, `anthropic_only`, `astra_only`, `fable_only`, or `paired`; its chain contains registry aliases only. For a requested single arm, scheduled and paired routing try the requested model, then same-family alternatives, then the other family. The default chain is Fable, Opus, Astra, Sol. Disabled families are removed before preflight and execution. A malformed model candidate remains a candidate failure and never causes a switch.
+
+`BudgetLedger` reserves before a physical attempt and settles using reported API-equivalent usage, or the full reservation when no estimate is available. Failed started attempts are charged; breaker/configuration skips are zero-charge. Unresolved reservations survive a crash. These amounts are not monthly-subscription bills. Equal configured allowances do not normalize provider token usage.
+
+`RoutingJournal` persists one run-scoped record at `runs/research/<run-id>/routing.json`. It is shared by generation, review, retro, and resume. Authentication/unavailable errors break a family for the remainder of the run; quota, usage-limit, model-unavailable, and classified transient errors break or retry the relevant model as recorded. Both enabled families unavailable ends the stage cleanly. Resume validates the routing policy, chain, and disabled-family set instead of silently changing the experiment.
 
 ## Worker boundary
 
@@ -48,7 +52,19 @@ The supported command line enters `loop.cli_main()` and `run_research()`. Single
 
 Run-local files live in `runs/research/<run-id>/<problem>/`. `run.json` records progress. `evidence.json` records hashes, comparisons, usage, limitations and worker identity. Confirmed candidates advance the incumbent with hash-bound `confirmation.json`. Generation history stays development-only; previously exposed targets are never relabeled unseen.
 
-The night runner writes status and dated checkpoints. `scripts/morning-research.py`, not the runner, writes `runs/research/morning.json`. Manual resume is explicit; scheduled catch-up resumes existing checkpoints and does not repeat completed nights. The implemented 14-night cycle gives each research track five Fable, five Astra and four paired nights, with seven occurrences of each research order.
+The night runner writes status and dated checkpoints. `scripts/morning-research.py`, not the runner, writes `runs/research/morning.json` with requested arm/mode/eligibility, actual model/family counts, fallback reasons, failed research and retro attempts, paired degradation, and retro status. Manual resume is explicit; scheduled catch-up resumes existing checkpoints and does not repeat completed nights. The implemented 14-night cycle gives each research track five Fable, five Astra and four paired requested arms, with seven occurrences of each research order.
+
+The scheduled arm is historical-trial assignment; the actual execution identity is recorded separately. `trial_report.py` puts evidence without routing records in `historical_unverified`, clean eligible records in `clean_formal_trial`, and known routed but ineligible records in `routing_recorded_ineligible`. A fallback, route/model override, paired degradation, or incomplete retro is excluded from formal comparison while retained for operational reporting.
+
+## Development memory and opportunity ranking
+
+`research_memory.py` is a compact development-only helper, not a training or holdout-feedback system. It parses a candidate and fingerprints its position-free AST; exact AST duplicates can be rejected before evaluation. Comments and whitespace do not affect the fingerprint, while docstrings remain because they can affect behavior. Near-similar changed code is retained.
+
+The prompt projection is bounded and sanitized: development provider, actual model, role, algorithmic idea family, idea, development status, median gain, exact fingerprint, and bounded critique. It removes confirmation, promotion and run outcomes, code, hashes, candidate paths, and hidden targets. Idea-family aggregates retain recurring development outcomes without exposing those fields. Operational statistics group only development attempts by problem, actual model, and role, then count valid, novel, promising, cost, and elapsed-time rates.
+
+Auto allocation prioritizes enabled model-role choices with fewer than three attributable development attempts; only after each enabled choice reaches that threshold can it rank a mature primary. It does not change the fixed routing fallback chain and receives no holdout, confirmation, promotion, or reward feedback. This is capacity and attribution work, not evidence that a model is better.
+
+The local evidence scan covered 31 solver candidates across `runs-cvrp`, `runs-miplib_heur`, and `runs`: 0 syntax failures and 0 exact AST duplicates. It found seven structured CVRP development-history records, but none had actual-model, model, or role fields. The immediate rationale is therefore prospective: cheap duplicate prevention and reliable attribution before allocation. It has not demonstrated saved compute or a discovery gain. Consciously deferred: near-similarity suppression, bandit allocation, additional model calls, and any holdout-fed reward.
 
 ## Dashboard contract
 
@@ -69,11 +85,11 @@ Existing tests are not edited. New regression cases must demonstrate failure bef
 
 ## Live verification evidence
 
-- Both CLI authentication probes confirmed subscription mode, and real Fable generation plus Astra retrospective output completed in an isolated copied checkout.
+- Direct subscription probes accepted Astra, Sol, and Opus. A real routed request received Fable's explicit usage-exhaustion response, then completed through Opus; it created two settled attempts, charged 0.002638 accounting units, and left no unsettled reservation. The temporary evidence records a fallback and is therefore formally trial-ineligible. This does not show that Fable is healthy, and no further Fable probes were run.
 - The tiny night used a deliberately short research window. Routing and power-grid validation completed; the MIP research stage stopped because the allotted window could not reserve confirmation time. Resume preserved the ledger and skipped completed routing.
 - A final real routing evaluation completed with zero model allowance, one isolated worker evaluation, and a recorded immutable Docker image identity.
 - Generated output overflow was rejected by the host buffer cap, including a same-UID process-output bypass probe. The exact worker container was removed.
 - Desktop/mobile rendering, pause/continue, settings, review and hash-bound approval were verified. Positive approval used a clearly synthetic isolated fixture; real benchmark evidence remains unvalidated unless it passes confirmation.
-- Final clean Windows environment: 151 tests passed, 5 optional or unavailable-data checks skipped; Ruff and 48 Python compilations passed. The separate real Docker suite passed all 10 tests.
+- Frozen working-source verification passed 221 tests with 4 skips (206 main, 5 CVRP, 10 MIP Open); the isolated pinned-dependency Python 3.12 snapshot passed 220 with 5 skips (205 main, 5 CVRP, 10 MIP Open), where the additional skip was an absent private PGLib input. Ruff was clean and 51 Python files compiled in both checks. The separate real Docker isolation suite passed all 10 tests after rebuilding the existing worker image from pinned requirements. The live dashboard restart rendered the routing surface with zero console or network errors. This does not establish a clean formal trial or a stable Fable quota state.
 
 - Both Windows and Ubuntu CI jobs passed for the shipped pipeline commit `1e4152b`. See the [verification workflow](https://github.com/ucsandman/discovery-loop/actions/workflows/verify.yml) for subsequent changes.

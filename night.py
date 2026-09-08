@@ -15,6 +15,7 @@ import sys
 import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from model_registry import VALID_ROUTING_POLICIES, model_spec, policy_chain, routing_config
 from research_state import BudgetLedger, FileLock, atomic_json, paused, read_json
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -106,6 +107,10 @@ def load_schedule(path=SCHEDULE):
     if config.get("schema_version") != 2:
         raise ValueError("night schedule must use schema_version 2")
     night = config.get("night", {})
+    # Schema-2 schedules predate routing. Their historical meaning is the
+    # scheduled trial policy over the canonical default chain, so normalize in
+    # memory without requiring a schedule migration.
+    night["routing"] = routing_config(config)
     if not 0 < float(night.get("budget_usd", 0)) <= 90:
         raise ValueError("night API-equivalent allowance must be in (0, 90]")
     if not 1 <= int(night.get("deadline_minutes", 0)) <= 720:
@@ -176,6 +181,20 @@ def planned_slots(config, run_id):
     # PGLib is confirmation-only and deliberately has no generation provider.
     ordered.append(by_problem["pglib_opf"])
     return ordered
+
+
+def _routing_families(config, slots):
+    """Return only families that can be selected by the configured night."""
+    routing = config["night"]["routing"]
+    families = set()
+    for slot in slots:
+        if slot.get("kind") != "research":
+            continue
+        for alias in policy_chain(routing["policy"], routing["chain"], slot["provider"]):
+            family = model_spec(alias)["family"]
+            if family not in routing["disabled_families"]:
+                families.add(family)
+    return families
 
 
 def analyst_provider(generation_provider, run_id):
@@ -274,23 +293,57 @@ def _write_status(status, checkpoint):
     atomic_json(checkpoint, status)
 
 
-def _preflight(provider_check=None, sandbox_check=None):
-    """Fail closed on subscription auth or Docker before any generation."""
+def _preflight(config, slots, provider_check=None, sandbox_check=None):
+    """Check Docker and only subscription families reachable by this night."""
     if provider_check is None:
         from providers import preflight as provider_check
     if sandbox_check is None:
         from isolation import preflight as sandbox_check
 
-    providers = provider_check(providers=("fable", "astra"))
+    transports = {"anthropic": "fable", "openai": "astra"}
+    required_families = _routing_families(config, slots)
+    providers = provider_check(providers=tuple(transports[family] for family in sorted(required_families)))
     sandbox = sandbox_check(root=HERE)
+    details = providers.get("details", {}) if isinstance(providers, dict) else {}
+    available = {family for family in required_families if details.get(transports[family], {}).get("ok") is True}
+    # Lightweight test doubles and older preflight integrations returned only
+    # aggregate success.  Preserve that contract while real preflight reports
+    # per-family availability.
+    if providers.get("ok") is True and not details:
+        available = set(required_families)
     return {
-        "ok": providers.get("ok") is True and sandbox.get("ok") is True,
+        "ok": bool(available) and sandbox.get("ok") is True,
         "providers": providers,
         "sandbox": sandbox,
+        "required_families": sorted(required_families),
+        "available_families": sorted(available),
     }
 
 
-def _research_command(slot, run_id, ledger_path, evidence_root, minutes):
+def _routing_command_args(routing, journal_path, *, override=False, deadline=None):
+    command = ["--routing", routing["policy"], "--model-chain", *routing["chain"]]
+    for family in routing["disabled_families"]:
+        command.extend(("--disable-family", family))
+    command.extend(("--routing-journal", str(journal_path)))
+    if deadline is not None:
+        command.extend(("--deadline-epoch", str(deadline)))
+    if override:
+        command.append("--routing-override")
+    return command
+
+
+def _research_command(
+    slot,
+    run_id,
+    ledger_path,
+    evidence_root,
+    minutes,
+    *,
+    routing=None,
+    journal_path=None,
+    routing_override=False,
+    deadline=None,
+):
     command = [
         sys.executable,
         "-u",
@@ -325,13 +378,17 @@ def _research_command(slot, run_id, ledger_path, evidence_root, minutes):
         str(slot.get("max_generation_failures", 2)),
         "--no-publish",
     ]
+    if routing is not None and journal_path is not None:
+        command.extend(_routing_command_args(routing, journal_path, override=routing_override, deadline=deadline))
     if slot["kind"] == "validation":
         command.append("--eval-only")
     return command
 
 
-def _retro_command(slot, run_id, ledger_path, evidence_root):
-    return [
+def _retro_command(
+    slot, run_id, ledger_path, evidence_root, *, routing=None, journal_path=None, routing_override=False, deadline=None
+):
+    command = [
         sys.executable,
         "-u",
         str(ROOT / "retro.py"),
@@ -348,9 +405,12 @@ def _retro_command(slot, run_id, ledger_path, evidence_root):
         "--call-budget",
         str(slot.get("retro_budget_usd", 0)),
     ]
+    if routing is not None and journal_path is not None:
+        command.extend(_routing_command_args(routing, journal_path, override=routing_override, deadline=deadline))
+    return command
 
 
-def _new_status(config, run_id, deadline, ledger_path):
+def _new_status(config, run_id, deadline, ledger_path, routing, routing_override):
     index, assignment = trial_for(config, run_id)
     return {
         "schema_version": 2,
@@ -364,6 +424,7 @@ def _new_status(config, run_id, deadline, ledger_path):
         "budget_accounting": config["night"].get("budget_accounting"),
         "ledger": str(Path(ledger_path).relative_to(ROOT)).replace("\\", "/"),
         "trial": {"index": index, "assignment": assignment},
+        "routing": {**routing, "override": bool(routing_override)},
         "slots": [],
         "limitations": [],
     }
@@ -379,6 +440,7 @@ def run_night(
     deadline_cap=None,
     provider_check=None,
     sandbox_check=None,
+    routing_override=False,
 ):
     """Run or resume one dated night under one lock, deadline and ledger."""
     started_now = time.time() if now is None else now
@@ -388,6 +450,8 @@ def run_night(
     checkpoint = run_root / "night.json"
     ledger_path = run_root / "budget.json"
     slots = planned_slots(config, run_id)
+    routing = config["night"]["routing"]
+    journal_path = run_root / "routing.json"
     if dry_run:
         return {
             "run_id": run_id,
@@ -396,6 +460,7 @@ def run_night(
             "budget_accounting": config["night"].get("budget_accounting"),
             "deadline_minutes": int(config["night"]["deadline_minutes"]),
             "slots": slots,
+            "routing": {**routing, "override": bool(routing_override)},
         }
     run_root.mkdir(parents=True, exist_ok=True)
     with FileLock(LOCK):
@@ -409,6 +474,8 @@ def run_night(
                 raise ValueError("Checkpoint run identity does not match")
             if existing.get("status") == "completed":
                 return existing
+            if existing.get("routing") != {**routing, "override": bool(routing_override)}:
+                raise ValueError("resume must preserve the configured routing policy")
             status = existing
             deadline = datetime.fromisoformat(status["deadline"].replace("Z", "+00:00")).timestamp()
             if deadline_cap is not None:
@@ -420,12 +487,15 @@ def run_night(
             deadline = started_now + 60 * int(config["night"]["deadline_minutes"])
             if deadline_cap is not None:
                 deadline = min(deadline, float(deadline_cap))
-            status = _new_status(config, run_id, deadline, ledger_path)
-        checks = _preflight(provider_check=provider_check, sandbox_check=sandbox_check)
+            status = _new_status(config, run_id, deadline, ledger_path, routing, routing_override)
+        checks = _preflight(config, slots, provider_check=provider_check, sandbox_check=sandbox_check)
         status["preflight"] = checks
         if not checks["ok"]:
             status["status"] = "failed"
-            status["limitations"] = ["subscription authentication or Docker preflight failed"]
+            if checks["sandbox"].get("ok") is not True:
+                status["limitations"] = ["Docker preflight failed"]
+            else:
+                status["limitations"] = ["no enabled subscription routing family is available"]
             status["finished_at"] = _iso()
             _write_status(status, checkpoint)
             return status
@@ -470,6 +540,10 @@ def run_night(
                 ledger_path,
                 evidence_root,
                 max(0.01, (research_deadline - time.time()) / 60),
+                routing=routing,
+                journal_path=journal_path,
+                routing_override=routing_override,
+                deadline=research_deadline,
             )
             code, reason = _run_bounded(
                 command,
@@ -502,7 +576,16 @@ def run_night(
                 and time.time() < slot_deadline
             ):
                 retro_code, retro_reason = _run_bounded(
-                    _retro_command(slot, run_id, ledger_path, evidence_root),
+                    _retro_command(
+                        slot,
+                        run_id,
+                        ledger_path,
+                        evidence_root,
+                        routing=routing,
+                        journal_path=journal_path,
+                        routing_override=routing_override,
+                        deadline=slot_deadline,
+                    ),
                     run_root / slot["problem"] / "retro.log",
                     slot_deadline,
                     int(config["night"].get("heartbeat_seconds", 15)),
@@ -585,6 +668,9 @@ def main():
     ap.add_argument("--scheduled", action="store_true", help="skip delayed catch-up starts between 06:00 and 21:50")
     ap.add_argument("--run-id", help="dated run id (YYYY-MM-DD); defaults to the local date")
     ap.add_argument("--schedule", default=SCHEDULE)
+    ap.add_argument("--routing", choices=sorted(VALID_ROUTING_POLICIES), help="routing policy for this run")
+    ap.add_argument("--model-chain", nargs="+", help="ordered aliases, for example: astra sol opus")
+    ap.add_argument("--disable-family", action="append", choices=("anthropic", "openai"))
     a = ap.parse_args()
     local_now = datetime.now().astimezone()
     if a.scheduled and not scheduled_window(local_now):
@@ -593,6 +679,18 @@ def main():
     run_id = a.run_id or (scheduled_run_id(local_now) if a.scheduled else date.today().isoformat())
     deadline_cap = scheduled_deadline(local_now).timestamp() if a.scheduled else None
     config = load_schedule(a.schedule)
+    routing_override = any((a.routing is not None, a.model_chain is not None, a.disable_family is not None))
+    if routing_override:
+        config = json.loads(json.dumps(config))
+        routing = dict(config["night"]["routing"])
+        if a.routing is not None:
+            routing["policy"] = a.routing
+        if a.model_chain is not None:
+            routing["chain"] = [alias for value in a.model_chain for alias in value.split(",") if alias]
+        if a.disable_family is not None:
+            routing["disabled_families"] = a.disable_family
+        config["night"]["routing"] = routing
+        config["night"]["routing"] = routing_config(config)
     evidence_root = Path(config["night"].get("evidence_root", "runs/research"))
     if not evidence_root.is_absolute():
         evidence_root = ROOT / evidence_root
@@ -607,6 +705,7 @@ def main():
         resume=resume,
         dry_run=a.dry_run,
         deadline_cap=deadline_cap,
+        routing_override=routing_override,
     )
     if cpu_limit is not None and isinstance(status, dict):
         status["cpu_limit"] = cpu_limit

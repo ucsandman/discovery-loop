@@ -17,6 +17,10 @@
   const numberFrom = (value, fallback = 0) => finite(Number(value)) ? Number(value) : fallback;
   const titleCase = (value) => String(value || "unknown").replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
   const formatAllowance = (value) => numberFrom(value).toFixed(2);
+  const countText = (value) => Object.entries(value && typeof value === "object" ? value : {})
+    .map(([name, count]) => `${name} ${numberFrom(count)}`).join("; ") || "—";
+  const shareText = (value) => Object.entries(value && typeof value === "object" ? value : {})
+    .map(([name, share]) => `${name} ${Math.round(numberFrom(share) * 100)}%`).join("; ") || "—";
   const tokenCount = (value) => {
     if (!value || typeof value !== "object") return 0;
     if (finite(value.total_tokens)) return value.total_tokens;
@@ -142,7 +146,10 @@
 
   function renderTrial() {
     const trial = state.status.trial || {};
-    const rows = Array.isArray(trial.rows) ? trial.rows : [];
+    const historical = Array.isArray(trial.rows) ? trial.rows : [];
+    const clean = Array.isArray(trial.clean_rows) ? trial.clean_rows : [];
+    const operational = Array.isArray(trial.operational_rows) ? trial.operational_rows : [];
+    const rows = [...clean, ...operational, ...historical];
     const list = byId("trial-list");
     list.replaceChildren();
     byId("trial-count").textContent = rows.length ? `${numberFrom(trial.runs)} scheduled runs` : "Not started";
@@ -160,13 +167,16 @@
     rows.forEach((item) => {
       const row = node("tr");
       const ratio = finite(item.confirmed_per_allowance_unit) ? numberFrom(item.confirmed_per_allowance_unit).toFixed(3) : "—";
+      const failures = numberFrom(item.failed_attempts);
+      const degraded = numberFrom(item.paired_degradations);
+      const fallback = countText(item.fallback_reasons);
       [
-        `${titleCase(item.problem)} / ${titleCase(item.provider)}`,
+        `${titleCase(item.problem)} / requested ${titleCase(item.provider)}${item.actual_strategy ? ` / ${titleCase(item.actual_strategy)}` : ""}`,
+        item.provenance === "clean_formal_trial" ? "Clean formal trial" : item.provenance === "historical_unverified" ? "Historical · unverified" : "Operational · excluded",
         String(numberFrom(item.completed)) + "/" + String(numberFrom(item.runs)),
+        `${countText(item.successful_model_calls)} (${shareText(item.model_call_shares)}) / all ${countText(item.actual_model_calls)}`,
+        `${fallback}; ${failures} failed${degraded ? `; ${degraded} paired degraded` : ""}`,
         String(numberFrom(item.confirmed)),
-        String(numberFrom(item.calls)),
-        numberFrom(item.allowance_charged).toFixed(2),
-        numberFrom(item.solver_hours).toFixed(2),
         ratio,
       ].forEach((value) => row.append(node("td", "", value)));
       list.append(row);
@@ -209,8 +219,12 @@
     const candidate = node("span");
     candidate.append(node("code", "", item.candidate_path || "No candidate path recorded"));
     if (item.candidate_hash) candidate.append(node("br"), node("span", "subtle", `SHA-256 · ${item.candidate_hash.slice(0, 12)}…${item.candidate_hash.slice(-8)}`));
+    const routing = item.routing || {};
+    const routingText = routing.provenance === "historical_unverified"
+      ? "Historical routing provenance is unverified."
+      : `${routing.formal_trial_eligible ? "Clean formal routing" : "Operational routing excluded from clean ratios"} · models ${countText(routing.actual_model_calls)} · families ${countText(routing.actual_family_calls)}${Object.keys(routing.failure_reasons || {}).length ? ` · failures ${countText(routing.failure_reasons)}` : ""}`;
     const dl = node("dl");
-    dl.append(finding("Claim", description), finding("Confirmation", metric), finding("Limits", limits), finding("Candidate", candidate));
+    dl.append(finding("Claim", description), finding("Confirmation", metric), finding("Routing", routingText), finding("Limits", limits), finding("Candidate", candidate));
     const details = node("details");
     details.append(node("summary", "", "Technical evidence and raw record"));
     const pre = node("pre");
@@ -237,6 +251,12 @@
     byId("cap-fable").value = caps.fable ?? 20;
     byId("cap-astra").value = caps.astra ?? 20;
     byId("cap-paired").value = caps.paired ?? 20;
+    const routing = schedule.routing || {};
+    byId("routing-policy").value = routing.policy || "scheduled";
+    byId("routing-chain").value = Array.isArray(routing.chain) ? routing.chain.join(", ") : "fable, opus, astra, sol";
+    const disabled = Array.isArray(routing.disabled_families) ? routing.disabled_families : [];
+    byId("disable-anthropic").checked = disabled.includes("anthropic");
+    byId("disable-openai").checked = disabled.includes("openai");
   }
 
   async function load() {
@@ -294,6 +314,14 @@
         fable: Number(byId("cap-fable").value),
         astra: Number(byId("cap-astra").value),
         paired: Number(byId("cap-paired").value),
+      },
+      routing: {
+        policy: byId("routing-policy").value,
+        chain: byId("routing-chain").value.split(",").map((value) => value.trim()).filter(Boolean),
+        disabled_families: [
+          ...(byId("disable-anthropic").checked ? ["anthropic"] : []),
+          ...(byId("disable-openai").checked ? ["openai"] : []),
+        ],
       },
     };
     try {

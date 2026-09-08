@@ -174,6 +174,22 @@ def _trial_summary(root: Path) -> dict[str, Any]:
     }
 
 
+def _routing_evidence_summary(evidence: dict[str, Any], retro: dict[str, Any]) -> dict[str, Any]:
+    from trial_report import routing_execution_summary
+
+    summary = routing_execution_summary(evidence, retro)
+    if summary["provenance"] == "historical_unverified":
+        return summary
+    return {
+        "provenance": summary["provenance"],
+        "formal_trial_eligible": summary["formal_trial_eligible"],
+        "ineligibility_reasons": summary["ineligibility_reasons"],
+        "actual_model_calls": summary["actual_model_calls"],
+        "actual_family_calls": summary["actual_family_calls"],
+        "failure_reasons": summary["failure_reasons"],
+    }
+
+
 def _sanitize(value: Any, root: Path, depth: int = 0) -> Any:
     if depth > 8:
         return "[detail omitted]"
@@ -245,6 +261,14 @@ class DashboardApp:
         schedule = _safe_read(self.schedule_path, {})
         night = schedule.get("night", {}) if isinstance(schedule, dict) else {}
         caps = night.get("provider_caps_usd", {}) if isinstance(night, dict) else {}
+        try:
+            from model_registry import routing_config
+
+            routing = routing_config(schedule)
+        except (ImportError, TypeError, ValueError):
+            from model_registry import DEFAULT_CHAIN
+
+            routing = {"policy": "scheduled", "chain": list(DEFAULT_CHAIN), "disabled_families": []}
         return {
             "duration_minutes": night.get("deadline_minutes", 480),
             "nightly_budget_usd": night.get("budget_usd", 90),
@@ -253,6 +277,7 @@ class DashboardApp:
                 "astra": caps.get("astra", 20),
                 "paired": caps.get("paired", 20),
             },
+            "routing": routing,
         }
 
     def status(self) -> dict[str, Any]:
@@ -286,6 +311,9 @@ class DashboardApp:
                     continue
             except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError, ApiError):
                 continue
+            retro = _safe_read(path.with_name("retro.json"), {})
+            if not isinstance(retro, dict):
+                retro = {}
             normalized = {
                 "run_id": data.get("run_id", path.parent.parent.name),
                 "problem": data.get("problem", path.parent.name),
@@ -304,6 +332,7 @@ class DashboardApp:
                 "evidence_path": relative,
                 "evidence_hash": _digest(raw_bytes),
                 "classification": "confirmed" if data.get("confirmed") is True else "unvalidated",
+                "routing": _routing_evidence_summary(data, retro),
                 "raw": _sanitize(data, self.root),
             }
             items.append(_sanitize(normalized, self.root))
@@ -337,7 +366,7 @@ class DashboardApp:
 
     def update_schedule(self, payload: dict[str, Any]) -> dict[str, Any]:
         required = {"duration_minutes", "nightly_budget_usd", "provider_caps_usd"}
-        _expect_keys(payload, required)
+        _expect_keys(payload, required, {"routing"})
         duration = payload["duration_minutes"]
         if isinstance(duration, bool) or not isinstance(duration, int) or not 60 <= duration <= 720:
             raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_payload", "Duration must be a whole number from 60 to 720.")
@@ -351,6 +380,14 @@ class DashboardApp:
             raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_payload", "Provider caps must be a JSON object.")
         _expect_keys(caps, {"fable", "astra", "paired"})
         clean_caps = {name: _number(caps[name], f"{name} allowance", 0, 90) for name in ("fable", "astra", "paired")}
+        clean_routing = None
+        if "routing" in payload:
+            try:
+                from model_registry import validate_routing_config
+
+                clean_routing = validate_routing_config(payload["routing"])
+            except (ImportError, TypeError, ValueError) as exc:
+                raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_payload", "Routing settings are invalid.") from exc
         lock = str(self.schedule_path) + ".lock"
         with FileLock(lock):
             schedule = _safe_read(self.schedule_path, None)
@@ -359,6 +396,8 @@ class DashboardApp:
             schedule["night"]["deadline_minutes"] = duration
             schedule["night"]["budget_usd"] = budget
             schedule["night"]["provider_caps_usd"] = clean_caps
+            if clean_routing is not None:
+                schedule["night"]["routing"] = clean_routing
             slots = schedule.get("slots")
             if not isinstance(slots, list):
                 raise ApiError(HTTPStatus.CONFLICT, "invalid_state", "The night schedule has no slot list.")
@@ -410,13 +449,10 @@ class DashboardApp:
                 except OSError:
                     pass
             atomic_json(self.schedule_path, schedule)
-        return {
-            "schedule": {
-                "duration_minutes": duration,
-                "nightly_budget_usd": budget,
-                "provider_caps_usd": clean_caps,
-            }
-        }
+        result = {"duration_minutes": duration, "nightly_budget_usd": budget, "provider_caps_usd": clean_caps}
+        if clean_routing is not None:
+            result["routing"] = clean_routing
+        return {"schedule": result}
 
     def approve(self, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         required = {"evidence_path", "evidence_hash", "candidate_path", "candidate_hash", "confirmed"}
@@ -510,7 +546,7 @@ def _handler(app: DashboardApp):
     class Handler(BaseHTTPRequestHandler):
         server_version = "DiscoveryDashboard/1"
 
-        def log_message(self, format: str, *args: Any) -> None:
+        def log_message(self, _format: str, *args: Any) -> None:
             return
 
         def _security_headers(self) -> None:

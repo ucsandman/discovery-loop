@@ -2,7 +2,7 @@
 
 # Discovery Loop
 
-**A local optimization research lab powered by Fable and Astra.**
+**A local optimization research lab with subscription-only model routing.**
 
 [![arXiv 2609.05093](https://img.shields.io/badge/arXiv-2609.05093-b31b1b?logo=arxiv&logoColor=white)](https://arxiv.org/abs/2609.05093)
 [![Verify research pipeline](https://github.com/ucsandman/discovery-loop/actions/workflows/verify.yml/badge.svg)](https://github.com/ucsandman/discovery-loop/actions/workflows/verify.yml)
@@ -17,7 +17,7 @@
 
 > **Published result:** [*LLM-Guided Program Evolution for Circle Packing: Breaking 10 Packomania Records for $28*](https://arxiv.org/abs/2609.05093) (arXiv:2609.05093). Discovery Loop improved the best-known solutions for **10 values of N in the range 101–114** on the Packomania [csqv benchmark](https://www.packomania.com/csqv/csqv.html), by **2.4%–5.4%** over prior records, all within **15 iterations** and at a total LLM cost of **$27.72**. The results were independently reviewed and accepted by Packomania. See [Published result: circle packing](#published-result-circle-packing).
 
-A local research lab for improving optimization solvers with Fable and Astra. Models propose programs; isolated workers execute them; independent mathematical checks and matched-seed experiments decide what survives. Benchmark progress is kept separate from claims of real-world benefit.
+A local research lab for improving optimization solvers. A configured subscription route selects among Fable, Opus, Astra and Sol; isolated workers execute proposed programs; independent mathematical checks and matched-seed experiments decide what survives. Benchmark progress is kept separate from claims of real-world benefit.
 
 ![Discovery Loop dashboard showing nightly status, allowance controls and evidence for morning review](web/dashboard-proof.png)
 
@@ -25,7 +25,7 @@ A local research lab for improving optimization solvers with Fable and Astra. Mo
 
 | Capability | What it gives you |
 | --- | --- |
-| Independent proposals | Fable and Astra work from the same frozen development brief, then cross-review promising candidates. |
+| Independent proposals | The scheduled trial records Fable, Astra or paired requested arms; paired work starts from the same frozen development brief and cross-reviews promising candidates. |
 | Reproducible comparisons | Matched targets and seeds, independent feasibility checks and a recorded immutable worker image. |
 | Bounded overnight work | A shared allowance, checkpoints, pause controls and an explicit deadline. |
 | Human review | Evidence inspection and approvals bound to exact files, with no automatic publication. |
@@ -85,7 +85,7 @@ Windows and Ubuntu run in CI. The macOS commands use the same Python environment
 
 Use the activated virtual environment for the commands below. If PowerShell blocks activation, run `.venv\Scripts\python.exe` in place of `python`.
 
-Runtime and worker dependencies are pinned. No API key is required. Provider preflight rejects API-key authentication and does not silently fall back to API billing. Research calls use `claude -p` with Fable and `codex exec` with Astra, with tools and external integrations disabled.
+Runtime and worker dependencies are pinned. No API key is required. Provider preflight rejects API-key authentication and does not silently fall back to API billing. The registry maps Fable and Opus to the Anthropic subscription CLI, and Astra and Sol to the OpenAI subscription CLI; tools and external integrations are disabled for those calls.
 
 The default nightly **research allowance is 90 accounting units**, shared across generation, reviews and retrospectives. This is not a cash budget. Claude's reported API-equivalent cost is an estimate of usage; Codex calls without a dollar estimate conservatively consume their reservation. Calls and token usage are retained. Subscription rate limits still apply.
 
@@ -97,12 +97,25 @@ python night.py
 python night.py --resume
 python loop.py --problem cvrp --provider paired --iters 1 --budget 8 --no-publish
 python loop.py --problem cvrp --provider astra --eval-only --no-publish
+python loop.py --problem cvrp --provider fable --routing auto --model-chain astra sol opus --disable-family anthropic --iters 1 --budget 8 --no-publish
 python trial_report.py
 ```
 
 All normal research runs stop at local evidence. `--no-publish` remains a compatibility flag and makes that intent explicit. Manual loop runs receive separate run identifiers; `--run-id` and `--ledger` connect scheduled work to a shared night. Per-invocation iteration and allowance limits do not count old runs. Resume preserves the existing night's ledger.
 
 A small development-only probe can select `--targets`, lower `--time`, and set `--wall-minutes`. Such a probe is not a claim of performance at the standard benchmark budget. Confirmation requires at least three distinct matched seeds.
+
+## Model routing and trial identity
+
+The model registry has four execution identities: Fable and Opus are Anthropic-family models; Astra and Sol are OpenAI-family models. A requested trial arm and the model that actually completed a call are separate fields. The 14-night schedule remains a historical Fable/Astra/paired experiment; it is not a four-model ranking.
+
+The default `scheduled` policy preserves that assigned arm. For a single requested arm, it tries the requested model, then another configured model in that family, then configured models in the other family. The default configured chain is `fable, opus, astra, sol`. The nonadaptive `ordered` policy follows its configured chain exactly for generation, critique, and retro, regardless of the requested arm. A `paired` request creates the two independent Fable/Astra proposal streams; other policies are `auto`, `openai_only`, `anthropic_only`, `astra_only`, and `fable_only`. The schedule and dashboard accept `policy`, `chain`, and `disabled_families`; CLI overrides are `--routing`, `--model-chain`, and `--disable-family`.
+
+For a fixed operational run that must try Astra, then Sol, then Opus and never Fable, use `python night.py --run-id YYYY-MM-DD --routing ordered --model-chain astra sol opus`. This override is recorded and is not eligible for the scheduled formal-trial comparison.
+
+Every physical attempt is recorded. Authentication or unavailable errors open a family breaker; quota, usage-limit, or model-unavailable errors open a model breaker. The per-run routing journal survives research, review, retro, and resume. A malformed or invalid candidate is a result for evaluation, not a reason to switch models. Started attempts reserve and settle allowance, including failed attempts; skipped routes consume no allowance. If no enabled route is available, the stage stops with a routing failure rather than using an API key or an unrecorded fallback.
+
+A clean formal-trial row requires the assigned arm, no route or model override, no fallback/degradation, and completed routing records for research and retro. Historical evidence without routing metadata remains `historical_unverified`; new recorded but ineligible runs are reported separately as operational routing records. See [Operations](docs/OPERATIONS.md#routing-and-recovery) for recovery details.
 
 ## How an experiment works
 
@@ -121,7 +134,7 @@ flowchart TD
 ```
 
 1. Freeze the incumbent, inputs, comparison scope and resource limits.
-2. Give Fable and Astra the same development brief in paired mode. They do not see each other's initial proposals.
+2. Give Fable and Astra the same development brief in paired mode. They do not see each other's initial proposals. The route records which configured model actually executed every call.
 3. Run incumbent and candidates in identical restricted workers; recompute objectives and feasibility outside generated code.
 4. Cross-review promising candidates. Model opinions never override mathematical checks.
 5. Confirm the best candidate on a separate target/seed matrix, requiring a minimum median effect, zero candidate failures, and no increased failure rate.
@@ -157,7 +170,7 @@ Problem helpers use isolated package namespaces. Legacy solvers can still import
 | Unallocated time buffer | 30 min | 0 | 0 |
 | **Night limit** | **480 min** | **90 units total across all calls** | **Included** |
 
-Research order alternates. Each track receives five Fable, five Astra and four paired nights per cycle. Equal configured allowances do not imply equal tokens or equivalent subscription consumption; the trial is exploratory.
+Research order alternates. Each track receives five Fable, five Astra and four paired requested arms per cycle. Equal configured allowances do not imply equal tokens or equivalent subscription consumption; the trial is exploratory. A fallback or routing override is useful operational evidence but is excluded from clean formal-trial comparisons.
 
 On Windows, preview the scheduled-task changes first:
 

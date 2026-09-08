@@ -17,16 +17,21 @@ night.py runs this after each slot, before publish.py. By hand:
 import argparse
 import json
 import os
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 from loop import Loop, load_problem, retro_path, value_of
+from model_registry import DEFAULT_CHAIN
+from research_memory import _redact, summarize_development
 from research_state import BudgetLedger, append_event, atomic_json, read_json
+from routing import RoutingJournal, route_call, routing_summary
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 MODEL = "claude-fable-5-1"
 TIMEOUT = 900
+_RETRO_HEADING = re.compile(r"^###\s+(.+?)\s*$", re.MULTILINE)
 
 BRAINSTORM_RULES = """BRAINSTORMING RULES (from the superpowers brainstorming skill, applied to a solver, not a product):
 - Understand before proposing: say in one line what the scoreboard and the tried list actually show about where the
@@ -153,22 +158,19 @@ def build_research_retro_prompt(evidence, development_history=None):
             "run_id",
             "problem",
             "provider",
-            "status",
-            "candidate_hash",
-            "usage",
         )
     }
-    history = development_history or []
+    history = development_history or {"entries": [], "families": []}
     return f"""Act as an independent optimization research analyst. Review the structured evidence below. The
 generation provider was {evidence.get("provider")}; do not trust its interpretation. Use development evidence only.
 No held-out target, confirmation metric, candidate code, or local path is present. Identify missing work and failed
 stages, and do not recommend publication.
 
 RUN METADATA:
-{json.dumps(summary, indent=2, sort_keys=True)}
+{json.dumps(summary, separators=(",", ":"), sort_keys=True)}
 
 SANITIZED CROSS-NIGHT DEVELOPMENT HISTORY:
-{json.dumps(history[-200:], indent=2, sort_keys=True)}
+{json.dumps(history, separators=(",", ":"), sort_keys=True)}
 
 Return markdown with exactly these headings:
 ### Evidence assessment
@@ -181,7 +183,73 @@ Give one bounded next experiment with a falsifiable stop condition.
 List what this run cannot establish."""
 
 
-def run_research_retro(problem, run_id, evidence_root, ledger_path, call_budget, provider=None):
+def _hidden_targets(problem_root):
+    """Read withheld target labels locally; they are never included in an LLM prompt."""
+    run = read_json(problem_root / "run.json", {}) or {}
+    manifest = run.get("manifest") if isinstance(run, dict) else {}
+    if not isinstance(manifest, dict):
+        return ()
+    return tuple(
+        str(target) for key in ("validation", "confirmation", "release_holdout") for target in manifest.get(key, [])
+    )
+
+
+def _retro_section(analysis, heading):
+    """Return one allowlisted Markdown section, never the model's whole response."""
+    matches = list(_RETRO_HEADING.finditer(analysis or ""))
+    wanted = heading.casefold()
+    for index, match in enumerate(matches):
+        if match.group(1).strip().casefold() == wanted:
+            end = matches[index + 1].start() if index + 1 < len(matches) else len(analysis)
+            return analysis[match.end() : end].strip()
+    return ""
+
+
+def _write_retro_memory(root, problem, problem_root, result):
+    """Persist the latest bounded analyst hypothesis outside candidate observations."""
+    if result.get("status") != "completed" or not result.get("analysis"):
+        return
+    hidden = _hidden_targets(problem_root)
+    assessment = _retro_section(result["analysis"], "Evidence assessment")
+    failure = _retro_section(result["analysis"], "Failure analysis")
+    limits = _retro_section(result["analysis"], "Limitations")
+    lessons = "\n".join(
+        part
+        for part in (
+            f"Assessment: {assessment}" if assessment else "",
+            f"Failure analysis: {failure}" if failure else "",
+            f"Limitations: {limits}" if limits else "",
+        )
+        if part
+    )
+    next_experiment = _retro_section(result["analysis"], "Next experiment")
+    memory = {
+        "schema_version": 1,
+        "source_run_id": result["run_id"],
+        "actual_analyst_model": result.get("model"),
+        "analyst_family": (result.get("routing") or {}).get("actual_family"),
+        "lessons": _redact(lessons, hidden, 1000),
+        "next_experiment": _redact(next_experiment, hidden, 1000),
+        "updated_at": result["finished_at"],
+    }
+    atomic_json(root / "development-history" / f"{problem}-retro.json", memory)
+
+
+def run_research_retro(
+    problem,
+    run_id,
+    evidence_root,
+    ledger_path,
+    call_budget,
+    provider=None,
+    *,
+    routing_policy="scheduled",
+    routing_chain=DEFAULT_CHAIN,
+    disabled_families=(),
+    routing_journal_path=None,
+    routing_override=False,
+    deadline=None,
+):
     """Write a local retrospective record even when the analyst call fails."""
     from providers import call_model
 
@@ -199,23 +267,7 @@ def run_research_retro(problem, run_id, evidence_root, ledger_path, call_budget,
             except json.JSONDecodeError:
                 continue
             if isinstance(item, dict):
-                critique = item.get("critique") if isinstance(item.get("critique"), dict) else {}
-                history.append(
-                    {
-                        "run_id": item.get("run_id"),
-                        "iteration": item.get("iteration"),
-                        "provider": item.get("provider"),
-                        "idea": item.get("idea"),
-                        "status": item.get("status"),
-                        "median_gain": item.get("median_gain"),
-                        "candidate_hash": item.get("candidate_hash"),
-                        "critique": {
-                            "provider": critique.get("provider"),
-                            "text": critique.get("text"),
-                            "error": critique.get("error"),
-                        },
-                    }
-                )
+                history.append(item)
     generated_by = evidence.get("provider") or "paired"
     analyst = provider or cross_model_provider(generated_by, run_id)
     if generated_by in {"fable", "astra"} and analyst == generated_by:
@@ -232,23 +284,57 @@ def run_research_retro(problem, run_id, evidence_root, ledger_path, call_budget,
         "usage": {},
         "analysis": "",
         "limitations": [],
+        "provenance": {
+            "source": "bounded_development_history_only",
+            "history_limit": 20,
+            "routing_override": bool(routing_override),
+        },
+        "routing": routing_summary(
+            [],
+            requested_arm=analyst,
+            mode=routing_policy,
+            configured_chain=routing_chain,
+            disabled_families=disabled_families,
+        ),
         "started_at": started,
     }
     if not evidence:
         result["limitations"].append("research evidence is missing")
-    elif evidence.get("status") not in {"completed", "partial"}:
-        result["limitations"].append("research stage did not complete successfully")
     try:
         ledger_state = read_json(ledger_path, {}) or {}
         ledger_limit = float(ledger_state.get("limit", 90.0))
         ledger = BudgetLedger(ledger_path, ledger_limit)
-        response = call_model(
-            build_research_retro_prompt(evidence, history),
-            provider=analyst,
-            timeout=900,
-            max_cost=float(call_budget),
+        journal = RoutingJournal(
+            routing_journal_path or root / run_id / "routing.json", disabled_families=disabled_families
+        )
+        recovered = journal.recover_interrupted(scope=f"{problem}:retro")
+        prior_scope_charge = sum(
+            float(item.get("charged_allowance") or 0.0)
+            for item in journal.state["attempts"]
+            if item.get("scope") == f"{problem}:retro"
+        )
+        response = route_call(
+            build_research_retro_prompt(evidence, summarize_development(history, limit=20, family_limit=12)),
+            requested_alias=analyst,
+            policy=routing_policy,
+            chain=routing_chain,
+            disabled_families=disabled_families,
             ledger=ledger,
+            max_cost=float(call_budget),
             purpose=f"retro:{problem}",
+            call_fn=call_model,
+            journal=journal,
+            deadline=deadline,
+            scope=f"{problem}:retro",
+            allowance_remaining=lambda: float(call_budget) - prior_scope_charge,
+        )
+        attempts = [*recovered, *response.pop("_routing_attempts", [])]
+        result["routing"] = routing_summary(
+            attempts,
+            requested_arm=analyst,
+            mode=routing_policy,
+            configured_chain=routing_chain,
+            disabled_families=disabled_families,
         )
         result.update(
             model=response.get("model"),
@@ -266,6 +352,7 @@ def run_research_retro(problem, run_id, evidence_root, ledger_path, call_budget,
         result["limitations"].append(f"analyst stage failed: {type(exc).__name__}")
     result["finished_at"] = _iso()
     atomic_json(problem_root / "retro.json", result)
+    _write_retro_memory(root, problem, problem_root, result)
     append_event(
         history_path,
         {
@@ -275,7 +362,6 @@ def run_research_retro(problem, run_id, evidence_root, ledger_path, call_budget,
             "idea": "",
             "status": "retrospective",
             "median_gain": None,
-            "candidate_hash": evidence.get("candidate_hash"),
             "critique": {
                 "provider": analyst,
                 "text": result["analysis"][:2000],
@@ -297,6 +383,12 @@ def main():
     ap.add_argument("--ledger")
     ap.add_argument("--provider", choices=("fable", "astra"))
     ap.add_argument("--call-budget", type=float, default=2.5)
+    ap.add_argument("--routing", default="scheduled")
+    ap.add_argument("--model-chain", nargs="+", default=list(DEFAULT_CHAIN))
+    ap.add_argument("--disable-family", action="append", choices=("anthropic", "openai"), default=[])
+    ap.add_argument("--routing-journal")
+    ap.add_argument("--routing-override", action="store_true")
+    ap.add_argument("--deadline-epoch", type=float)
     a = ap.parse_args()
     if a.run_id:
         configured_root = Path(a.evidence_root)
@@ -313,6 +405,12 @@ def main():
             ledger_path,
             a.call_budget,
             provider=a.provider,
+            routing_policy=a.routing,
+            routing_chain=[alias for value in a.model_chain for alias in value.split(",") if alias],
+            disabled_families=a.disable_family,
+            routing_journal_path=a.routing_journal,
+            routing_override=a.routing_override,
+            deadline=a.deadline_epoch,
         )
         print(json.dumps({key: value for key, value in result.items() if key != "analysis"}, indent=2))
         return 0 if result["status"] == "completed" else 1

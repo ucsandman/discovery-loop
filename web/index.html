@@ -42,7 +42,7 @@
           <p class="trial-note" id="trial-note">The scheduled Fable, Astra, and paired comparison has not started.</p>
           <div class="table-wrap trial-table-wrap">
             <table>
-              <thead><tr><th>Problem / mode</th><th>Completed / runs</th><th>Confirmed</th><th>Calls</th><th>Allowance charged</th><th>Solver hours, wall</th><th>Confirmed / charged unit</th></tr></thead>
+              <thead><tr><th>Requested arm</th><th>Provenance</th><th>Completed / runs</th><th>Actual model calls</th><th>Fallbacks / failures</th><th>Confirmed</th><th>Confirmed / charged unit</th></tr></thead>
               <tbody id="trial-list"><tr><td colspan="7" class="empty">No scheduled trial evidence yet.</td></tr></tbody>
             </table>
           </div>
@@ -74,6 +74,17 @@
                 <label class="field">Paired<input id="cap-paired" type="number" min="0" max="90" step="0.5" required></label>
               </div>
               <p class="field-help">Accounting units for monthly subscription CLI usage, not a bill. API billing is not used. The nightly allowance remains the final limit.</p>
+            </fieldset>
+            <fieldset>
+              <legend>Routing policy</legend>
+              <label class="field">Policy
+                <select id="routing-policy">
+                  <option value="scheduled">Scheduled trial</option><option value="ordered">Fixed order</option><option value="auto">Auto</option><option value="openai_only">OpenAI only</option><option value="anthropic_only">Anthropic only</option><option value="astra_only">Astra only</option><option value="fable_only">Fable only</option><option value="paired">Paired strategy</option>
+                </select>
+              </label>
+              <label class="field">Ordered model chain<input id="routing-chain" type="text" autocomplete="off" aria-describedby="routing-help" required></label>
+              <div class="check-row"><label class="check"><input id="disable-anthropic" type="checkbox"><span>Disable Anthropic family</span></label><label class="check"><input id="disable-openai" type="checkbox"><span>Disable OpenAI family</span></label></div>
+              <p class="field-help" id="routing-help">Aliases in order, separated by commas: fable, opus, astra, sol. Trial eligibility is recorded from what actually ran.</p>
             </fieldset>
             <button type="submit">Save next-night settings</button>
           </form>

@@ -124,6 +124,33 @@ def _safe_status(value: Any) -> str:
     return value if value in allowed else "unknown"
 
 
+def _routing_report(evidence: dict[str, Any], retro: dict[str, Any]) -> dict[str, Any]:
+    """Compress recorded routing facts without carrying model output or paths."""
+    from trial_report import routing_execution_summary
+
+    summary = routing_execution_summary(evidence, retro)
+    if summary["provenance"] == "historical_unverified":
+        return summary
+    return {
+        "provenance": summary["provenance"],
+        "requested_arm": (evidence.get("routing") or {}).get("requested_arm", "unknown"),
+        "mode": (evidence.get("routing") or {}).get("mode", "unknown"),
+        "formal_trial_eligible": summary["formal_trial_eligible"],
+        "ineligibility_reasons": summary["ineligibility_reasons"],
+        "actual_model_calls": summary["actual_model_calls"],
+        "actual_family_calls": summary["actual_family_calls"],
+        "successful_model_calls": summary["successful_model_calls"],
+        "model_call_shares": summary["model_call_shares"],
+        "last_successful_model": summary["last_successful_model"],
+        "last_fallback_reason": summary["last_fallback_reason"],
+        "fallback_reasons": summary["fallback_reasons"],
+        "failed_attempts": summary["failed_attempts"],
+        "retro_failed_attempts": summary["retro_failed_attempts"],
+        "paired_degraded": bool(summary["paired_degradations"]),
+        "retro_status": summary["retro_status"],
+    }
+
+
 def _latest_slots(status: dict[str, Any]) -> dict[str, dict[str, Any]]:
     latest = {}
     for entry in status.get("slots", []):
@@ -167,6 +194,11 @@ def build_report(
         problem = _safe_problem(slot.get("problem"))
         provider = slot.get("provider") if slot.get("provider") in KNOWN_PROVIDERS else "validation"
         evidence = read_json(evidence_root / problem / "evidence.json", {}) or {}
+        retro = read_json(evidence_root / problem / "retro.json", {}) or {}
+        if not isinstance(evidence, dict):
+            evidence = {}
+        if not isinstance(retro, dict):
+            retro = {}
         counts = _usage_counts(evidence)
         for key in ("generation_calls", "review_calls", "evaluations"):
             totals[key] += counts[key]
@@ -202,6 +234,7 @@ def build_report(
                 "status": _safe_status(slot.get("status")),
                 "confirmed": evidence.get("confirmed") if isinstance(evidence.get("confirmed"), bool) else None,
                 "publishable": False,
+                "routing": _routing_report(evidence, retro),
                 **counts,
             }
         )
