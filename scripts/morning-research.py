@@ -12,6 +12,7 @@ import argparse
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 from datetime import datetime, time, timedelta, timezone
@@ -29,6 +30,122 @@ REPORT_PATH = REPO / "runs" / "research" / "morning.json"
 TERMINAL = {"completed", "partial", "failed", "paused"}
 KNOWN_PROBLEMS = {"cvrp", "miplib_heur", "pglib_opf"}
 KNOWN_PROVIDERS = {"fable", "astra", "paired", "validation"}
+ARC_REFRESH_STATUSES = {"fresh", "stale", "unavailable"}
+ARC_MISSIONS = {
+    "cvrp-budgeted-routing": "cvrp",
+    "mip-budgeted-primal-heuristics": "miplib_heur",
+}
+ARC_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
+ARC_HASH = re.compile(r"[a-f0-9]{64}\Z")
+ARC_REVISION = re.compile(r"(?:[a-f0-9]{40}|[a-f0-9]{64})\Z")
+
+
+def _scheduled_checkpoint(value: Any, logical_run_id: str, evidence_run_id: str) -> dict[str, Any] | None:
+    if not isinstance(value, dict) or value.get("run_id") != evidence_run_id:
+        return None
+    if evidence_run_id == logical_run_id:
+        return value
+    return value if value.get("scheduled_run_id") == logical_run_id else None
+
+
+def resolved_scheduled_status(logical_run_id: str) -> tuple[dict[str, Any], str]:
+    """Pair the canonical scheduled status lookup with its evidence identity."""
+    status = scheduled_status(logical_run_id)
+    scheduled_run_id = f"{logical_run_id}-scheduled"
+    for evidence_run_id in (scheduled_run_id, logical_run_id):
+        if _scheduled_checkpoint(status, logical_run_id, evidence_run_id) is not None:
+            return status, evidence_run_id
+    return status, logical_run_id
+
+
+def scheduled_status(run_id: str) -> dict[str, Any]:
+    """Prefer the collision-free scheduled checkpoint, retaining legacy history."""
+    scheduled_run_id = f"{run_id}-scheduled"
+    for evidence_run_id in (scheduled_run_id, run_id):
+        checkpoint = _scheduled_checkpoint(
+            read_json(REPO / "runs" / "research" / evidence_run_id / "night.json", {}) or {},
+            run_id,
+            evidence_run_id,
+        )
+        if checkpoint is not None:
+            return checkpoint
+    fallback = read_json(REPO / "runs" / "night-status.json", {}) or {}
+    for evidence_run_id in (scheduled_run_id, run_id):
+        checkpoint = _scheduled_checkpoint(fallback, run_id, evidence_run_id)
+        if checkpoint is not None:
+            return checkpoint
+    return {}
+
+
+def _nonnegative_int(value: Any) -> int:
+    return int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0 else 0
+
+
+def _arc_summary(run_id: str, now: datetime) -> dict[str, Any]:
+    """Expose only ARC control facts after validating local mission provenance."""
+    from arc_catalogue import load_catalogue, load_control, validate_mission
+
+    root = REPO / "runs" / "arc"
+    try:
+        catalogue = load_catalogue(root)
+        control = load_control(root, catalogue)
+    except (OSError, ValueError, TypeError):
+        catalogue, control = None, {"enabled_ids": []}
+    refresh = read_json(root / "refresh-status.json", {}) or {}
+    problems = catalogue.get("problems") if isinstance(catalogue, dict) else []
+    problems = problems if isinstance(problems, list) else []
+    ready_ids = {
+        item.get("id")
+        for item in problems
+        if isinstance(item, dict)
+        and isinstance(item.get("id"), str)
+        and ARC_ID.fullmatch(item["id"])
+        and isinstance(item.get("admission"), dict)
+        and item["admission"].get("status") == "ready"
+    }
+    status = refresh.get("status") if isinstance(refresh, dict) else None
+    status = status if status in ARC_REFRESH_STATUSES else "unavailable"
+    attempted = _parse_iso(refresh.get("attempted_at") if isinstance(refresh, dict) else None)
+    source = (
+        catalogue.get("source") if isinstance(catalogue, dict) and isinstance(catalogue.get("source"), dict) else {}
+    )
+    catalogue_hash = catalogue.get("catalogue_hash") if isinstance(catalogue, dict) else None
+    revision = source.get("revision")
+    enabled = control.get("enabled_ids") if isinstance(control, dict) else []
+    enabled = enabled if isinstance(enabled, (list, set)) else []
+    admitted = sorted({mission_id for mission_id in enabled if mission_id in ready_ids and mission_id in ARC_MISSIONS})
+    selected = []
+    if (
+        isinstance(catalogue_hash, str)
+        and ARC_HASH.fullmatch(catalogue_hash)
+        and isinstance(revision, str)
+        and ARC_REVISION.fullmatch(revision)
+    ):
+        for mission_id in admitted:
+            plugin = ARC_MISSIONS[mission_id]
+            evidence = read_json(REPO / "runs" / "research" / run_id / plugin / "evidence.json", {}) or {}
+            mission = evidence.get("mission") if isinstance(evidence, dict) else None
+            try:
+                validated = validate_mission(mission, expected_plugin=plugin)
+            except (KeyError, TypeError, ValueError):
+                continue
+            if (
+                validated.get("source_problem_id") == mission_id
+                and validated.get("catalogue_hash") == catalogue_hash
+                and validated.get("source_revision") == revision
+            ):
+                selected.append(mission_id)
+    age_hours = (now - attempted).total_seconds() / 3600 if attempted else None
+    return {
+        "refresh_status": status,
+        "source_fresh": status == "fresh",
+        "source_age_hours": round(age_hours, 3) if age_hours is not None and age_hours >= 0 else None,
+        "catalogue_problem_count": _nonnegative_int(refresh.get("problem_count") if isinstance(refresh, dict) else 0),
+        "source_file_count": _nonnegative_int(source.get("file_count")),
+        "ready_mission_count": len(ready_ids & set(ARC_MISSIONS)),
+        "admitted_mission_count": len(admitted),
+        "selected_mission_ids": selected,
+    }
 
 
 def _provider_accounting_row() -> dict[str, Any]:
@@ -163,6 +280,7 @@ def build_report(
     status: dict[str, Any],
     run_id: str,
     *,
+    evidence_run_id: str | None = None,
     now: datetime | None = None,
     max_age_hours: float = 12,
     task_info: dict[str, Any] | None = None,
@@ -171,8 +289,10 @@ def build_report(
     current = now or _utc_now()
     updated = _parse_iso(status.get("updated_at") or status.get("finished_at"))
     age_hours = (current - updated).total_seconds() / 3600 if updated else None
+    evidence_run_id = evidence_run_id or run_id
+    scheduled_identity = _scheduled_checkpoint(status, run_id, evidence_run_id) is not None
     fresh = bool(
-        status.get("run_id") == run_id
+        scheduled_identity
         and status.get("status") in TERMINAL
         and age_hours is not None
         and 0 <= age_hours <= max_age_hours
@@ -185,7 +305,7 @@ def build_report(
     missing_stages = []
     totals = {"generation_calls": 0, "review_calls": 0, "evaluations": 0, "retros_completed": 0}
     provider_breakdown: dict[str, dict[str, Any]] = {}
-    evidence_root = REPO / "runs" / "research" / run_id
+    evidence_root = REPO / "runs" / "research" / evidence_run_id
     for slot_id in expected_ids:
         slot = latest.get(slot_id)
         if not slot:
@@ -275,7 +395,7 @@ def build_report(
     limitations = []
     if not status:
         limitations.append("night status is missing")
-    elif status.get("run_id") != run_id:
+    elif not scheduled_identity:
         limitations.append("night status belongs to a different run")
     elif not fresh:
         limitations.append("night status is stale or unfinished")
@@ -317,6 +437,7 @@ def build_report(
             "calls": len(reservations),
         },
         "provider_breakdown": provider_breakdown,
+        "arc": _arc_summary(evidence_run_id, current),
         "problems": problems,
         "missing_stages": missing_stages,
         "failed_stages": failed_stages,
@@ -382,9 +503,15 @@ def main() -> int:
     parser.add_argument("--meditation-line")
     args = parser.parse_args()
     run_id = args.run_id or expected_run_id()
-    status = read_json(STATUS_PATH, {}) or {}
+    status, evidence_run_id = resolved_scheduled_status(run_id)
     task = scheduled_task_info("discovery-loop-night")
-    report = build_report(status, run_id, max_age_hours=args.max_age_hours, task_info=task)
+    report = build_report(
+        status,
+        run_id,
+        evidence_run_id=evidence_run_id,
+        max_age_hours=args.max_age_hours,
+        task_info=task,
+    )
     atomic_json(REPORT_PATH, report)
     print(json.dumps(report, indent=2))
     if args.mode == "report":

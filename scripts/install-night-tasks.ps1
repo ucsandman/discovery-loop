@@ -52,6 +52,13 @@ if ($dashboardExisting) {
     Export-ScheduledTask -TaskName $dashboardTaskName | Out-File -LiteralPath $dashboardBackup -Encoding unicode
     $backups[$dashboardTaskName] = $dashboardBackup
 }
+$arcTaskName = "discovery-loop-arc-atlas"
+$arcExisting = Get-ScheduledTask -TaskName $arcTaskName -ErrorAction SilentlyContinue
+if ($arcExisting) {
+    $arcBackup = Join-Path $backupDir "$arcTaskName.xml"
+    Export-ScheduledTask -TaskName $arcTaskName | Out-File -LiteralPath $arcBackup -Encoding unicode
+    $backups[$arcTaskName] = $arcBackup
+}
 
 $nightScript = Join-Path $repo "night.py"
 $morningScript = Join-Path $repo "scripts\morning-research.py"
@@ -60,6 +67,20 @@ $meditationArguments = "-u `"$morningScript`" --mode meditation-context --next-e
 $fleetArguments = "-u `"$morningScript`" --mode fleet --meditation-line `"$meditationLine`" --next-executable `"$bash`" --next-argument `"$fleetRunner`""
 $dashboardScript = Join-Path $repo "dashboard.py"
 $dashboardArguments = "`"$dashboardScript`""
+$arcLauncher = Join-Path $repo "scripts\arc-local-server.py"
+$arcRepo = [IO.Path]::GetFullPath((Join-Path $repo "..\arc-agi-n"))
+$arcBuild = Join-Path $arcRepo ".next\BUILD_ID"
+$arcNext = Join-Path $arcRepo "node_modules\next\dist\bin\next"
+$arcNode = (Get-Command node -ErrorAction SilentlyContinue).Source
+$arcPreconditions = @(
+    [ordered]@{ name = "ARC checkout"; met = (Test-Path -LiteralPath $arcRepo -PathType Container) },
+    [ordered]@{ name = "ARC production build"; met = (Test-Path -LiteralPath $arcBuild -PathType Leaf) },
+    [ordered]@{ name = "ARC Next dependency"; met = (Test-Path -LiteralPath $arcNext -PathType Leaf) },
+    [ordered]@{ name = "ARC launcher"; met = (Test-Path -LiteralPath $arcLauncher -PathType Leaf) },
+    [ordered]@{ name = "Node executable"; met = [bool]$arcNode }
+)
+$arcReady = -not ($arcPreconditions | Where-Object { -not $_.met })
+$arcArguments = "`"$arcLauncher`""
 
 $plan = [ordered]@{
     apply_requested = [bool]$Apply
@@ -107,6 +128,21 @@ $plan = [ordered]@{
                 start_when_available = $true
                 visibility = "localhost only; no browser is opened"
             }
+        },
+        [ordered]@{
+            name = $arcTaskName
+            trigger = "at logon for the current user"
+            action = if ($arcReady) { "$pythonw $arcArguments" } else { $null }
+            preconditions = $arcPreconditions
+            registration = if ($arcReady) { "ready; registered only with -Apply" } else { "skipped; ARC dependencies or production build are unavailable" }
+            settings = [ordered]@{
+                execution_time_limit = "unlimited"
+                multiple_instances = "IgnoreNew"
+                wake_to_run = $false
+                start_when_available = $true
+                visibility = "127.0.0.1:3100 only; no browser is opened"
+                principal = "current user, interactive, limited"
+            }
         }
     )
     rollback = @(
@@ -119,6 +155,11 @@ if ($dashboardExisting) {
     $plan.rollback += "schtasks.exe /Create /TN $dashboardTaskName /XML `"$($backups[$dashboardTaskName])`" /F"
 } else {
     $plan.rollback += "Unregister-ScheduledTask -TaskName $dashboardTaskName -Confirm:`$false"
+}
+if ($arcExisting) {
+    $plan.rollback += "schtasks.exe /Create /TN $arcTaskName /XML `"$($backups[$arcTaskName])`" /F"
+} else {
+    $plan.rollback += "Unregister-ScheduledTask -TaskName $arcTaskName -Confirm:`$false"
 }
 
 $plan | ConvertTo-Json -Depth 8
@@ -164,6 +205,27 @@ try {
         -Principal $dashboardPrincipal `
         -Description "Local discovery-loop evidence dashboard" `
         -Force | Out-Null
+
+    if ($arcReady) {
+        $arcAction = New-ScheduledTaskAction -Execute $pythonw -Argument $arcArguments -WorkingDirectory $repo
+        $arcTrigger = New-ScheduledTaskTrigger -AtLogOn -User ([Security.Principal.WindowsIdentity]::GetCurrent().Name)
+        $arcSettings = New-ScheduledTaskSettingsSet `
+            -ExecutionTimeLimit ([TimeSpan]::Zero) `
+            -MultipleInstances IgnoreNew `
+            -StartWhenAvailable
+        $arcPrincipal = New-ScheduledTaskPrincipal `
+            -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) `
+            -LogonType Interactive `
+            -RunLevel Limited
+        Register-ScheduledTask `
+            -TaskName $arcTaskName `
+            -Action $arcAction `
+            -Trigger $arcTrigger `
+            -Settings $arcSettings `
+            -Principal $arcPrincipal `
+            -Description "Local ARC Atlas catalogue; loopback only" `
+            -Force | Out-Null
+    }
 } catch {
     foreach ($taskName in $taskNames) {
         schtasks.exe /Create /TN $taskName /XML $backups[$taskName] /F | Out-Null
@@ -173,6 +235,12 @@ try {
     } else {
         # RM_OK: rollback an incompletely created task after an explicitly approved -Apply run.
         Unregister-ScheduledTask -TaskName $dashboardTaskName -Confirm:$false -ErrorAction SilentlyContinue
+    }
+    if ($arcExisting) {
+        schtasks.exe /Create /TN $arcTaskName /XML $backups[$arcTaskName] /F | Out-Null
+    } elseif ($arcReady) {
+        # RM_OK: rollback an incompletely created task after an explicitly approved -Apply run.
+        Unregister-ScheduledTask -TaskName $arcTaskName -Confirm:$false -ErrorAction SilentlyContinue
     }
     throw
 }

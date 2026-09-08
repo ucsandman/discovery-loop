@@ -5,10 +5,11 @@ Follow the [README setup](../README.md#developer-setup), then use its activated 
 ## Before a night
 
 ```powershell
+python arc_catalogue.py refresh --source ..\arc-agi-n
 python night.py --dry-run
 ```
 
-Inspect the selected trial modes, routing policy and limits. Real execution performs provider and Docker preflight only for enabled route families. Both CLIs must already be authenticated through their subscriptions when their family is enabled. API-key and unknown authentication are rejected; there is no paid API fallback. Build the worker image after changing worker dependencies.
+The import reads only the sibling checkout's `data/atlas` JSON files and local Git metadata. It never pulls, executes upstream code, or fetches cited pages. A successful result reports `fresh`, the card count, revision and catalogue hash. `stale` means a failed refresh retained the last hash-validated snapshot; `unavailable` means no valid snapshot exists. Then inspect the selected missions, disabled slot IDs, trial modes, routing policy and unchanged limits in the dry run. Real execution performs provider and Docker preflight only for enabled route families. Both CLIs must already be authenticated through their subscriptions when their family is enabled. API-key and unknown authentication are rejected; there is no paid API fallback. Build the worker image after changing worker dependencies.
 
 The default [schedule](../night.json) allows 480 minutes and 90 accounting units: two research slots receive 40 units each, with 5 units each for retrospectives. Power-grid validation uses no model allowance. The JSON retains legacy `_usd` field names; the numbers are accounting estimates, not additional subscription charges. Claude reports API-equivalent estimates; unavailable estimates consume the reserved allowance. Provider rate limits still apply and stop affected work.
 
@@ -20,6 +21,8 @@ python trial_report.py
 ```
 
 The dashboard shows evidence, partial stages, usage and limitations. Pause requests are honored by the runner. Continue clears the pause flag; it does not launch a process. Settings apply to subsequent work. Mark for morning review saves a bookmark, not a model request. Approval records a decision about exact bytes without publishing them.
+
+The ARC catalogue defaults to the two locally admitted missions. Disable skips that mission's matching research slot on the next night. Choose next moves the matching slot first, consumes the preference when the night checkpoint is created, and records a routing/order override so the result is excluded from the clean counterbalanced comparison. Unsupported or lab-dependent cards remain visible as `needs_setup`; the dashboard cannot admit them.
 
 A confirmed candidate advances the incumbent with confirmation evidence. Development observations and sanitized lessons can inform later proposals. Reused confirmation targets remain disclosed; they are not a sealed test set.
 
@@ -41,7 +44,7 @@ The dashboard and `trial_report.py` show historical rows without routing provena
 python night.py --resume
 ```
 
-Resume preserves the dated checkpoint, ledger, and routing journal, and skips completed stages. Do not remove a lock or reset accounting to bypass an active run. Inspect `runs/night-status.json`, the dated checkpoint, `runs/research/<run-id>/routing.json`, and `runs/research/<run-id>/<problem>/run.json` when a stage is partial or failed. `evidence.json` records comparisons and the worker image identity. A zero-work result is not success.
+Resume preserves the dated checkpoint, ledger, mission record, and routing journal, and skips completed stages. Do not remove a lock or reset accounting to bypass an active run. Inspect `runs/night-status.json`, the dated checkpoint, `runs/research/<run-id>/routing.json`, `runs/research/<run-id>/<problem>/mission.json`, and `runs/research/<run-id>/<problem>/run.json` when a stage is partial or failed. `evidence.json` records comparisons, mission provenance and the worker image identity. A zero-work result is not success.
 
 Authentication, unavailable CLI, usage-limit and timeout errors have distinct provider classifications. Restore subscription access or worker availability before starting more research. Workers have no host execution fallback. A small `--targets` probe tests development behavior only and cannot establish a benchmark improvement.
 
@@ -62,7 +65,7 @@ The installer exports existing task XML and prints rollback instructions. The op
 | `FleetBriefing7am` | 06:57, require a current meditation artifact before the existing briefing |
 | `discovery-loop-dashboard` | Start the localhost dashboard at logon |
 
-`--scheduled` accepts starts only between 21:50 and 06:00 local time. After midnight it uses the preceding night's date and caps execution at 06:00. Existing checkpoints resume automatically; completed nights return without new work.
+`--scheduled` accepts starts only between 21:50 and 06:00 local time. After midnight it uses the preceding night's date and caps execution at 06:00. Its canonical checkpoint ID is `<local-evening-date>-scheduled`, with the logical date recorded separately as `scheduled_run_id`; a completed manual `<date>` run cannot suppress it. Existing scheduled checkpoints resume automatically; completed scheduled nights return without new work.
 
 `scripts/morning-research.py` creates `runs/research/morning.json`. Missing or partial research is reported explicitly. The integration preserves the existing briefing's external delivery behavior; activation is separate from running the local report. The meditation wrapper does not edit harness source files.
 

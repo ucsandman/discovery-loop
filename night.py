@@ -9,6 +9,7 @@ for existing callers, but ``main`` does not use the publisher.
 import argparse
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -106,6 +107,12 @@ def load_schedule(path=SCHEDULE):
     config = json.loads(Path(path).read_text(encoding="utf-8"))
     if config.get("schema_version") != 2:
         raise ValueError("night schedule must use schema_version 2")
+    arc = config.get("arc", {})
+    if not isinstance(arc, dict) or not isinstance(arc.get("enabled", False), bool):
+        raise ValueError("arc schedule settings must be an object with a boolean enabled flag")
+    source_checkout = arc.get("source_checkout", "../arc-agi-n")
+    if not isinstance(source_checkout, str) or not source_checkout.strip() or "\x00" in source_checkout:
+        raise ValueError("arc source_checkout must be a nonempty path")
     night = config.get("night", {})
     # Schema-2 schedules predate routing. Their historical meaning is the
     # scheduled trial policy over the canonical default chain, so normalize in
@@ -159,7 +166,7 @@ def load_schedule(path=SCHEDULE):
 
 def trial_for(config, run_id):
     anchor = date.fromisoformat(config["trial"]["anchor_date"])
-    current = date.fromisoformat(run_id)
+    current = _logical_run_date(run_id)
     index = (current - anchor).days % 14
     return index, config["trial"]["cycle"][index]
 
@@ -203,7 +210,13 @@ def analyst_provider(generation_provider, run_id):
         return "astra"
     if generation_provider == "astra":
         return "fable"
-    return "fable" if date.fromisoformat(run_id).toordinal() % 2 == 0 else "astra"
+    return "fable" if _logical_run_date(run_id).toordinal() % 2 == 0 else "astra"
+
+
+def _logical_run_date(run_id):
+    if not isinstance(run_id, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}(?:-scheduled)?", run_id):
+        raise ValueError("night run id must be YYYY-MM-DD or YYYY-MM-DD-scheduled")
+    return date.fromisoformat(run_id[:10])
 
 
 def _stop_process_tree(process):
@@ -343,6 +356,7 @@ def _research_command(
     journal_path=None,
     routing_override=False,
     deadline=None,
+    mission_path=None,
 ):
     command = [
         sys.executable,
@@ -380,6 +394,8 @@ def _research_command(
     ]
     if routing is not None and journal_path is not None:
         command.extend(_routing_command_args(routing, journal_path, override=routing_override, deadline=deadline))
+    if mission_path is not None:
+        command.extend(("--mission", str(mission_path)))
     if slot["kind"] == "validation":
         command.append("--eval-only")
     return command
@@ -410,9 +426,11 @@ def _retro_command(
     return command
 
 
-def _new_status(config, run_id, deadline, ledger_path, routing, routing_override):
+def _new_status(
+    config, run_id, deadline, ledger_path, routing, routing_override, *, invocation_kind="manual", scheduled_run_id=None
+):
     index, assignment = trial_for(config, run_id)
-    return {
+    status = {
         "schema_version": 2,
         "run_id": run_id,
         "status": "running",
@@ -428,6 +446,39 @@ def _new_status(config, run_id, deadline, ledger_path, routing, routing_override
         "slots": [],
         "limitations": [],
     }
+    if invocation_kind == "scheduled":
+        status["invocation_kind"] = "scheduled"
+        status["scheduled_run_id"] = scheduled_run_id
+    return status
+
+
+def _prepare_arc(config, slots, run_id):
+    arc = config.get("arc", {})
+    if arc.get("enabled") is not True:
+        return {}, {"status": "disabled", "selected_missions": []}
+    from arc_catalogue import DEFAULT_STATE, load_control, mission_selection, refresh_catalogue
+
+    source = Path(arc.get("source_checkout", "../arc-agi-n"))
+    if not source.is_absolute():
+        source = ROOT / source
+    refreshed = refresh_catalogue(source, DEFAULT_STATE)
+    snapshot = refreshed["snapshot"]
+    control = load_control(DEFAULT_STATE, snapshot)
+    selection = mission_selection(snapshot, control, slots)
+    plan = selection["missions"]
+    summary = {
+        "status": refreshed["refresh"]["status"],
+        "attempted_at": refreshed["refresh"].get("attempted_at"),
+        "catalogue_hash": refreshed["refresh"].get("catalogue_hash"),
+        "revision": refreshed["refresh"].get("revision"),
+        "problem_count": refreshed["refresh"].get("problem_count", 0),
+        "refresh_error": refreshed["refresh"].get("error"),
+        "selected_missions": [mission["source_problem_id"] for mission in plan.values()],
+        "requested_next": control.get("next_id"),
+        "disabled_slot_ids": selection["skip_slot_ids"],
+        "run_id": run_id,
+    }
+    return plan, summary
 
 
 def run_night(
@@ -441,8 +492,16 @@ def run_night(
     provider_check=None,
     sandbox_check=None,
     routing_override=False,
+    invocation_kind="manual",
+    scheduled_run_id=None,
 ):
     """Run or resume one dated night under one lock, deadline and ledger."""
+    _logical_run_date(run_id)
+    if invocation_kind not in {"manual", "scheduled"}:
+        raise ValueError("invocation_kind must be manual or scheduled")
+    if invocation_kind == "scheduled":
+        if scheduled_run_id != run_id.removesuffix("-scheduled") or not run_id.endswith("-scheduled"):
+            raise ValueError("scheduled runs require matching suffixed and logical run ids")
     started_now = time.time() if now is None else now
     configured_root = Path(config["night"].get("evidence_root", "runs/research"))
     evidence_root = configured_root if configured_root.is_absolute() else ROOT / configured_root
@@ -450,6 +509,17 @@ def run_night(
     checkpoint = run_root / "night.json"
     ledger_path = run_root / "budget.json"
     slots = planned_slots(config, run_id)
+    planned_order = [slot["id"] for slot in slots]
+    arc_plan, arc_summary = _prepare_arc(config, slots, run_id)
+    requested_next = arc_summary.get("requested_next")
+    chosen_slot = next(
+        (slot_id for slot_id, mission in arc_plan.items() if mission["source_problem_id"] == requested_next), None
+    )
+    if chosen_slot is not None:
+        slots = sorted(slots, key=lambda slot: (slot.get("kind") == "validation", slot["id"] != chosen_slot))
+    arc_summary["execution_order"] = [slot["id"] for slot in slots]
+    arc_summary["execution_order_override"] = arc_summary["execution_order"] != planned_order
+    run_routing_override = routing_override or arc_summary["execution_order_override"]
     routing = config["night"]["routing"]
     journal_path = run_root / "routing.json"
     if dry_run:
@@ -460,23 +530,40 @@ def run_night(
             "budget_accounting": config["night"].get("budget_accounting"),
             "deadline_minutes": int(config["night"]["deadline_minutes"]),
             "slots": slots,
-            "routing": {**routing, "override": bool(routing_override)},
+            "routing": {**routing, "override": bool(run_routing_override)},
+            "arc": arc_summary,
         }
     run_root.mkdir(parents=True, exist_ok=True)
     with FileLock(LOCK):
         existing = read_json(checkpoint, None)
         if existing and not resume:
             raise RuntimeError(f"run {run_id} already exists; use --resume")
-        if resume and not existing:
+        if resume and not existing and invocation_kind != "scheduled":
             raise RuntimeError(f"run {run_id} has no checkpoint to resume")
         if existing:
             if existing.get("run_id") != run_id:
                 raise ValueError("Checkpoint run identity does not match")
             if existing.get("status") == "completed":
                 return existing
-            if existing.get("routing") != {**routing, "override": bool(routing_override)}:
+            run_routing_override = (existing.get("routing") or {}).get("override") is True
+            existing_order = (existing.get("arc") or {}).get("execution_order", [])
+            if existing_order:
+                positions = {slot_id: index for index, slot_id in enumerate(existing_order)}
+                slots = sorted(slots, key=lambda slot: positions.get(slot["id"], len(positions)))
+            if existing.get("routing") != {**routing, "override": bool(run_routing_override)}:
                 raise ValueError("resume must preserve the configured routing policy")
             status = existing
+            original_arc = status.get("arc")
+            if not isinstance(original_arc, dict):
+                original_arc = {}
+                status["arc"] = original_arc
+            original_arc["resume_control"] = {
+                "checked_at": arc_summary.get("attempted_at"),
+                "catalogue_status": arc_summary.get("status"),
+                "catalogue_hash": arc_summary.get("catalogue_hash"),
+                "disabled_slot_ids": list(arc_summary.get("disabled_slot_ids", [])),
+            }
+            disabled_slot_ids = set(arc_summary.get("disabled_slot_ids", []))
             deadline = datetime.fromisoformat(status["deadline"].replace("Z", "+00:00")).timestamp()
             if deadline_cap is not None:
                 deadline = min(deadline, float(deadline_cap))
@@ -487,7 +574,27 @@ def run_night(
             deadline = started_now + 60 * int(config["night"]["deadline_minutes"])
             if deadline_cap is not None:
                 deadline = min(deadline, float(deadline_cap))
-            status = _new_status(config, run_id, deadline, ledger_path, routing, routing_override)
+            status = _new_status(
+                config,
+                run_id,
+                deadline,
+                ledger_path,
+                routing,
+                run_routing_override,
+                invocation_kind=invocation_kind,
+                scheduled_run_id=scheduled_run_id,
+            )
+            status["arc"] = arc_summary
+            disabled_slot_ids = set(arc_summary.get("disabled_slot_ids", []))
+            for slot_id, mission in arc_plan.items():
+                plugin = mission["plugin"]
+                mission_path = run_root / plugin / "mission.json"
+                atomic_json(mission_path, mission)
+            requested_next = arc_summary.get("requested_next")
+            if requested_next and requested_next in arc_summary["selected_missions"]:
+                from arc_catalogue import DEFAULT_STATE, consume_next
+
+                consume_next(DEFAULT_STATE, requested_next, run_id)
         checks = _preflight(config, slots, provider_check=provider_check, sandbox_check=sandbox_check)
         status["preflight"] = checks
         if not checks["ok"]:
@@ -500,7 +607,9 @@ def run_night(
             _write_status(status, checkpoint)
             return status
         ledger = BudgetLedger(ledger_path, float(config["night"]["budget_usd"]))
-        completed_before = {entry.get("id") for entry in status.get("slots", []) if entry.get("status") == "completed"}
+        completed_before = {
+            entry.get("id") for entry in status.get("slots", []) if entry.get("status") in {"completed", "skipped"}
+        }
 
         def heartbeat():
             status["budget_used_api_equivalent"] = round(float(ledger.spent), 6)
@@ -517,6 +626,25 @@ def run_night(
             if paused(HERE):
                 status["status"] = "paused"
                 break
+            if slot_id in disabled_slot_ids:
+                status.setdefault("slots", []).append(
+                    {
+                        "id": slot_id,
+                        "problem": slot["problem"],
+                        "kind": slot["kind"],
+                        "provider": slot.get("provider"),
+                        "status": "skipped",
+                        "reason": "mission_disabled_by_user",
+                        "started_at": _iso(),
+                        "finished_at": _iso(),
+                        "stages": {},
+                    }
+                )
+                status["limitations"].append(
+                    f"{slot['problem']} research skipped because its admitted mission is disabled"
+                )
+                heartbeat()
+                continue
             record = {
                 "id": slot_id,
                 "problem": slot["problem"],
@@ -526,6 +654,14 @@ def run_night(
                 "started_at": _iso(),
                 "stages": {},
             }
+            mission_path = run_root / slot["problem"] / "mission.json"
+            if mission_path.is_file():
+                mission = read_json(mission_path, {}) or {}
+                record["mission"] = {
+                    "source_problem_id": mission.get("source_problem_id"),
+                    "catalogue_hash": mission.get("catalogue_hash"),
+                    "source_revision": mission.get("source_revision"),
+                }
             status.setdefault("slots", []).append(record)
             heartbeat()
             slot_deadline = min(deadline, time.time() + 60 * float(slot["minutes"]))
@@ -542,8 +678,9 @@ def run_night(
                 max(0.01, (research_deadline - time.time()) / 60),
                 routing=routing,
                 journal_path=journal_path,
-                routing_override=routing_override,
+                routing_override=run_routing_override,
                 deadline=research_deadline,
+                mission_path=mission_path if mission_path.is_file() else None,
             )
             code, reason = _run_bounded(
                 command,
@@ -583,7 +720,7 @@ def run_night(
                         evidence_root,
                         routing=routing,
                         journal_path=journal_path,
-                        routing_override=routing_override,
+                        routing_override=run_routing_override,
                         deadline=slot_deadline,
                     ),
                     run_root / slot["problem"] / "retro.log",
@@ -617,7 +754,9 @@ def run_night(
                 break
 
         expected = {slot["id"] for slot in slots}
-        completed = {entry.get("id") for entry in status.get("slots", []) if entry.get("status") == "completed"}
+        completed = {
+            entry.get("id") for entry in status.get("slots", []) if entry.get("status") in {"completed", "skipped"}
+        }
         if status.get("status") != "paused":
             if completed == expected:
                 status["status"] = "completed"
@@ -676,7 +815,12 @@ def main():
     if a.scheduled and not scheduled_window(local_now):
         print(json.dumps({"status": "skipped", "reason": "outside overnight catch-up window"}, indent=2))
         return 0
-    run_id = a.run_id or (scheduled_run_id(local_now) if a.scheduled else date.today().isoformat())
+    logical_scheduled_id = (
+        (_logical_run_date(a.run_id).isoformat() if a.scheduled and a.run_id else scheduled_run_id(local_now))
+        if a.scheduled
+        else None
+    )
+    run_id = f"{logical_scheduled_id}-scheduled" if a.scheduled else (a.run_id or date.today().isoformat())
     deadline_cap = scheduled_deadline(local_now).timestamp() if a.scheduled else None
     config = load_schedule(a.schedule)
     routing_override = any((a.routing is not None, a.model_chain is not None, a.disable_family is not None))
@@ -694,7 +838,7 @@ def main():
     evidence_root = Path(config["night"].get("evidence_root", "runs/research"))
     if not evidence_root.is_absolute():
         evidence_root = ROOT / evidence_root
-    resume = a.resume or (a.scheduled and (evidence_root / run_id / "night.json").is_file())
+    resume = a.resume or a.scheduled
     cpu_limit = None
     if not a.dry_run:
         cpu_limit = limit_cpu(float(config["night"].get("cpu_fraction", 0.5)))
@@ -706,6 +850,8 @@ def main():
         dry_run=a.dry_run,
         deadline_cap=deadline_cap,
         routing_override=routing_override,
+        invocation_kind="scheduled" if a.scheduled and run_id.endswith("-scheduled") else "manual",
+        scheduled_run_id=logical_scheduled_id if a.scheduled and run_id.endswith("-scheduled") else None,
     )
     if cpu_limit is not None and isinstance(status, dict):
         status["cpu_limit"] = cpu_limit

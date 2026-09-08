@@ -1,5 +1,9 @@
 {
   "schema_version": 2,
+  "arc": {
+    "enabled": true,
+    "source_checkout": "../arc-agi-n"
+  },
   "night": {
     "deadline_minutes": 480,
     "budget_usd": 90.0,

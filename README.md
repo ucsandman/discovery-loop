@@ -50,7 +50,7 @@ This is the only domain in the repository with an externally accepted, published
 
 Open **dashboard.cmd** on Windows, or visit **http://localhost:8766** when the dashboard is running.
 
-The dashboard shows completed work, incomplete stages, legacy observations, paired evidence, and the 14-night model comparison. You can request a pause, continue research, tune the next night's allowance, inspect evidence, and queue approval for an exact release. Continue clears a pause request; it does not start a new run. Approval is local and does not send messages or push results.
+The dashboard shows completed work, incomplete stages, legacy observations, paired evidence, the 14-night model comparison, and a validated local snapshot of the [ARC-AGI-N](https://github.com/yorkeccak/arc-agi-n) problem atlas. You can search the atlas, distinguish executable benchmark missions from questions that still need a plugin and verifier, enable or disable a mission, choose which admitted mission runs first next night, inspect evidence, and queue approval for an exact release. Continue clears a pause request; it does not start a new run. Approval is local and does not send messages or push results.
 
 Historical scores remain visible as **unvalidated**. In particular, the earlier power-grid improvement depended on numerical tolerance and is not treated as a scientific discovery.
 
@@ -99,11 +99,42 @@ python loop.py --problem cvrp --provider paired --iters 1 --budget 8 --no-publis
 python loop.py --problem cvrp --provider astra --eval-only --no-publish
 python loop.py --problem cvrp --provider fable --routing auto --model-chain astra sol opus --disable-family anthropic --iters 1 --budget 8 --no-publish
 python trial_report.py
+python arc_catalogue.py refresh --source ..\arc-agi-n
 ```
 
 All normal research runs stop at local evidence. `--no-publish` remains a compatibility flag and makes that intent explicit. Manual loop runs receive separate run identifiers; `--run-id` and `--ledger` connect scheduled work to a shared night. Per-invocation iteration and allowance limits do not count old runs. Resume preserves the existing night's ledger.
 
 A small development-only probe can select `--targets`, lower `--time`, and set `--wall-minutes`. Such a probe is not a claim of performance at the standard benchmark budget. Confirmation requires at least three distinct matched seeds.
+
+## Sourced mission intake
+
+`arc_catalogue.py` reads `data/atlas/*.json` from a local ARC-AGI-N checkout. It does not pull Git, run upstream code, fetch source URLs, or copy card starter prompts into model requests. Each import validates file count, size, IDs, fields and public HTTPS source URLs, then writes a content-hashed snapshot under `runs/arc/`. The snapshot records the Git revision, whether the atlas has local changes, and a raw source-content hash. A failed refresh retains only a previously hash-validated snapshot and marks it stale; with no valid snapshot, the legacy benchmark schedule remains available.
+
+### Optional sibling workbench
+
+The companion checkout is optional. Place the repositories side by side so the default source path resolves predictably:
+
+```text
+workspace/
+  discovery-loop/
+  arc-agi-n/
+```
+
+Install and build ARC-AGI-N by following its [local setup](https://github.com/ucsandman/arc-agi-n#run-locally), then refresh Discovery Loop's local snapshot:
+
+```powershell
+Set-Location ..\arc-agi-n
+pnpm install --frozen-lockfile
+pnpm build
+Set-Location ..\discovery-loop
+python arc_catalogue.py refresh --source ..\arc-agi-n
+```
+
+`pnpm build` uses ARC-AGI-N's local configuration; keep its credentials in its ignored `.env.local` as that project documents. To keep both local servers available after sign-in, preview the Discovery Loop task changes with `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-night-tasks.ps1`. The preview registers nothing. It reports whether the sibling checkout has the required production build and Node dependency before `-Apply` can register the loopback-only ARC task. See [ARC scheduled integration](docs/ARC-SCHEDULES.md) for task behavior and rollback.
+
+A card is executable only through a reviewed static binding to an existing problem plugin, baseline, independent verifier, development/confirmation split, success criterion, resources and slot budget. The initial bindings are `cvrp-budgeted-routing` to `cvrp` and `mip-budgeted-primal-heuristics` to `miplib_heur`. Every other imported card is visible as **needs setup** and cannot create code, a plugin, a verifier, or a remote action. Disabling an admitted mission skips its matching research slot on the next night. Choosing one moves its slot first and records the night as an order override, outside the clean scheduled comparison.
+
+ARC may link to the local dashboard with `http://127.0.0.1:8766/?arc_problem=<validated-id>`. The query contains only an ID; the dashboard resolves all displayed data from the validated local snapshot. Catalogue freshness and the source card's review date are shown separately from current literature status, which Discovery Loop does not claim to have independently checked.
 
 ## Model routing and trial identity
 
@@ -160,7 +191,7 @@ Problem helpers use isolated package namespaces. Legacy solvers can still import
 
 ## Nightly integration
 
-`night.json` controls an eight-hour window, per-slot and per-call limits, and a 14-night counterbalanced Fable/Astra/paired trial. The runner uses an exclusive lock, checkpoints, heartbeat, pause handling, process-tree timeouts and explicit zero-work/partial/failure statuses.
+`night.json` controls an eight-hour window, per-slot and per-call limits, a local ARC snapshot refresh, and a 14-night counterbalanced Fable/Astra/paired trial. The runner uses an exclusive lock, checkpoints, heartbeat, pause handling, process-tree timeouts and explicit zero-work/partial/failure statuses. Installed `--scheduled` runs use `<local-evening-date>-scheduled`; this prevents a completed manual date-named run from suppressing the scheduled night while retaining the logical date for trial assignment and morning reporting.
 
 | Stage | Maximum time | Research allowance | Retrospective allowance |
 | --- | ---: | ---: | ---: |
@@ -216,6 +247,8 @@ The dashboard is an internal localhost surface, not a public website. No externa
 | --- | --- |
 | [Operations](docs/OPERATIONS.md) | Setup checks, nightly runs, recovery, task activation and release boundaries |
 | [Architecture](docs/RESEARCH-IMPLEMENTATION.md) | Runtime components, data contracts and isolation |
+| [ARC scheduled integration](docs/ARC-SCHEDULES.md) | Local ARC snapshot, optional loopback task and morning-report limits |
+| [Integration deviations](docs/DEVIATIONS.md) | Where the ARC integration deliberately differs from a general problem runner |
 | [Research portfolio](docs/RESEARCH-PORTFOLIO.md) | Beneficiaries, measurements and limits on claims |
 | [Decisions](docs/DECISIONS.md) | Why the system works this way |
 | [Contributing](CONTRIBUTING.md) | Development workflow and verification |

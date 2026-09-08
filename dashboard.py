@@ -220,6 +220,7 @@ class DashboardApp:
         self.control_path = self.runs / "control.json"
         self.schedule_path = self.root / "night.json"
         self.night_status_path = self.runs / "night-status.json"
+        self.arc_state = self.runs / "arc"
         self.approvals = self.runs / "research" / "approvals"
 
     def legacy_runs(self) -> list[dict[str, Any]]:
@@ -337,6 +338,28 @@ class DashboardApp:
             }
             items.append(_sanitize(normalized, self.root))
         return {"generated_at": _utc_now(), "evidence": items}
+
+    def arc_catalogue(self) -> dict[str, Any]:
+        from arc_catalogue import catalogue_view
+
+        return _sanitize(catalogue_view(self.arc_state), self.root)
+
+    def update_arc_control(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from arc_catalogue import CatalogueError, update_control
+
+        if "enabled" in payload:
+            _expect_keys(payload, {"problem_id", "enabled"})
+            arguments = {"enabled": payload["enabled"]}
+        else:
+            _expect_keys(payload, {"problem_id", "choose_next"})
+            if payload.get("choose_next") is not True:
+                raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_payload", "choose_next must be true.")
+            arguments = {"choose_next": True}
+        try:
+            update_control(payload.get("problem_id"), state_root=self.arc_state, **arguments)
+        except (CatalogueError, OSError, TypeError, ValueError) as exc:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_payload", str(exc)) from exc
+        return {"catalogue": self.arc_catalogue()}
 
     def update_control(self, payload: dict[str, Any]) -> dict[str, Any]:
         _expect_keys(payload, {"action"}, {"evidence_path"})
@@ -621,6 +644,8 @@ def _handler(app: DashboardApp):
                     self._json(HTTPStatus.OK, app.status())
                 elif path == "/api/evidence":
                     self._json(HTTPStatus.OK, app.evidence())
+                elif path == "/api/arc/catalogue":
+                    self._json(HTTPStatus.OK, app.arc_catalogue())
                 elif path in STATIC_FILES:
                     filename, content_type = STATIC_FILES[path]
                     target = app.web_root / filename
@@ -649,6 +674,9 @@ def _handler(app: DashboardApp):
                     self._json(HTTPStatus.OK, result)
                 elif path == "/api/schedule":
                     result = app.update_schedule(payload)
+                    self._json(HTTPStatus.OK, result)
+                elif path == "/api/arc/control":
+                    result = app.update_arc_control(payload)
                     self._json(HTTPStatus.OK, result)
                 elif path == "/api/approve":
                     status, result = app.approve(payload)

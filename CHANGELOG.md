@@ -1,5 +1,12 @@
 # Changelog
 
+## ARC-AGI-N local companion, 2026-09-08
+
+- Import a bounded, content-hashed local snapshot of reviewed ARC-AGI-N catalogue records without pulling, executing upstream code, or passing upstream prose into model prompts.
+- Admit only the reviewed CVRP and MIP heuristic bindings; retain other cards as visible `needs setup` records that cannot start research or create remote actions.
+- Expose local catalogue review and mission ordering controls in the dashboard, while preserving existing allowance, verifier, confirmation, and publication boundaries.
+- Keep the companion workbench loopback-only; document sibling checkout setup and preview its optional at-logon task before an explicit task-registration apply.
+
 ## Cross-run experiment memory, 2026-09-08
 
 - Reject previously recorded AST-equivalent candidates before evaluation, including experiments outside the bounded prompt window.

@@ -58,6 +58,22 @@ p { margin: 0; }
 .lede { max-width: 66ch; color: var(--muted); margin-top: .65rem; }
 .workspace { display: grid; grid-template-columns: minmax(0, 2.25fr) minmax(18rem, .75fr); gap: clamp(2rem, 5vw, 5rem); padding-top: clamp(2rem, 5vw, 4.5rem); }
 .workspace > *, .evidence-grid > * { min-width: 0; }
+.missions { margin-bottom: clamp(2.5rem, 6vw, 5rem); }
+.catalogue-note { max-width: 76ch; color: var(--muted); margin: -.55rem 0 1rem; }
+.mission-tools { display: grid; grid-template-columns: minmax(14rem, 1fr) auto; gap: 1rem; align-items: end; }
+.mission-search { margin-top: 0; }
+.ready-filter { margin: 0; padding-bottom: .45rem; }
+.mission-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; margin-top: 1rem; }
+.mission-card { border-top: 3px solid var(--line); background: color-mix(in oklch, var(--paper) 90%, white); padding: 1rem; }
+.mission-card.ready { border-color: var(--green); }
+.mission-card.focused { outline: 3px solid var(--rust); outline-offset: 2px; }
+.mission-card h3 { margin: .45rem 0 .55rem; }
+.mission-card .stamp { margin-right: .35rem; }
+.mission-card .source-status { color: var(--muted); font-size: .8rem; margin-top: .75rem; }
+.mission-card details { margin-top: .8rem; }
+.mission-card .control-row { margin-top: .85rem; }
+.mission-card a { color: var(--green); text-underline-offset: .18em; }
+.mission-card .source-list { margin: .55rem 0 0; padding-left: 1.1rem; font-size: .85rem; }
 .section-head { display: flex; justify-content: space-between; gap: 1rem; align-items: end; margin-bottom: 1.5rem; }
 .folio { color: var(--muted); }
 .table-wrap { overflow-x: auto; border-top: 2px solid var(--ink); border-bottom: 1px solid var(--ink); background: color-mix(in oklch, var(--paper) 90%, transparent); }
@@ -135,6 +151,7 @@ code { overflow-wrap: anywhere; }
 
 @media (max-width: 56rem) {
   .workspace, .evidence-grid { grid-template-columns: minmax(0, 1fr); }
+  .mission-list { grid-template-columns: minmax(0, 1fr); }
   .evidence { grid-column: auto; }
   .rail { order: -1; }
 }
@@ -143,6 +160,7 @@ code { overflow-wrap: anywhere; }
   .masthead { grid-template-columns: 1fr; }
   .night-state { text-align: left; }
   .two, .three, .finding, .check-row { grid-template-columns: 1fr; gap: .35rem; }
+  .mission-tools { grid-template-columns: 1fr; }
   th:nth-child(3), td:nth-child(3) { display: none; }
   .trial-table-wrap th:nth-child(3), .trial-table-wrap td:nth-child(3),
   .trial-table-wrap th:nth-child(6), .trial-table-wrap td:nth-child(6) { display: table-cell; }

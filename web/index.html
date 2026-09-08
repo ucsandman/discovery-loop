@@ -27,6 +27,19 @@
 
     <div class="workspace">
       <section aria-labelledby="ledger-title">
+        <section class="missions" aria-labelledby="missions-title">
+          <div class="section-head">
+            <div><p class="kicker">ARC-AGI-N catalogue</p><h2 id="missions-title">Research opportunities</h2></div>
+            <span class="folio" id="arc-count">Reading…</span>
+          </div>
+          <p class="catalogue-note" id="arc-freshness">Reading the validated local catalogue snapshot.</p>
+          <div class="mission-tools">
+            <label class="field mission-search">Search opportunities<input id="arc-search" type="search" autocomplete="off" placeholder="Title, field, method, or beneficiary"></label>
+            <label class="check ready-filter"><input id="arc-ready-only" type="checkbox" checked><span>Show ready missions only</span></label>
+          </div>
+          <p class="notice" id="arc-note" role="status"></p>
+          <div class="mission-list" id="arc-list"><p class="empty">Reading sourced opportunities…</p></div>
+        </section>
         <div class="section-head">
           <div><p class="kicker">Research ledger</p><h2 id="ledger-title">Claims to examine</h2></div>
           <span class="folio" id="ledger-count">Reading…</span>

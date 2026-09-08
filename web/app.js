@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const state = { csrf: "", status: null, evidence: [], selected: null };
+  const state = { csrf: "", status: null, evidence: [], selected: null, arc: null };
   const byId = (id) => document.getElementById(id);
   const node = (tag, className, text) => {
     const element = document.createElement(tag);
@@ -40,7 +40,10 @@
     return span;
   };
   const dateText = (value) => {
-    const date = value ? new Date(value) : new Date();
+    const dateOnly = typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+    const date = dateOnly
+      ? new Date(...value.split("-").map((part, index) => Number(part) - (index === 1 ? 1 : 0)))
+      : value ? new Date(value) : new Date();
     if (Number.isNaN(date.valueOf())) return "Discovery review";
     return `Discovery review · ${new Intl.DateTimeFormat(undefined, { day: "2-digit", month: "long", year: "numeric" }).format(date)}`;
   };
@@ -64,8 +67,14 @@
     const control = status.control || {};
     const slots = Array.isArray(night.slots) ? night.slots : [];
     const completed = slots.filter((slot) => slot.status === "completed" || slot.exit_code === 0).length;
-    const iterations = slots.reduce((sum, slot) => sum + numberFrom(slot.night_iterations ?? slot.iterations), 0);
-    const spend = slots.reduce((sum, slot) => sum + numberFrom(slot.night_spend_usd ?? slot.spent_usd), 0);
+    const matchingEvidence = state.evidence.filter((item) => item.run_id === night.run_id);
+    const slotIterations = slots.map((slot) => slot.night_iterations ?? slot.iterations).filter(finite);
+    const evidenceIterations = matchingEvidence.map((item) => item.usage?.iterations).filter(finite);
+    const iterations = [...slotIterations, ...evidenceIterations].reduce((sum, value) => sum + value, 0);
+    const slotSpend = slots.map((slot) => slot.night_spend_usd ?? slot.spent_usd).filter(finite);
+    const spend = finite(night.budget_used_api_equivalent)
+      ? night.budget_used_api_equivalent
+      : slotSpend.length ? slotSpend.reduce((sum, value) => sum + value, 0) : null;
     const tokens = tokenCount(night.usage || slots.map((slot) => slot.usage));
     const stamp = byId("night-stamp");
     const rawStatus = String(night.status || night.state || "").toLowerCase();
@@ -79,12 +88,127 @@
     stamp.className = `stamp ${kind}`;
     stamp.replaceChildren(node("span", "signal"), document.createTextNode(label));
     byId("night-summary").textContent = slots.length ? `${completed} of ${slots.length} studies finished` : "No active research night";
-    const usageParts = [`${iterations} iterations`, `${formatAllowance(spend)} reported total_cost_usd API-equivalent`];
+    const usageParts = [
+      slotIterations.length || evidenceIterations.length ? `${iterations} iterations` : "Iterations not reported",
+      spend === null ? "Allowance use not reported" : `${formatAllowance(spend)} reported total_cost_usd API-equivalent`,
+    ];
     if (tokens) usageParts.push(`${new Intl.NumberFormat().format(tokens)} tokens`);
     byId("night-usage").textContent = slots.length ? usageParts.join(" · ") : "Historical results remain available below.";
-    byId("dateline").textContent = dateText(night.started || night.started_at || status.generated_at);
+    const logicalDate = night.scheduled_run_id || String(night.run_id || "").slice(0, 10);
+    byId("dateline").textContent = dateText(/^\d{4}-\d{2}-\d{2}$/.test(logicalDate) ? logicalDate : status.generated_at);
     byId("pause").disabled = control.paused === true;
     byId("continue").disabled = control.paused !== true;
+  }
+
+  const requestedArcId = (() => {
+    const value = new URLSearchParams(window.location.search).get("arc_problem");
+    return value && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value) ? value : null;
+  })();
+
+  const arcSearchText = (problem) => [
+    problem.title, problem.field, problem.subfield, problem.summary,
+    ...(Array.isArray(problem.tags) ? problem.tags : []),
+    ...(Array.isArray(problem.tools) ? problem.tools : []),
+    problem.admission?.beneficiary,
+  ].filter(Boolean).join(" ").toLowerCase();
+
+  function missionFinding(term, value) {
+    const line = node("p", "source-status");
+    line.append(node("strong", "", `${term}: `), document.createTextNode(value || "Not recorded"));
+    return line;
+  }
+
+  function arcCard(problem, currentIds) {
+    const ready = problem.admission?.status === "ready";
+    const card = node("article", `mission-card${ready ? " ready" : ""}${problem.id === requestedArcId ? " focused" : ""}`);
+    card.dataset.search = arcSearchText(problem);
+    card.dataset.ready = String(ready);
+    card.dataset.id = problem.id;
+    const stamps = node("div");
+    stamps.append(statusStamp(ready ? (problem.enabled ? "Ready · enabled" : "Ready · disabled") : "Needs setup", ready ? "good" : "warn"));
+    if (currentIds.has(problem.id)) stamps.append(statusStamp("Current mission", "neutral"));
+    if (problem.chosen_next) stamps.append(statusStamp("Chosen next", "neutral"));
+    card.append(stamps, node("h3", "", problem.title), node("p", "", problem.summary));
+    card.append(missionFinding("Field", `${problem.field} / ${problem.subfield}`));
+    card.append(missionFinding(
+      "Source status",
+      `ARC card reviewed ${problem.source_reviewed_at || "date unrecorded"}; current literature not independently checked by Discovery Loop.`,
+    ));
+    const details = node("details");
+    details.append(node("summary", "", ready ? "Mission scope, resources, and verification" : "Source question and setup gap"));
+    if (ready) {
+      details.append(
+        missionFinding("Beneficiary", problem.admission.beneficiary),
+        missionFinding("Bounded hypothesis", problem.admission.bounded_hypothesis),
+        missionFinding("Success", problem.admission.success_criterion),
+        missionFinding("Resources", problem.admission.resources),
+        missionFinding("Split", problem.admission.split),
+        missionFinding("Baseline", problem.admission.baseline),
+        missionFinding("Verifier", problem.admission.verifier),
+      );
+    } else {
+      details.append(missionFinding("Why open", problem.why_open), missionFinding("Admission", problem.admission?.reason));
+    }
+    const sources = node("ul", "source-list");
+    (Array.isArray(problem.sources) ? problem.sources : []).forEach((source) => {
+      const item = node("li");
+      const link = node("a", "", source.title);
+      link.href = source.url;
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      item.append(link);
+      sources.append(item);
+    });
+    details.append(sources);
+    card.append(details);
+    const controls = node("div", "control-row");
+    const atlas = node("a", "", "Open in ARC atlas");
+    atlas.href = `http://127.0.0.1:3100/?problem=${encodeURIComponent(problem.id)}`;
+    controls.append(atlas);
+    if (ready) {
+      const choose = node("button", "", problem.chosen_next ? "Chosen for next run" : "Choose for next run");
+      choose.type = "button";
+      choose.disabled = problem.chosen_next;
+      choose.addEventListener("click", () => updateArc({ problem_id: problem.id, choose_next: true }));
+      const toggle = node("button", problem.enabled ? "rust" : "", problem.enabled ? "Disable mission" : "Enable mission");
+      toggle.type = "button";
+      toggle.addEventListener("click", () => updateArc({ problem_id: problem.id, enabled: !problem.enabled }));
+      controls.append(choose, toggle);
+    }
+    card.append(controls);
+    return card;
+  }
+
+  function renderArc() {
+    const catalogue = state.arc || {};
+    const problems = Array.isArray(catalogue.problems) ? catalogue.problems : [];
+    const term = byId("arc-search").value.trim().toLowerCase();
+    const readyOnly = byId("arc-ready-only").checked;
+    const visible = problems.filter((problem) => (!term || arcSearchText(problem).includes(term)) && (!readyOnly || problem.admission?.status === "ready"));
+    const list = byId("arc-list");
+    list.replaceChildren();
+    const current = new Set(state.status?.night_status?.arc?.selected_missions || []);
+    visible.forEach((problem) => list.append(arcCard(problem, current)));
+    if (!visible.length) list.append(node("p", "empty", problems.length ? "No opportunities match this search." : "No validated catalogue snapshot is available yet."));
+    const readyCount = problems.filter((problem) => problem.admission?.status === "ready").length;
+    byId("arc-count").textContent = `${problems.length} sourced · ${readyCount} ready`;
+    const refresh = catalogue.refresh || {};
+    const source = catalogue.source || {};
+    const freshness = refresh.status === "fresh" ? "Fresh local import" : refresh.status === "stale" ? "Stale import retained" : "Catalogue unavailable";
+    const dirty = source.worktree_dirty ? " The source checkout contains local atlas changes beyond the recorded Git revision." : "";
+    byId("arc-freshness").textContent = `${freshness}. ${problems.length} cards at revision ${String(source.revision || "unknown").slice(0, 12)}; content hash ${String(catalogue.catalogue_hash || "unknown").slice(0, 12)}.${dirty} Catalogue freshness does not establish current literature status.`;
+    if (requestedArcId && !problems.some((problem) => problem.id === requestedArcId)) {
+      setNotice(byId("arc-note"), "The requested ARC problem is not present in the validated local snapshot.", true);
+    }
+  }
+
+  async function updateArc(payload) {
+    try {
+      const result = await api("/api/arc/control", { method: "POST", body: JSON.stringify(payload) });
+      state.arc = result.catalogue;
+      renderArc();
+      setNotice(byId("arc-note"), payload.choose_next ? "Mission chosen to run first next night. If that changes the scheduled order, the night is recorded as an override." : payload.enabled ? "Mission enabled for nightly selection." : "Mission disabled; its matching research slot will be skipped next night.");
+    } catch (error) { setNotice(byId("arc-note"), error.message, true); }
   }
 
   function evidenceLabel(item) {
@@ -224,7 +348,13 @@
       ? "Historical routing provenance is unverified."
       : `${routing.formal_trial_eligible ? "Clean formal routing" : "Operational routing excluded from clean ratios"} · models ${countText(routing.actual_model_calls)} · families ${countText(routing.actual_family_calls)}${Object.keys(routing.failure_reasons || {}).length ? ` · failures ${countText(routing.failure_reasons)}` : ""}`;
     const dl = node("dl");
-    dl.append(finding("Claim", description), finding("Confirmation", metric), finding("Routing", routingText), finding("Limits", limits), finding("Candidate", candidate));
+    dl.append(finding("Claim", description));
+    if (item.raw?.mission) {
+      const mission = item.raw.mission;
+      dl.append(finding("Mission", `${mission.source_title || mission.source_problem_id}. ${mission.beneficiary || ""}`));
+      dl.append(finding("Mission success", mission.success_criterion || "See the bound mission record."));
+    }
+    dl.append(finding("Confirmation", metric), finding("Routing", routingText), finding("Limits", limits), finding("Candidate", candidate));
     const details = node("details");
     details.append(node("summary", "", "Technical evidence and raw record"));
     const pre = node("pre");
@@ -264,13 +394,17 @@
       const status = await api("/api/status");
       state.status = status;
       state.csrf = status.csrf_token;
-      const evidence = await api("/api/evidence");
+      const [evidence, catalogue] = await Promise.all([api("/api/evidence"), api("/api/arc/catalogue")]);
       state.evidence = Array.isArray(evidence.evidence) ? evidence.evidence : [];
+      state.arc = catalogue;
+      if (requestedArcId) byId("arc-ready-only").checked = false;
       renderNight();
+      renderArc();
       populateSchedule();
       renderTrial();
       if (state.evidence.length) selectEvidence(0); else renderLedger();
       document.body.classList.add("loaded");
+      if (requestedArcId) document.querySelector(`[data-id="${requestedArcId}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
     } catch (error) {
       byId("run-list").innerHTML = "";
       const row = node("tr");
@@ -297,6 +431,8 @@
 
   byId("pause").addEventListener("click", () => control("pause"));
   byId("continue").addEventListener("click", () => control("continue"));
+  byId("arc-search").addEventListener("input", renderArc);
+  byId("arc-ready-only").addEventListener("change", renderArc);
   byId("approval-check").addEventListener("change", () => {
     const item = state.evidence[state.selected];
     byId("approve").disabled = !byId("approval-check").checked || !item?.confirmed || !item?.publishable;

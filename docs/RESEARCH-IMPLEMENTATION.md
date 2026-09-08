@@ -14,6 +14,7 @@ This extends loop.py, night.py, the problem plugins, and their existing status p
 6. A localhost dashboard displays real evidence and supports pause/continue, configuration, evidence review and hash-bound release approval. No automatic external publication.
 7. Power-grid tolerance exploitation is blocked by stricter independent evaluation; legacy claims are explicitly unvalidated.
 8. Documentation, regression tests, browser QA, live provider probes and a real isolated solver run pass before release.
+9. Sourced questions are display-only until a reviewed admission binds an existing plugin, baseline, independent verifier, split, success criterion, resources and fixed maximum slot budget.
 
 ## Runtime components
 
@@ -25,6 +26,7 @@ This extends loop.py, night.py, the problem plugins, and their existing status p
 | `loop.py` | Development proposals, cross-review, confirmation and incumbent lineage |
 | `research_state.py` | Atomic state, file locks, pause controls and budget reservations |
 | `night.py` | Counterbalanced schedule, shared deadline, checkpoints and resume |
+| `arc_catalogue.py` | Strict local catalogue import, reviewed admission bindings, mission control and provenance |
 | `retro.py` | Opposite-provider retrospectives from sanitized development observations |
 | `scripts/morning-research.py` | Sanitized morning report and existing-routine integration |
 | `dashboard.py` and `web/` | Local evidence review, tuning and exact-file approval |
@@ -50,9 +52,11 @@ Output and logs have separate bounded temporary filesystems. The host also caps 
 
 The supported command line enters `loop.cli_main()` and `run_research()`. Single-provider and paired modes use the same evaluation machinery. Paired mode starts with independent proposals from one frozen development brief and cross-reviews promising candidates before confirmation.
 
-Run-local files live in `runs/research/<run-id>/<problem>/`. `run.json` records progress. `evidence.json` records hashes, comparisons, usage, limitations and worker identity. Confirmed candidates advance the incumbent with hash-bound `confirmation.json`. Generation history stays development-only; previously exposed targets are never relabeled unseen.
+Run-local files live in `runs/research/<run-id>/<problem>/`. `run.json` records progress. `evidence.json` records hashes, comparisons, usage, limitations, mission provenance and worker identity. When an admitted ARC mission is selected, an immutable `mission.json` sits beside the evidence and the CLI validates its plugin, reviewed wording, baseline, verifier, hashes and exact invocation allowance before research begins. Confirmed candidates advance the incumbent with hash-bound `confirmation.json`. Generation history stays development-only; previously exposed targets are never relabeled unseen.
 
-The night runner writes status and dated checkpoints. `scripts/morning-research.py`, not the runner, writes `runs/research/morning.json` with requested arm/mode/eligibility, actual model/family counts, fallback reasons, failed research and retro attempts, paired degradation, and retro status. Manual resume is explicit; scheduled catch-up resumes existing checkpoints and does not repeat completed nights. The implemented 14-night cycle gives each research track five Fable, five Astra and four paired requested arms, with seven occurrences of each research order.
+The persistent ARC state lives under `runs/arc/`: `catalogue.json`, `refresh-status.json`, and `control.json`. The normalized catalogue hash excludes the import timestamp so identical content stays identical; a separate raw source hash covers all bytes, including fields that are deliberately not retained. Cache loads recompute the hash and compare every executable admission to the in-code reviewed binding. Upstream card prose and source URLs are rendered for local review but excluded from research prompts. The prompt receives only the local reviewed mission brief and source revision identifiers, alongside the existing development-only experiment memory. Refresh is local and bounded by file/byte limits plus short Git command timeouts. Failure cannot disable legacy research; a valid prior snapshot is retained as stale.
+
+The night runner writes status and dated checkpoints. `scripts/morning-research.py`, not the runner, writes `runs/research/morning.json` with requested arm/mode/eligibility, actual model/family counts, fallback reasons, failed research and retro attempts, paired degradation, and retro status. Manual resume is explicit. Scheduled catch-up uses `<date>-scheduled` checkpoints and records the logical date separately, so a same-date manual checkpoint cannot suppress the installed task. The implemented 14-night cycle gives each research track five Fable, five Astra and four paired requested arms, with seven occurrences of each research order.
 
 The scheduled arm is historical-trial assignment; the actual execution identity is recorded separately. `trial_report.py` puts evidence without routing records in `historical_unverified`, clean eligible records in `clean_formal_trial`, and known routed but ineligible records in `routing_recorded_ineligible`. A fallback, route/model override, paired degradation, or incomplete retro is excluded from formal comparison while retained for operational reporting.
 
@@ -68,7 +72,7 @@ The local evidence scan covered 31 solver candidates across `runs-cvrp`, `runs-m
 
 ## Dashboard contract
 
-The server listens on localhost, port 8766 by default. Read routes are `GET /api/status` and `GET /api/evidence`; mutations use `POST /api/control`, `POST /api/schedule` and `POST /api/approve`. Host, Origin, CSRF and payload checks protect mutations. Path and symlink checks constrain file access.
+The server listens on localhost, port 8766 by default. Read routes are `GET /api/status`, `GET /api/evidence`, and `GET /api/arc/catalogue`; mutations use `POST /api/control`, `POST /api/schedule`, `POST /api/arc/control`, and `POST /api/approve`. Host, Origin, CSRF and payload checks protect mutations. Path and symlink checks constrain file access. `?arc_problem=<validated-id>` focuses a card by ID only; arbitrary query content never becomes catalogue or prompt data.
 
 Controls persist in `runs/control.json`. Continue clears a pause request without starting work. Morning review is a persistent human bookmark. Schedule tuning validates the same configuration used by the runner. Approvals bind the exact evidence bytes, solver and solution artifacts; they never send or publish by themselves.
 

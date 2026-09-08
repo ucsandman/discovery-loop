@@ -9,6 +9,8 @@ Start with the [project README](../README.md) for setup and the dashboard previe
 - [Research portfolio](RESEARCH-PORTFOLIO.md): intended benefit and the evidence needed to demonstrate it.
 - [Decisions](DECISIONS.md): design choices and publication boundaries.
 - [Errors and lessons](ERRORS.md): concrete failures and prevention measures.
+- [Integration deviations](DEVIATIONS.md): deliberate limits and changed assumptions in the ARC mission bridge.
+- [ARC scheduled integration](ARC-SCHEDULES.md): local snapshot state, optional loopback task, and morning-report limits.
 - [Contributing](../CONTRIBUTING.md): checks and change expectations.
 - [Changelog](../CHANGELOG.md): shipped changes.
 
