@@ -24,6 +24,17 @@ _FINGERPRINT = re.compile(r"[0-9a-f]{64}")
 _PROVIDER_FAMILIES = {"anthropic", "openai", "fable", "astra", "paired"}
 
 
+def is_development_observation(record):
+    """Whether *record* is a candidate observation suitable for research memory.
+
+    Older candidate rows may not have a status, so only the explicitly
+    non-candidate retrospective marker is excluded for legacy compatibility.
+    """
+    if not isinstance(record, dict):
+        return False
+    return record.get("development_status", record.get("status")) != "retrospective"
+
+
 def analyze_candidate(code, known_fingerprints=()):
     """Parse *code* and compare its position-free AST hash to prior candidates.
 
@@ -91,6 +102,7 @@ def _development_entry(record, hidden_targets):
     fingerprint = record.get("fingerprint")
     fingerprint = fingerprint if isinstance(fingerprint, str) and _FINGERPRINT.fullmatch(fingerprint) else None
     return {
+        "run_id": _redact(record.get("run_id"), hidden_targets, 128),
         "problem": _redact(record.get("problem"), hidden_targets, 120),
         "iteration": _iteration(record.get("iteration")),
         "provider": _redact(record.get("provider"), hidden_targets, 80),
@@ -119,7 +131,14 @@ def _development_entry(record, hidden_targets):
     }
 
 
-def summarize_development(history, *, hidden_targets=(), limit=20, family_limit=12):
+def summarize_development(
+    history,
+    *,
+    hidden_targets=(),
+    limit=20,
+    family_limit=12,
+    total_observations=None,
+):
     """Return a bounded prompt-safe projection plus recurring-family outcomes.
 
     The compact family rollup considers all supplied development observations,
@@ -128,7 +147,7 @@ def summarize_development(history, *, hidden_targets=(), limit=20, family_limit=
     """
     if limit < 1 or family_limit < 1:
         raise ValueError("memory limits must be positive")
-    entries = [_development_entry(item, hidden_targets) for item in history if isinstance(item, dict)]
+    entries = [_development_entry(item, hidden_targets) for item in history if is_development_observation(item)]
     families = {}
     for entry in entries:
         family = entry["family"]
@@ -161,7 +180,19 @@ def summarize_development(history, *, hidden_targets=(), limit=20, family_limit=
             sorted(item["negative_results"].items(), key=lambda pair: (-pair[1], pair[0]))[:5]
         )
         item["negative_total"] = total
-    return {"entries": entries[-limit:], "families": ordered_families}
+    recorded = len(entries) if total_observations is None else max(len(entries), int(total_observations))
+    return {
+        "scope": {
+            "recorded_candidate_observations": recorded,
+            "aggregate_window_observations": len(entries),
+            "recent_observations_included": min(len(entries), limit),
+            "recent_observation_limit": limit,
+            "family_rollups_included": len(ordered_families),
+            "family_rollup_limit": family_limit,
+        },
+        "entries": entries[-limit:],
+        "families": ordered_families,
+    }
 
 
 def _number(value):
@@ -173,7 +204,7 @@ def operational_stats(history):
     entries = history.get("entries", []) if isinstance(history, dict) else history
     groups = {}
     for raw in entries:
-        if not isinstance(raw, dict):
+        if not is_development_observation(raw):
             continue
         entry = _development_entry(raw, ())
         key = (entry["problem"], entry["actual_model"], entry["role"])

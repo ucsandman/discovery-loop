@@ -23,6 +23,8 @@ The dashboard shows evidence, partial stages, usage and limitations. Pause reque
 
 A confirmed candidate advances the incumbent with confirmation evidence. Development observations and sanitized lessons can inform later proposals. Reused confirmation targets remain disclosed; they are not a sealed test set.
 
+Development memory is append-only under `runs/research/development-history/`. Proposal context includes the most recent 20 candidate observations plus family rollups over at most 80 candidate observations. Run evidence records both counts. Exact AST duplicate detection scans all recorded candidate fingerprints, including candidates older than those prompt windows. Retrospective rows are provenance records and do not count as candidate attempts or algorithm families. Historical rows without a run ID remain readable; every new candidate observation records its source run ID. Confirmation and release-holdout data remain excluded from proposal memory.
+
 ## Routing and recovery
 
 `night.json` stores `night.routing`: `policy`, `chain`, and `disabled_families`. The default is the `scheduled` policy with `fable, opus, astra, sol`; Fable/Opus are Anthropic-family execution identities and Astra/Sol are OpenAI-family identities. Valid policies are `scheduled`, `ordered`, `auto`, `openai_only`, `anthropic_only`, `astra_only`, `fable_only`, and `paired`. `--routing`, `--model-chain`, and `--disable-family` provide a per-run override.

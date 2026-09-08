@@ -88,7 +88,14 @@ def append_event(path, data):
     path = Path(path)
     with FileLock(str(path) + ".lock"):
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "a", encoding="utf-8") as stream:
+        needs_separator = path.exists() and path.stat().st_size > 0
+        if needs_separator:
+            with open(path, "rb") as existing:
+                existing.seek(-1, os.SEEK_END)
+                needs_separator = existing.read(1) not in (b"\n", b"\r")
+        with open(path, "a", encoding="utf-8", newline="\n") as stream:
+            if needs_separator:
+                stream.write("\n")
             stream.write(json.dumps(data, allow_nan=False) + "\n")
             stream.flush()
             os.fsync(stream.fileno())

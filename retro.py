@@ -22,7 +22,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from loop import Loop, load_problem, retro_path, value_of
+from loop import Loop, _read_development_memory, load_problem, retro_path, value_of
 from model_registry import DEFAULT_CHAIN
 from research_memory import _redact, summarize_development
 from research_state import BudgetLedger, append_event, atomic_json, read_json
@@ -259,15 +259,14 @@ def run_research_retro(
     problem_root = root / run_id / problem
     evidence = read_json(problem_root / "evidence.json", {}) or {}
     history_path = root / "development-history" / f"{problem}.jsonl"
-    history = []
-    if history_path.exists():
-        for line in history_path.read_text(encoding="utf-8").splitlines()[-200:]:
-            try:
-                item = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(item, dict):
-                history.append(item)
+    development_memory = _read_development_memory(history_path)
+    history = development_memory["history"]
+    history_summary = summarize_development(
+        history,
+        limit=20,
+        family_limit=12,
+        total_observations=development_memory["total_observations"],
+    )
     generated_by = evidence.get("provider") or "paired"
     analyst = provider or cross_model_provider(generated_by, run_id)
     if generated_by in {"fable", "astra"} and analyst == generated_by:
@@ -286,7 +285,7 @@ def run_research_retro(
         "limitations": [],
         "provenance": {
             "source": "bounded_development_history_only",
-            "history_limit": 20,
+            "history_scope": history_summary["scope"],
             "routing_override": bool(routing_override),
         },
         "routing": routing_summary(
@@ -314,7 +313,7 @@ def run_research_retro(
             if item.get("scope") == f"{problem}:retro"
         )
         response = route_call(
-            build_research_retro_prompt(evidence, summarize_development(history, limit=20, family_limit=12)),
+            build_research_retro_prompt(evidence, history_summary),
             requested_alias=analyst,
             policy=routing_policy,
             chain=routing_chain,

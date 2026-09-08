@@ -1,5 +1,12 @@
 # Changelog
 
+## Cross-run experiment memory, 2026-09-08
+
+- Reject previously recorded AST-equivalent candidates before evaluation, including experiments outside the bounded prompt window.
+- Preserve candidate run lineage, exclude retrospective rows from attempt statistics, and explain history window counts in evidence and prompts.
+- Ask related proposals to identify a concrete mechanism change addressing earlier development failures.
+- Preserve JSONL record boundaries when appending to files without a final newline.
+
 ## Subscription routing and research continuity, 2026-09-08
 
 - Separate provider families, registered models, routing policies and formal trial identity.

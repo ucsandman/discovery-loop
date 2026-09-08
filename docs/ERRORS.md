@@ -1,5 +1,9 @@
 # Errors and lessons
 
+## 2026-09-08: Cross-night memory dropped old exact candidates and counted retrospectives as attempts
+
+The proposal prompt used only the last 80 JSONL rows, while duplicate detection knew only the current run. An old candidate could therefore be proposed and evaluated again, and the retrospective row appended to each problem history inflated attempt and family counts. The runner now scans every recorded candidate fingerprint for exact AST duplicate detection, keeps the existing 80-candidate aggregate window and 20-candidate prompt window, excludes retrospective rows, and records those scopes explicitly. New observations retain their run ID. Related algorithm families remain available when a proposal names a concrete changed mechanism and why it addresses the prior failure. A regression fixture also exposed that appending to a valid JSON object without a trailing newline could concatenate the next event; the locked append helper now inserts the missing separator.
+
 ## 2026-09-08: Fixed routing must survive the operator interface
 
 A requested Astra, Sol, Opus sequence could not be represented faithfully by adaptive or role-based routing. Added an ordered policy and tested all three research roles. A real CLI dry-run then exposed parsed overrides being validated without installing them into the runtime configuration; the corrected assignment now has a CLI regression. Future routing changes must verify the effective dry-run configuration as well as the routing helper.

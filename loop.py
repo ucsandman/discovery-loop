@@ -37,7 +37,13 @@ from model_registry import (
     model_spec,
     validate_routing_config,
 )
-from research_memory import analyze_candidate, operational_stats, rank_auto_allocation, summarize_development
+from research_memory import (
+    analyze_candidate,
+    is_development_observation,
+    operational_stats,
+    rank_auto_allocation,
+    summarize_development,
+)
 from routing import RoutingJournal, route_call, routing_summary
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -323,7 +329,16 @@ th{{background:#eee}}.win{{background:#c8f7c5}}h1{{margin:0}}</style>
         self.solver_seconds += sum(float(result.get("secs", 0.0)) for result in results)
         return results
 
-    def build_research_prompt(self, incumbent, targets, records, history, hidden_targets=(), retro_memory=None):
+    def build_research_prompt(
+        self,
+        incumbent,
+        targets,
+        records,
+        history,
+        hidden_targets=(),
+        retro_memory=None,
+        history_total=None,
+    ):
         """Build a prompt from development data only."""
         if hasattr(self.P, "prompt_for_targets"):
             context = self.P.prompt_for_targets(list(targets))
@@ -333,7 +348,13 @@ th{{background:#eee}}.win{{background:#c8f7c5}}h1{{margin:0}}</style>
                 line for line in self.P.PROMPT.splitlines() if not any(target in line for target in hidden)
             )
         board = "\n".join(f"{target}: reference={records.get(target)}" for target in targets)
-        memory = summarize_development(history, hidden_targets=hidden_targets, limit=20, family_limit=12)
+        memory = summarize_development(
+            history,
+            hidden_targets=hidden_targets,
+            limit=20,
+            family_limit=12,
+            total_observations=history_total,
+        )
         for entry in memory["entries"]:
             entry["idea"] = entry["idea"][:300]
             entry["negative_result"] = entry["negative_result"][:160]
@@ -367,6 +388,10 @@ PRIOR RETROSPECTIVE NOTES (the next experiment is an untested hypothesis, not ev
 {self.P.TASK}
 
 Begin the idea with an algorithm-family tag: "IDEA: [kind: <algorithm family>] <one sentence>".
+If the proposal is related to a failed approach in memory, name the concrete mechanism that differs and why that
+difference addresses the observed failure. A changed mechanism within a previously tried family is allowed when
+that explanation is specific. Treat every expected effect as a hypothesis; do not claim guaranteed gains or
+correctness.
 
 OUTPUT FORMAT: the tagged IDEA line, then exactly one ```python block with the full file. Nothing else."""
         leaked = [str(target) for target in hidden_targets if str(target) in prompt]
@@ -427,10 +452,23 @@ def _evidence_rows(rows, root):
     return clean
 
 
-def _read_development_history(path):
+_DEVELOPMENT_AGGREGATE_LIMIT = 80
+
+
+def _read_development_memory(path, aggregate_limit=_DEVELOPMENT_AGGREGATE_LIMIT):
+    """Read a bounded candidate window and all prior AST fingerprints.
+
+    Retrospective rows share the JSONL for append-only provenance but are not
+    candidate attempts. The complete fingerprint set prevents an old exact
+    candidate from becoming novel again when it leaves the prompt window.
+    """
+    if aggregate_limit < 1:
+        raise ValueError("development aggregate limit must be positive")
     if not os.path.exists(path):
-        return []
+        return {"history": [], "fingerprints": set(), "total_observations": 0}
     history = []
+    fingerprints = set()
+    total_observations = 0
     with open(path, encoding="utf-8") as stream:
         for number, line in enumerate(stream, 1):
             try:
@@ -439,8 +477,20 @@ def _read_development_history(path):
                 raise ValueError(f"invalid development history line {number}") from exc
             if not isinstance(entry, dict):
                 raise ValueError(f"invalid development history line {number}")
+            if not is_development_observation(entry):
+                continue
+            total_observations += 1
+            fingerprint = entry.get("fingerprint")
+            if isinstance(fingerprint, str) and re.fullmatch(r"[0-9a-f]{64}", fingerprint):
+                fingerprints.add(fingerprint)
             history.append(entry)
-    return history[-80:]
+            if len(history) > aggregate_limit:
+                del history[0]
+    return {
+        "history": history,
+        "fingerprints": fingerprints,
+        "total_observations": total_observations,
+    }
 
 
 def _history_entry(record, run_id, hidden_targets):
@@ -855,7 +905,16 @@ def run_research(
     usage = {"calls": 0, "charged": 0.0, "by_purpose": {}, "by_provider": {}}
     usage.update(by_family={}, by_model={})
     development_history_path = os.path.join(evidence_base, "development-history", f"{problem}.jsonl")
-    development_history = _read_development_history(development_history_path)
+    development_memory = _read_development_memory(development_history_path)
+    development_history = development_memory["history"]
+    known_fingerprints.update(development_memory["fingerprints"])
+    development_memory_scope = {
+        "recorded_candidate_observations": development_memory["total_observations"],
+        "aggregate_window_observations": len(development_history),
+        "aggregate_window_limit": _DEVELOPMENT_AGGREGATE_LIMIT,
+        "recent_prompt_observation_limit": 20,
+        "known_prior_candidate_fingerprints": len(development_memory["fingerprints"]),
+    }
     retro_memory = read_json(os.path.join(evidence_base, "development-history", f"{problem}-retro.json"), {}) or {}
     if not isinstance(retro_memory, dict) or retro_memory.get("schema_version") not in (None, 1):
         retro_memory = {}
@@ -946,7 +1005,8 @@ def run_research(
         "manifest": manifest,
         "development_targets": development_targets,
         "development_history_path": _repo_relative(development_history_path, root),
-        "development_history_entries": len(development_history),
+        "development_history_entries": development_memory["total_observations"],
+        "development_memory_scope": development_memory_scope,
         "started_at": prior_evidence.get("started_at", started_at) if isinstance(prior_evidence, dict) else started_at,
         "resumed_at": started_at if prior_evidence else None,
         "updated_at": started_at,
@@ -968,6 +1028,7 @@ def run_research(
         "claim_type": "benchmark_tuning",
         "worker_environment": worker_environment,
         "development": dict(prior_evidence.get("development") or {}) if isinstance(prior_evidence, dict) else {},
+        "development_memory_scope": development_memory_scope,
         "confirmation": {},
         "usage": usage,
         "limitations": list(manifest["limitations"]),
@@ -998,6 +1059,15 @@ def run_research(
         if auto_allocation is not None:
             evidence["routing"]["auto_allocation"] = auto_allocation
         atomic_json(evidence_path, evidence)
+
+    def append_development_record(record):
+        history_entry = _history_entry(record, run_id, hidden_targets)
+        append_event(development_history_path, history_entry)
+        development_history.append(history_entry)
+        if len(development_history) > _DEVELOPMENT_AGGREGATE_LIMIT:
+            del development_history[0]
+        development_memory["total_observations"] += 1
+        return history_entry
 
     checkpoint_routing()
 
@@ -1040,7 +1110,13 @@ def run_research(
                 }
                 break
             prompt = loop.build_research_prompt(
-                incumbent_text, development_targets, records, development_history, hidden_targets, retro_memory
+                incumbent_text,
+                development_targets,
+                records,
+                development_history,
+                hidden_targets,
+                retro_memory,
+                development_memory["total_observations"],
             )
             responses = []
             deferred_stop = None
@@ -1147,9 +1223,7 @@ def run_research(
                         promising=False,
                         negative_result=response.get("error") or "model returned no code",
                     )
-                    history_entry = _history_entry(record, run_id, hidden_targets)
-                    append_event(development_history_path, history_entry)
-                    development_history.append(history_entry)
+                    append_development_record(record)
                     candidate_records.append(record)
                     pending_generations[:] = [
                         item
@@ -1172,9 +1246,7 @@ def run_research(
                         negative_result=analysis["syntax_error"] or "exact AST duplicate",
                         median_gain=None,
                     )
-                    history_entry = _history_entry(record, run_id, hidden_targets)
-                    append_event(development_history_path, history_entry)
-                    development_history.append(history_entry)
+                    append_development_record(record)
                     candidate_records.append(record)
                     pending_generations[:] = [
                         item
@@ -1269,9 +1341,7 @@ def run_research(
                         except _ResearchStop as exc:
                             record["critique"] = {"provider": critic, "error": str(exc), "independent": None}
                             record["status"] = "promising_unreviewed"
-                            history_entry = _history_entry(record, run_id, hidden_targets)
-                            append_event(development_history_path, history_entry)
-                            development_history.append(history_entry)
+                            append_development_record(record)
                             checkpoint_routing()
                             raise
                         record["critique"] = {
@@ -1291,9 +1361,7 @@ def run_research(
                     else:
                         record["critique"] = {"provider": _opposite_provider(name), "error": "budget_exhausted"}
                         record["status"] = "promising_unreviewed"
-                history_entry = _history_entry(record, run_id, hidden_targets)
-                append_event(development_history_path, history_entry)
-                development_history.append(history_entry)
+                append_development_record(record)
                 evidence["development"] = {
                     "targets": development_targets,
                     "matrix": development_matrix,
