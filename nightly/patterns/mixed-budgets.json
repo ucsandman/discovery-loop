@@ -1,0 +1,10 @@
+{
+  "name": "mixed-budgets",
+  "abstract_description": "Give each variable its own tight budget instead of one uniform bound. Tight per-variable bounds propagate through the solver where loose uniform bounds do not.",
+  "origin_problem": "matrix_multiplication",
+  "origin_result": "per-triple K budgets: CNF unchanged (1.58M clauses) but search space pruned 10^108 (2026-09-09)",
+  "applicability": "Any combinatorial search with a uniformity assumption on variable budgets",
+  "operators": ["per_variable_budgets", "budget_from_known_solution"],
+  "success_count": 0,
+  "failure_count": 0
+}

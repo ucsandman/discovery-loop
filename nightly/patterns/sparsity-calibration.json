@@ -1,0 +1,10 @@
+{
+  "name": "sparsity-calibration",
+  "abstract_description": "Calibrate sparsity/complexity budgets against known solutions before searching. A solver failing can mean the encoding excludes all solutions, not that the problem is hard.",
+  "origin_problem": "matrix_multiplication",
+  "origin_result": "n=3 searches used K<=3 for weeks; Laderman-23 needs K=7 in six triples, so those searches occupied a solution-free space (found 2026-09-09)",
+  "applicability": "Any parameterized SAT/CP/optimization search with a sparsity or complexity budget",
+  "operators": ["transcribe_known_solution", "measure_budget_distribution", "set_budgets_from_distribution"],
+  "success_count": 1,
+  "failure_count": 0
+}

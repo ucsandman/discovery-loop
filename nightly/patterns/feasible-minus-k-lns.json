@@ -1,0 +1,10 @@
+{
+  "name": "feasible-minus-k-lns",
+  "abstract_description": "Start from a known-feasible solution, remove k components, re-optimize the neighborhood with the full solver. Improvement search as large-neighborhood search around feasibility, not blind search from scratch.",
+  "origin_problem": "matrix_multiplication",
+  "origin_result": "Laderman-minus-1 + 6-triple K=7 re-optimization; two neighborhoods proven UNSAT in ~10 min each (2026-09-09)",
+  "applicability": "Any improvement search where a feasible baseline exists",
+  "operators": ["remove_k", "reoptimize_neighborhood", "unsat_means_tight"],
+  "success_count": 0,
+  "failure_count": 0
+}

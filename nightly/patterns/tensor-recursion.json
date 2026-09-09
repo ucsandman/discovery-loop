@@ -1,0 +1,10 @@
+{
+  "name": "tensor-recursion",
+  "abstract_description": "Solve a small base case optimally, then combine via tensor/Kronecker product to handle larger instances. Rank/cost multiplies.",
+  "origin_problem": "matrix_multiplication",
+  "origin_result": "rank 49 for n=4 via Strassen tensor recursion (2026-09-09)",
+  "applicability": "Recursive problem structures where solutions compose multiplicatively",
+  "operators": ["tensor_product"],
+  "success_count": 1,
+  "failure_count": 0
+}

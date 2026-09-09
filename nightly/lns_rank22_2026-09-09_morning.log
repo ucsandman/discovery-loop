@@ -1,0 +1,5 @@
+Removed triple 19, 22 triples remain
+Re-optimizing indices [0, 3, 7, 8, 17, 20] with K=7
+  LNS CNF: 246075 clauses, 86911 vars (22 triples, 6 variable)
+  UNSAT (636.8s)
+Result: no solution (UNSAT or timeout) in 637.4s

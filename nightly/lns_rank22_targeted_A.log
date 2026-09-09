@@ -1,0 +1,6 @@
+Using explicit subset [0, 2, 5, 9, 10, 13]
+Removed triple 19, 22 triples remain
+Re-optimizing indices [0, 2, 5, 9, 10, 13] with K=7
+  LNS CNF: 247492 clauses, 87423 vars (22 triples, 6 variable)
+  UNSAT (1786.7s)
+Result: no solution (UNSAT or timeout) in 1787.3s

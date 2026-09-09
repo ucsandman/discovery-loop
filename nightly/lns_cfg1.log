@@ -1,0 +1,3 @@
+Removed triple 19, 22 triples remain
+Re-optimizing indices [4, 5, 11, 12, 14, 20] with K=7
+  LNS CNF: 246153 clauses, 86937 vars (22 triples, 6 variable)

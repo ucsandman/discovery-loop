@@ -1,0 +1,6 @@
+pipeline armed at Wed Sep  9 11:41:10 UTC 2026
+=== LNS drained at Wed Sep  9 11:41:10 UTC 2026; phase 1: glue experiments ===
+glue A done at Wed Sep  9 11:41:12 UTC 2026: Result: no solution (UNSAT or timeout) in 1.9s
+glue B done at Wed Sep  9 11:41:14 UTC 2026: Result: no solution (UNSAT or timeout) in 1.8s
+glue C done at Wed Sep  9 11:41:15 UTC 2026: Result: no solution (UNSAT or timeout) in 1.8s
+=== phase 2: mixed-K R=22 at Wed Sep  9 11:41:15 UTC 2026 ===
