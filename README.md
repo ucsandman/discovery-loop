@@ -189,6 +189,33 @@ The default nightly trial focuses on routing and general optimization, with a va
 
 Problem helpers use isolated package namespaces. Legacy solvers can still import their documented local helpers inside workers.
 
+## Post-loop dashboard
+
+Every `smart_loop.py` run (matrix multiplication, circle packing) automatically
+emits a dashboard next to its `--out` file when it finishes:
+
+| File | Contents |
+| --- | --- |
+| `loop_summary.json` | Facts the loop knows: target, seed, budget, status |
+| `loop_report.json` | Tried / learned / recorded / next-loop / record-break / publish |
+| `next_loop.json` | Suggestions the next run reads before planning |
+| `dashboard.html` | Self-contained human-readable dashboard (no external assets) |
+
+The publish section recommends outreach only when a record breaks **and** exact
+verification passes **and** the breaker survives — and even then it only writes
+DRAFT files under `<run_dir>/publish/` (submission payload + cover note, or a
+paper skeleton). Nothing is ever sent automatically; outreach needs explicit
+approval. Per-problem publishing bars, clearinghouses, and contacts live in
+`problems/<problem>/contacts.json`.
+
+Supporting scripts:
+
+- `scripts/loop_report.py` — build the dashboard; `--dir` regenerates one for an old run
+- `scripts/publish_draft.py` — draft generation for verified record breaks
+- `scripts/dead_ends.py` — repo-wide ledger of failed approaches (`list`/`check`/`record`), consulted before each night's candidate design
+- `scripts/schedule_night.py` — split the night's compute budget across problems by expected information gain
+- `scripts/detached.py` — `status` prints the dashboard path when one exists
+
 ## Nightly integration
 
 `night.json` controls an eight-hour window, per-slot and per-call limits, a local ARC snapshot refresh, and a 14-night counterbalanced Fable/Astra/paired trial. The runner uses an exclusive lock, checkpoints, heartbeat, pause handling, process-tree timeouts and explicit zero-work/partial/failure statuses. Installed `--scheduled` runs use `<local-evening-date>-scheduled`; this prevents a completed manual date-named run from suppressing the scheduled night while retaining the logical date for trial assignment and morning reporting.

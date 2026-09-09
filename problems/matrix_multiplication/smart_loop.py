@@ -240,6 +240,21 @@ def smart_search(n: int, time_budget: float, seed: int, verbose=True,
     return result
 
 
+def _read_previous_suggestions(run_dir: str) -> list:
+    """Suggestions from the previous run of this problem, if any.
+
+    Gives manual runs the same cross-night memory the nightly worker has.
+    Best-effort: never fails the run.
+    """
+    try:
+        sys.path.insert(0, os.path.join(_REPO_ROOT, "scripts"))
+        import loop_report
+        return loop_report.read_previous_suggestions(
+            "matrix_multiplication", run_dir)
+    except Exception:  # noqa: BLE001
+        return []
+
+
 def _write_dashboard(run_dir: str, summary: dict) -> None:
     """Write the post-loop dashboard. Dashboard I/O must never fail the run."""
     try:
@@ -260,7 +275,7 @@ def _write_dashboard(run_dir: str, summary: dict) -> None:
 
 
 def _dashboard_summary(n: int, args, result: dict, t_start: float,
-                       out_files: list) -> dict:
+                       out_files: list, prev_suggestions: list) -> dict:
     """Assemble the loop_summary dict for scripts/loop_report.py."""
     known = _BEST_KNOWN.get(n)
     means = result.get("bandit_means") or {}
@@ -298,6 +313,14 @@ def _dashboard_summary(n: int, args, result: dict, t_start: float,
         suggestions.append(
             "no verified candidate in budget; try a larger time budget or a "
             "different seed.")
+    tried_notes = [
+        "adaptive operator ordering: "
+        + ("on (UCB1 bandit)" if not args.no_adapt
+           else "off (fixed order, ablation)"),
+        f"time budget {args.time}s "
+        f"({0.65 * args.time:.0f}s search / {max(5.0, 0.25 * args.time):.0f}s breaker)",
+    ]
+    tried_notes += [f"previous run suggested: {s}" for s in prev_suggestions]
     return {
         "problem": "matrix_multiplication",
         "run_name": args.run_name,
@@ -318,13 +341,7 @@ def _dashboard_summary(n: int, args, result: dict, t_start: float,
                 "filter, exact final check)",
                 "proof-sketch generation for the promoted candidate",
             ],
-            "notes": [
-                "adaptive operator ordering: "
-                + ("on (UCB1 bandit)" if not args.no_adapt
-                   else "off (fixed order, ablation)"),
-                f"time budget {args.time}s "
-                f"({0.65 * args.time:.0f}s search / {max(5.0, 0.25 * args.time):.0f}s breaker)",
-            ],
+            "notes": tried_notes,
         },
         "best": {"metric": "rank", "value": result.get("best_rank"),
                  "higher_is_better": False},
@@ -341,6 +358,7 @@ def _dashboard_summary(n: int, args, result: dict, t_start: float,
         "learned": learned,
         "recorded": {"items": recorded, "files": out_files},
         "next_loop": {"suggestions": suggestions},
+        "result_file": os.path.abspath(args.out) if out_files else None,
     }
 
 
@@ -386,9 +404,15 @@ def main():
 
     n = int(args.target)
     t_start = time.monotonic()
+    run_dir = os.path.dirname(os.path.abspath(args.out))
+    os.makedirs(run_dir, exist_ok=True)
+    prev_suggestions = _read_previous_suggestions(run_dir)
+    if prev_suggestions:
+        print("Previous run's suggestions for this loop:")
+        for s in prev_suggestions:
+            print(f"  - {s}")
     result = smart_search(n, args.time, args.seed, verbose=True,
                           adapt=not args.no_adapt)
-    run_dir = os.path.dirname(os.path.abspath(args.out))
     out_files = []
 
     if result["status"] == "success":
@@ -421,7 +445,7 @@ def main():
 
     # Post-loop dashboard: tried / learned / recorded / next / record / publish.
     _write_dashboard(run_dir, _dashboard_summary(
-        n, args, result, t_start, out_files))
+        n, args, result, t_start, out_files, prev_suggestions))
 
     if result["status"] != "success":
         sys.exit(1)
