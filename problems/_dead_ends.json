@@ -1,1 +1,199 @@
-[{"approach":"Direct SAT attack on n=3 R=26 (K=2), seqcounter pseudo-Boolean sum encoding","date":"2026-09-09","evidence":"problems/matrix_multiplication/RESEARCH-NOTES.md (n=3 direct SAT section)","id":"de-001","problem":"matrix_multiplication","tags":["encoding","matrix_multiplication","pseudo-boolean","sat"],"why_failed":"Timeout at 120s and 600s on 2,091,510 clauses / 673,068 vars. Bottleneck is the PB sum encoding (729 equations x 52 literals), not clause count. This is a timeout, NOT UNSAT."},{"approach":"Direct SAT n=3 R=26 with symmetry breaking (K=2, K=3)","date":"2026-09-09","evidence":"problems/matrix_multiplication/RESEARCH-NOTES.md","id":"de-002","problem":"matrix_multiplication","tags":["matrix_multiplication","sat","symmetry-breaking"],"why_failed":"Still timeout (K=2 at ~700s, K=3 at 400s). Symmetries were not the bottleneck; the PB sum encoding is."},{"approach":"Direct SAT n=3 R=26 with mtotalizer cardinality encoding (27% fewer clauses, 31% fewer vars)","date":"2026-09-09","evidence":"problems/matrix_multiplication/RESEARCH-NOTES.md; problems/matrix_multiplication/sat_encoding.py","id":"de-003","problem":"matrix_multiplication","tags":["cardinality","encoding","matrix_multiplication","sat"],"why_failed":"Still TIMEOUT at 660s. Better base encoding, worth keeping for future LNS/CEGAR work, but not sufficient alone for direct SAT."},{"approach":"Direct SAT n=3 R=26 with K=7 (adder encoding, vastly larger search space)","date":"2026-09-09","evidence":"problems/matrix_multiplication/RESEARCH-NOTES.md","id":"de-004","problem":"matrix_multiplication","tags":["encoding","matrix_multiplication","sat"],"why_failed":"Timeout. K=7 search space is vastly larger than K=2; direct SAT is the wrong tool here."},{"approach":"LNS repair with k >= 6 triples on the current SAT encoding","date":"2026-09-09","evidence":"problems/matrix_multiplication/RESEARCH-NOTES.md","id":"de-005","problem":"matrix_multiplication","tags":["lns","matrix_multiplication","sat"],"why_failed":"Timeouts with the current encoding; needs a better encoding first. (Note: LNS with k <= 5 is provably UNSAT -- also do not retry.)"},{"approach":"Z3 for the n=3 tensor SAT encoding","date":"2026-09-09","evidence":"problems/matrix_multiplication/RESEARCH-NOTES.md","id":"de-006","problem":"matrix_multiplication","tags":["matrix_multiplication","sat","z3"],"why_failed":"~20x slower than bit-blasted SAT on n=2; not competitive for this problem."},{"approach":"Single-triple repair of a broken decomposition (delete one triple, re-solve)","date":"2026-09-09","evidence":"problems/matrix_multiplication/multimove.py demonstrate_coordination_gap()","id":"de-007","problem":"matrix_multiplication","tags":["local-search","matrix_multiplication","multimove","repair"],"why_failed":"Proven impossible in the exhibited case by flattening-rank evidence. Some breakages need coordinated multi-triple moves; single-triple repair is not always sufficient."}]
+[
+  {
+    "approach": "Direct SAT attack on n=3 R=26 (K=2), seqcounter pseudo-Boolean sum encoding",
+    "date": "2026-09-09",
+    "evidence": "problems/matrix_multiplication/RESEARCH-NOTES.md (n=3 direct SAT section)",
+    "id": "de-001",
+    "problem": "matrix_multiplication",
+    "tags": [
+      "encoding",
+      "matrix_multiplication",
+      "pseudo-boolean",
+      "sat"
+    ],
+    "why_failed": "Timeout at 120s and 600s on 2,091,510 clauses / 673,068 vars. Bottleneck is the PB sum encoding (729 equations x 52 literals), not clause count. This is a timeout, NOT UNSAT."
+  },
+  {
+    "approach": "Direct SAT n=3 R=26 with symmetry breaking (K=2, K=3)",
+    "date": "2026-09-09",
+    "evidence": "problems/matrix_multiplication/RESEARCH-NOTES.md",
+    "id": "de-002",
+    "problem": "matrix_multiplication",
+    "tags": [
+      "matrix_multiplication",
+      "sat",
+      "symmetry-breaking"
+    ],
+    "why_failed": "Still timeout (K=2 at ~700s, K=3 at 400s). Symmetries were not the bottleneck; the PB sum encoding is."
+  },
+  {
+    "approach": "Direct SAT n=3 R=26 with mtotalizer cardinality encoding (27% fewer clauses, 31% fewer vars)",
+    "date": "2026-09-09",
+    "evidence": "problems/matrix_multiplication/RESEARCH-NOTES.md; problems/matrix_multiplication/sat_encoding.py",
+    "id": "de-003",
+    "problem": "matrix_multiplication",
+    "tags": [
+      "cardinality",
+      "encoding",
+      "matrix_multiplication",
+      "sat"
+    ],
+    "why_failed": "Still TIMEOUT at 660s. Better base encoding, worth keeping for future LNS/CEGAR work, but not sufficient alone for direct SAT."
+  },
+  {
+    "approach": "Direct SAT n=3 R=26 with K=7 (adder encoding, vastly larger search space)",
+    "date": "2026-09-09",
+    "evidence": "problems/matrix_multiplication/RESEARCH-NOTES.md",
+    "id": "de-004",
+    "problem": "matrix_multiplication",
+    "tags": [
+      "encoding",
+      "matrix_multiplication",
+      "sat"
+    ],
+    "why_failed": "Timeout. K=7 search space is vastly larger than K=2; direct SAT is the wrong tool here."
+  },
+  {
+    "approach": "LNS repair with k >= 6 triples on the current SAT encoding",
+    "date": "2026-09-09",
+    "evidence": "problems/matrix_multiplication/RESEARCH-NOTES.md",
+    "id": "de-005",
+    "problem": "matrix_multiplication",
+    "tags": [
+      "lns",
+      "matrix_multiplication",
+      "sat"
+    ],
+    "why_failed": "Timeouts with the current encoding; needs a better encoding first. (Note: LNS with k <= 5 is provably UNSAT -- also do not retry.)"
+  },
+  {
+    "approach": "Z3 for the n=3 tensor SAT encoding",
+    "date": "2026-09-09",
+    "evidence": "problems/matrix_multiplication/RESEARCH-NOTES.md",
+    "id": "de-006",
+    "problem": "matrix_multiplication",
+    "tags": [
+      "matrix_multiplication",
+      "sat",
+      "z3"
+    ],
+    "why_failed": "~20x slower than bit-blasted SAT on n=2; not competitive for this problem."
+  },
+  {
+    "approach": "Single-triple repair of a broken decomposition (delete one triple, re-solve)",
+    "date": "2026-09-09",
+    "evidence": "problems/matrix_multiplication/multimove.py demonstrate_coordination_gap()",
+    "id": "de-007",
+    "problem": "matrix_multiplication",
+    "tags": [
+      "local-search",
+      "matrix_multiplication",
+      "multimove",
+      "repair"
+    ],
+    "why_failed": "Proven impossible in the exhibited case by flattening-rank evidence. Some breakages need coordinated multi-triple moves; single-triple repair is not always sufficient."
+  },
+  {
+    "id": "de-008",
+    "date": "2026-09-09",
+    "problem": "matrix_multiplication",
+    "approach": "LNS rank-22: remove Laderman T19, re-optimize random 6-triple subset {1,4,8,9,18,21} at K=7",
+    "why_failed": "UNSAT in 636.8s. This is a PROOF the neighborhood is empty, not a timeout. First evidence that 6-triple K=7 LNS around Laderman is tractable (sub-11-min proofs).",
+    "evidence": "discovery-loop-nightly/lns_rank22_2026-09-09_morning.log; laderman-2026-09-09.md",
+    "tags": [
+      "lns",
+      "proof",
+      "rank22",
+      "unsat"
+    ]
+  },
+  {
+    "id": "de-009",
+    "date": "2026-09-09",
+    "problem": "matrix_multiplication",
+    "approach": "LNS rank-22: remove Laderman T21, re-optimize random 6-triple subset {2,3,4,9,14} at K=7",
+    "why_failed": "UNSAT in 626.9s. Proof, not timeout. Random subsets underperform targeted W-coverage subsets.",
+    "evidence": "discovery-loop-nightly/lns_rank22_2026-09-09_morning2.log; laderman-2026-09-09.md",
+    "tags": [
+      "lns",
+      "proof",
+      "rank22",
+      "unsat"
+    ]
+  },
+  {
+    "id": "de-010",
+    "date": "2026-09-09",
+    "problem": "matrix_multiplication",
+    "approach": "LNS rank-22: remove Laderman T19, re-optimize W-coverage-targeted subset {1,3,6,10,11,14} at K=7",
+    "why_failed": "UNSAT in 1786.7s. Proof. Even the best-targeted 6-triple neighborhood around glue triple T19 is empty at K=7.",
+    "evidence": "discovery-loop-nightly/lns_rank22_targeted_A.log; laderman-structure.md",
+    "tags": [
+      "glue",
+      "lns",
+      "proof",
+      "rank22",
+      "unsat"
+    ]
+  },
+  {
+    "id": "de-011",
+    "date": "2026-09-09",
+    "problem": "matrix_multiplication",
+    "approach": "LNS rank-22: remove Laderman T21, re-optimize W-coverage-targeted subset {1,3,14,16,17,18} at K=7",
+    "why_failed": "UNSAT in 545.9s. Proof. 4/4 LNS rank-22 shots UNSAT; the 6-triple K=7 neighborhoods around glue triples T19/T21 are provably tight.",
+    "evidence": "discovery-loop-nightly/lns_rank22_targeted_B.log; laderman-structure.md",
+    "tags": [
+      "glue",
+      "lns",
+      "proof",
+      "rank22",
+      "unsat"
+    ]
+  },
+  {
+    "id": "de-012",
+    "date": "2026-09-09",
+    "problem": "matrix_multiplication",
+    "approach": "Glue LNS A: remove T8, re-optimize T6/T7/T9/T23 (k=4) at K=7",
+    "why_failed": "UNSAT in 1.6s (fast proof, 154k clauses). Glue-removal neighborhoods at k=4 are trivially empty.",
+    "evidence": "discovery-loop-nightly/lns_glue_A.log; laderman-structure.md",
+    "tags": [
+      "glue",
+      "lns",
+      "proof",
+      "rank22",
+      "unsat"
+    ]
+  },
+  {
+    "id": "de-013",
+    "date": "2026-09-09",
+    "problem": "matrix_multiplication",
+    "approach": "Glue LNS B: remove T2, re-optimize T1/T3/T4/T5 (k=4) at K=7",
+    "why_failed": "UNSAT in ~1.6s (fast proof). Second glue neighborhood empty.",
+    "evidence": "discovery-loop-nightly/lns_glue_B.log; laderman-structure.md",
+    "tags": [
+      "glue",
+      "lns",
+      "proof",
+      "rank22",
+      "unsat"
+    ]
+  },
+  {
+    "id": "de-014",
+    "date": "2026-09-09",
+    "problem": "matrix_multiplication",
+    "approach": "Glue LNS C: remove T17, re-optimize T3/T14/T16/T18 (k=4) at K=7",
+    "why_failed": "UNSAT in ~1.6s (fast proof). All three glue experiments empty; glue-removal at k=4,K=7 is a dead end.",
+    "evidence": "discovery-loop-nightly/lns_glue_C.log; laderman-structure.md",
+    "tags": [
+      "glue",
+      "lns",
+      "proof",
+      "rank22",
+      "unsat"
+    ]
+  }
+]
