@@ -1,10 +1,16 @@
 {
   "name": "composition-search",
-  "abstract_description": "Search over combinations of known techniques rather than raw problem variables. Much smaller search space, captures structural insights.",
-  "origin_problem": "matrix_multiplication",
-  "origin_result": "Rank-26 found via composition search; SAT over raw entries failed all night",
-  "applicability": "Any problem with a library of known techniques and composition operators",
-  "operators": ["library_lookup", "compose", "verify"],
-  "success_count": 1,
-  "failure_count": 0
+  "description": "Search over combinations of known techniques rather than raw problem variables. Much smaller search space, captures structural insights.",
+  "applies_when": [
+    "technique-library",
+    "composition-operators",
+    "huge-raw-search-space"
+  ],
+  "transform_ref": "problems/matrix_multiplication/smart_loop.py",
+  "successes": 2,
+  "failures": 0,
+  "notes": [
+    "2026-09-09: smart_loop verification run found two rank-26 block constructions for n=3 (2+1 split and symmetric 1+2 split)",
+    "2026-09-09: n=3: promoted at rank 23 <= best known 23"
+  ]
 }
