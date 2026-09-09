@@ -16,8 +16,6 @@ def test_plugin_loads_with_isolated_helpers():
 
 
 def test_verifier_accepts_seed_and_rejects_tampering():
-    problem = load_problem("matrix_multiplication")
-
     from problems.matrix_multiplication import seed_solver as seed
     from problems.matrix_multiplication import verify
 
@@ -39,7 +37,6 @@ def test_verifier_accepts_seed_and_rejects_tampering():
 
 
 def test_strassen_hits_calibration_target():
-    problem = load_problem("matrix_multiplication")
     from problems.matrix_multiplication import seed_solver as seed
     from problems.matrix_multiplication import verify
 
