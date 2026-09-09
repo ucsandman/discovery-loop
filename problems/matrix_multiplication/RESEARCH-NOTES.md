@@ -252,3 +252,17 @@ the shell timeout is the real bound (API/doc mismatch to fix).
 - War plan (`warplan-rank22.md`): dormant until a SAT hit. Verification bar:
   explicit machine-checkable certificate, exact integer arithmetic. No public
   claims without wes's approval.
+
+### 2026-09-09: mixed-K R=22 verdict LOST (infrastructure, not a result)
+- Config: `mixedk_sat.py 22 "7,2,7,3,2,7,3,2,2,7,7,3,2,7,2,3,2,2,1,1,1,1" 5400 0`
+  (1,498,048 clauses, 432,793 vars). Ran the full 90-min budget; pipeline
+  logged done 09:11:18 EDT.
+- No SAT/UNSAT/TIMEOUT verdict was captured: the stdout log stream was
+  disrupted by the mid-run consolidation move (discovery-loop-nightly ->
+  discovery-loop/nightly). Log file mtime froze at 08:01 EDT with only the
+  header lines. Process exited silently ~1 min before its internal timeout.
+- This is NOT a dead end and NOT evidence of UNSAT. Do NOT add to
+  _dead_ends.json. The configuration is untested; re-run with logs on
+  stable absolute paths before drawing any conclusion.
+- Lesson: never move files out from under a running process; pin long-run
+  outputs to absolute paths first.
