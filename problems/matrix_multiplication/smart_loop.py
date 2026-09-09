@@ -38,6 +38,7 @@ import os
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -51,6 +52,7 @@ from patterns.library import PatternLibrary
 from bandit import OperatorBandit, ops_in_construction
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
+_REPO_ROOT = os.path.dirname(os.path.dirname(_HERE))
 _PATTERNS_DIR = os.path.join(_HERE, "patterns")
 _BANDIT_PATH = os.path.join(_PATTERNS_DIR, "_bandit.json")
 
@@ -238,6 +240,110 @@ def smart_search(n: int, time_budget: float, seed: int, verbose=True,
     return result
 
 
+def _write_dashboard(run_dir: str, summary: dict) -> None:
+    """Write the post-loop dashboard. Dashboard I/O must never fail the run."""
+    try:
+        sys.path.insert(0, os.path.join(_REPO_ROOT, "scripts"))
+        import loop_report
+        res = loop_report.write_all(run_dir, summary)
+        if not res.get("ok"):
+            print(f"dashboard write failed: {res.get('error')}")
+            return
+        print(f"Dashboard: {res['paths']['dashboard']}")
+        rb = res["report"]["record_break"]
+        if rb["broke"]:
+            print(f"RECORD BREAK: {rb['metric']}={rb['value']} -- {rb['note']}")
+        if res["report"]["publish"]["recommended"]:
+            print("Publishing recommended -- see dashboard (no one contacted).")
+    except Exception as exc:  # noqa: BLE001 -- dashboard is best-effort
+        print(f"dashboard unavailable: {exc}")
+
+
+def _dashboard_summary(n: int, args, result: dict, t_start: float,
+                       out_files: list) -> dict:
+    """Assemble the loop_summary dict for scripts/loop_report.py."""
+    known = _BEST_KNOWN.get(n)
+    means = result.get("bandit_means") or {}
+    top_arm = max(means, key=means.get) if means else None
+    learned = [
+        f"breaker verdict: {result.get('breaker_verdict')}",
+        f"promoted decomposition: {result.get('best_name')}",
+    ]
+    if means:
+        learned.append(f"bandit arm means after run: {means}")
+    learned.append(f"level report: {result.get('level_report')}")
+    recorded = [
+        "pattern ledger outcomes recorded (composition-search, "
+        "adversarial-validation, plus block-decomposition/tensor-recursion "
+        "when used)",
+    ]
+    if not args.no_adapt:
+        recorded.append("bandit state persisted to patterns/_bandit.json")
+    suggestions = []
+    if result["status"] == "success" and known is not None \
+            and result.get("best_rank") == known:
+        suggestions.append(
+            f"n={n} rank {known} is the known answer; further n={n} runs "
+            "calibrate rather than discover -- spend the next budget on n>3 "
+            "or on a new operator family.")
+    if top_arm:
+        suggestions.append(
+            f"bandit now rates '{top_arm}' highest; keep adaptation on so the "
+            "next run checks the most promising family first.")
+    if result["status"] == "adversarial_failed":
+        suggestions.append(
+            "breaker found a weakness in the best candidate; read the breaker "
+            "recommendation before rerunning with the same seed.")
+    if result["status"] == "no_candidate":
+        suggestions.append(
+            "no verified candidate in budget; try a larger time budget or a "
+            "different seed.")
+    return {
+        "problem": "matrix_multiplication",
+        "run_name": args.run_name,
+        "target": f"n={n}",
+        "time_budget_s": args.time,
+        "seed": args.seed,
+        "status": result["status"],
+        "started": datetime.fromtimestamp(t_start, timezone.utc).isoformat(
+            timespec="seconds"),
+        "ended": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "duration_s": round(time.monotonic() - t_start, 2),
+        "tried": {
+            "operators": [
+                "composition-search over the verified decomposition registry",
+                "multiscale orchestration L3 (composition) -> L2 (block "
+                "partitions) -> L1 (delete-and-repair)",
+                "breaker-suite promotion gate (bounded attacks, fast-verifier "
+                "filter, exact final check)",
+                "proof-sketch generation for the promoted candidate",
+            ],
+            "notes": [
+                "adaptive operator ordering: "
+                + ("on (UCB1 bandit)" if not args.no_adapt
+                   else "off (fixed order, ablation)"),
+                f"time budget {args.time}s "
+                f"({0.65 * args.time:.0f}s search / {max(5.0, 0.25 * args.time):.0f}s breaker)",
+            ],
+        },
+        "best": {"metric": "rank", "value": result.get("best_rank"),
+                 "higher_is_better": False},
+        "best_known": {
+            "value": known,
+            "source": "curated: Strassen/Winograd optimal for n=2, "
+                      "Laderman 1976 best-known for n=3",
+        },
+        "win_margin": 0,
+        "verifications": {
+            "exact": result["status"] == "success",
+            "breaker": result.get("breaker_verdict"),
+        },
+        "learned": learned,
+        "recorded": {"items": recorded, "files": out_files},
+        "next_loop": {"suggestions": suggestions},
+    }
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--target", required=True)
@@ -279,8 +385,11 @@ def main():
         sys.exit(rc)
 
     n = int(args.target)
+    t_start = time.monotonic()
     result = smart_search(n, args.time, args.seed, verbose=True,
                           adapt=not args.no_adapt)
+    run_dir = os.path.dirname(os.path.abspath(args.out))
+    out_files = []
 
     if result["status"] == "success":
         payload = {
@@ -300,6 +409,7 @@ def main():
         sketch_path = args.out.replace(".json", ".proof.md")
         with open(sketch_path, "w") as fh:
             fh.write(result["proof_sketch"])
+        out_files = [args.out, sketch_path]
 
         print(f"\nSaved rank {result['best_rank']} to {args.out}")
         print(f"Proof sketch: {sketch_path}")
@@ -308,6 +418,12 @@ def main():
         print(f"\nSmart loop ended: {result['status']}")
         if result.get("breaker_recommendation"):
             print(result["breaker_recommendation"])
+
+    # Post-loop dashboard: tried / learned / recorded / next / record / publish.
+    _write_dashboard(run_dir, _dashboard_summary(
+        n, args, result, t_start, out_files))
+
+    if result["status"] != "success":
         sys.exit(1)
 
 

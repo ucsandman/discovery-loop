@@ -219,6 +219,9 @@ def cmd_status(args) -> int:
     print(f"ended:          {st['end_time']}")
     print(f"heartbeat_age:  {st['heartbeat_age_s']}s")
     print(f"command:        {' '.join(st['command'] or [])}")
+    dash = run_dir / "dashboard.html"
+    if dash.exists():
+        print(f"dashboard:      {dash}")
     log = Path(st["log_path"])
     print("--- log tail ---")
     if log.exists():

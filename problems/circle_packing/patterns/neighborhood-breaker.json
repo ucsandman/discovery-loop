@@ -7,9 +7,10 @@
     "local-search"
   ],
   "transform_ref": "problems.circle_packing.smart_loop:breaker_suite",
-  "successes": 1,
+  "successes": 2,
   "failures": 0,
   "notes": [
-    "2026-09-09: n=8: no promotion; breaker survived"
+    "2026-09-09: n=8: no promotion; breaker survived",
+    "2026-09-09: n=6: no promotion; breaker survived"
   ]
 }

@@ -8,8 +8,9 @@
   ],
   "transform_ref": "problems.circle_packing.smart_loop:_refine_centers",
   "successes": 0,
-  "failures": 1,
+  "failures": 2,
   "notes": [
-    "2026-09-09: n=8: no promotion; breaker survived"
+    "2026-09-09: n=8: no promotion; breaker survived",
+    "2026-09-09: n=6: no promotion; breaker survived"
   ]
 }
