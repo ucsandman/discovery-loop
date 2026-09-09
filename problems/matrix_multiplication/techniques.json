@@ -1,0 +1,28 @@
+{
+  "techniques": [
+    {
+      "citation": "N. Courtois, G. V. Bard, D. Hulme, \"A New General-Purpose Method to Multiply 3x3 Matrices Using Only 23 Multiplications\", section 2.4 (presents Laderman's 1976 construction)",
+      "claimed_rank": {
+        "n": 3,
+        "rank": 23
+      },
+      "name": "Laderman 1976",
+      "notes": "Transcribed in discovery-loop-nightly/laderman.py; passes the repo's exact tensor-identity checker (verify.check) with feasible=True, rank=23.",
+      "source_paper": "arXiv:1108.2830",
+      "status": "verified",
+      "arxiv_id": "1108.2830"
+    },
+    {
+      "citation": "Volker Strassen (1969), rank-7 decomposition of the 2x2 matrix multiplication tensor",
+      "claimed_rank": {
+        "n": 2,
+        "rank": 7
+      },
+      "name": "Strassen 1969",
+      "notes": "Implemented as STRASSEN_2X2 in composition.py; passes the repo's exact tensor-identity checker (verify.check) with feasible=True, rank=7.",
+      "source_paper": "V. Strassen, \"Gaussian Elimination is not Optimal\", Numerische Mathematik 13 (1969)",
+      "status": "verified",
+      "arxiv_id": null
+    }
+  ]
+}

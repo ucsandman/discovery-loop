@@ -1,0 +1,14 @@
+{
+  "name": "tensor-recursion",
+  "description": "Solve a small base case optimally, then combine via tensor/Kronecker product to handle larger instances. Rank/cost multiplies.",
+  "applies_when": [
+    "recursive-structure",
+    "multiplicative-cost"
+  ],
+  "transform_ref": "problems/matrix_multiplication/composition.py:tensor_product",
+  "successes": 1,
+  "failures": 0,
+  "notes": [
+    "2026-09-09: matrix_multiplication n=4 rank 49 via Strassen tensor recursion (Strassen x Strassen)"
+  ]
+}
