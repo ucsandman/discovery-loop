@@ -62,6 +62,24 @@ def _clean_env():
     return {k: v for k, v in os.environ.items() if k.upper() in allowed}
 
 
+def _run_verifier_selftest():
+    """Prove the verifier can still fail before trusting it this run.
+
+    Stolen from the Ouroboros loop: known-good must pass, known-bad must
+    fail. Returns the report dict; passed=False means halt, do not run.
+    """
+    py = VENV_PYTHON if os.path.exists(VENV_PYTHON) else sys.executable
+    script = os.path.join(STATE, "verifier_selftest.py")
+    try:
+        proc = subprocess.run([py, script], capture_output=True, text=True,
+                              timeout=180)
+        report = json.loads(proc.stdout.strip().splitlines()[-1])
+        report["passed"] = bool(report.get("passed")) and proc.returncode == 0
+        return report
+    except Exception as exc:  # noqa: BLE001 - any harness failure is a failed gate
+        return {"passed": False, "error": str(exc)[:200], "failing_controls": ["harness-error"]}
+
+
 def run_candidate(candidate, targets, budget, seed):
     problem = load_problem("matrix_multiplication")
     records = problem.records_load()
@@ -73,6 +91,17 @@ def run_candidate(candidate, targets, budget, seed):
     tag = f"{date}-seed{seed}"
     staged = os.path.join(CANDIDATES, f"{tag}.py")
     shutil.copy(candidate, staged)
+
+    selftest = _run_verifier_selftest()
+    if not selftest["passed"]:
+        entry = {"ts": _utcnow(), "candidate": staged,
+                 "outcome": "verifier_selftest_failed",
+                 "failing_controls": selftest.get("failing_controls")}
+        with open(RUNLOG, "a") as fh:
+            fh.write(json.dumps(entry) + "\n")
+        print(json.dumps({"outcome": "verifier_selftest_failed",
+                          "failing": selftest.get("failing_controls")}))
+        return []
 
     results = []
     for t in targets:
@@ -116,6 +145,16 @@ def run_candidate(candidate, targets, budget, seed):
                         champions[t] = {"target": t, "rank": value, "author": f"sparrow-nightly/{tag}"}
                         entry["promoted"] = True
                         entry["prev_champion"] = champ_rank
+                        try:
+                            sys.path.insert(0, STATE)
+                            from certificate import write_certificate  # noqa: E402
+                            entry["certificate"] = write_certificate(
+                                tag=tag, target=t, rank=value, record=rec,
+                                solver_out_path=out, factors=payload,
+                                seed=seed, verifier_report=selftest,
+                            )
+                        except Exception as exc:  # noqa: BLE001 - cert failure must not lose the champion
+                            entry["certificate_error"] = str(exc)[:200]
         except subprocess.TimeoutExpired:
             entry["outcome"] = "timeout"
             entry["wall_s"] = round(time.time() - start, 1)
