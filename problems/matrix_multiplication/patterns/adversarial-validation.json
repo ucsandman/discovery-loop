@@ -6,11 +6,12 @@
     "generatable-test-cases"
   ],
   "transform_ref": "problems/matrix_multiplication/adversarial.py:full_adversarial_suite",
-  "successes": 4,
+  "successes": 5,
   "failures": 0,
   "notes": [
     "2026-09-09: block-26 survived 100 random trials, redundancy check, sparsity analysis in the smart_loop verification run",
     "2026-09-09: n=3: promoted at rank 23 <= best known 23",
+    "2026-09-09: n=2: promoted at rank 7 <= best known 7",
     "2026-09-09: n=2: promoted at rank 7 <= best known 7",
     "2026-09-09: n=2: promoted at rank 7 <= best known 7"
   ]

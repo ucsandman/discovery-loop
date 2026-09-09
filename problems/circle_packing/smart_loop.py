@@ -19,6 +19,7 @@ import os
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 
 import numpy as np
 from scipy.optimize import minimize
@@ -234,6 +235,110 @@ def write_explanation(path, *, n, result, record, breaker, patterns_consulted, e
     return path
 
 
+# ---------------------------------------------------------------- dashboard ---
+
+def _write_dashboard(run_dir, summary):
+    """Write the post-loop dashboard. Dashboard I/O must never fail the run."""
+    try:
+        sys.path.insert(0, os.path.join(REPO_ROOT, "scripts"))
+        import loop_report
+        res = loop_report.write_all(run_dir, summary)
+        if not res.get("ok"):
+            print(f"dashboard write failed: {res.get('error')}")
+            return
+        print(f"Dashboard: {res['paths']['dashboard']}")
+        rb = res["report"]["record_break"]
+        if rb["broke"]:
+            print(f"RECORD BREAK: {rb['metric']}={rb['value']} -- {rb['note']}")
+        if res["report"]["publish"]["recommended"]:
+            print("Publishing recommended -- see dashboard (no one contacted).")
+    except Exception as exc:  # noqa: BLE001 -- dashboard is best-effort
+        print(f"dashboard unavailable: {exc}")
+
+
+def _dashboard_summary(n, budget, seed, t_start, best, record, breaker,
+                       transferred, operator_promoted, out, expl_path):
+    """Assemble the loop_summary dict for scripts/loop_report.py."""
+    s, _, prov = best
+    gap = None if record is None else s - record
+    if record is None:
+        novelty = "no repo baseline for this n; run establishes a verified baseline."
+    elif gap > WIN_MARGIN:
+        novelty = (f"beats repo best-known {record:.12f} by {gap:.3e} -- "
+                   "calibration only, not a Packomania record until submitted.")
+    elif gap < -WIN_MARGIN:
+        novelty = (f"{-gap:.3e} below repo best-known {record:.12f}; "
+                   "calibration run, no new-record claim.")
+    else:
+        novelty = (f"matches repo best-known {record:.12f}; "
+                   "rediscovery, not a discovery.")
+    suggestions = []
+    if gap is not None and gap < -WIN_MARGIN:
+        suggestions.append(
+            "did not match the known best in budget; try a larger time budget "
+            "or a different seed before concluding anything.")
+    if breaker["verdict"] == "survived":
+        suggestions.append(
+            f"breaker survived {breaker['attempts']} attacks; the packing looks "
+            "locally optimal -- next budget is better spent on a new n.")
+    suggestions.append(
+        "cross-problem transfer consulted "
+        f"{len(transferred)} pattern(s); keep recording outcomes so the "
+        "matrix-multiplication library keeps learning from packing runs.")
+    return {
+        "problem": "circle_packing",
+        "run_name": None,
+        "target": f"n={n}",
+        "time_budget_s": budget,
+        "seed": seed,
+        "status": "success" if breaker["verdict"] == "survived"
+                  else "adversarial_failed",
+        "started": datetime.fromtimestamp(t_start, timezone.utc).isoformat(
+            timespec="seconds"),
+        "ended": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "duration_s": round(time.time() - t_start, 2),
+        "tried": {
+            "operators": [
+                "multistart-penalty-optimization (L-BFGS-B over centers+radii, "
+                "then LP-optimal radii)",
+                "perturb-and-refine (jitter best centers, re-optimize)",
+                "neighborhood-breaker (perturb + LP-radii local-optimality attack)",
+            ],
+            "notes": [
+                f"budget split: {0.8 * budget:.0f}s search / {0.2 * budget:.0f}s breaker",
+                f"{len(transferred)} transferable pattern(s) consulted from "
+                "the matrix-multiplication library",
+                f"winning provenance: {prov['operator']} (seed {prov['seed']})",
+            ],
+        },
+        "best": {"metric": "sum_of_radii", "value": s,
+                 "higher_is_better": True},
+        "best_known": {"value": record, "source": "repo records.json"},
+        "win_margin": WIN_MARGIN,
+        "verifications": {
+            "exact": True,
+            "independent": bool(breaker["reverify"]["ok"]),
+            "breaker": breaker["verdict"],
+        },
+        "learned": [
+            f"promoted by operator(s): {sorted(operator_promoted)}",
+            f"breaker: {breaker['attempts']} perturbation attempts, "
+            f"verdict {breaker['verdict']}",
+            f"novelty (honest): {novelty}",
+        ],
+        "recorded": {
+            "items": [
+                "pattern outcomes recorded in the shared problem-agnostic "
+                "pattern library",
+                "cross-problem transfer logged (matrix-multiplication "
+                "patterns consulted)",
+            ],
+            "files": [out, expl_path],
+        },
+        "next_loop": {"suggestions": suggestions},
+    }
+
+
 # ------------------------------------------------------------------- loop ---
 
 def run(n, budget, seed, out):
@@ -327,7 +432,44 @@ def run(n, budget, seed, out):
     write_explanation(expl_path, n=n, result=best, record=record,
                       breaker=breaker, patterns_consulted=transferred,
                       elapsed=time.time() - t_start)
+
+    # Post-loop dashboard: tried / learned / recorded / next / record / publish.
+    _write_dashboard(os.path.dirname(os.path.abspath(out)),
+                     _dashboard_summary(n, budget, seed, t_start, best, record,
+                                        breaker, transferred,
+                                        operator_promoted, out, expl_path))
     return payload, expl_path
+
+
+def _failure_summary(n, budget, seed, t_start, out, error):
+    return {
+        "problem": "circle_packing",
+        "run_name": None,
+        "target": f"n={n}",
+        "time_budget_s": budget,
+        "seed": seed,
+        "status": "no_candidate",
+        "started": datetime.fromtimestamp(t_start, timezone.utc).isoformat(
+            timespec="seconds"),
+        "ended": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "duration_s": round(time.time() - t_start, 2),
+        "tried": {
+            "operators": ["multistart-penalty-optimization"],
+            "notes": [f"failed: {error}"],
+        },
+        "best": {"metric": "sum_of_radii", "value": None,
+                 "higher_is_better": True},
+        "best_known": {"value": records.load().get(n),
+                       "source": "repo records.json"},
+        "win_margin": WIN_MARGIN,
+        "verifications": {"exact": False, "independent": False,
+                          "breaker": None},
+        "learned": [f"no feasible candidate in the time budget: {error}"],
+        "recorded": {"items": [], "files": []},
+        "next_loop": {"suggestions": [
+            "no feasible candidate found; try a larger time budget or a "
+            "different seed."]},
+    }
 
 
 def main(argv=None):
@@ -337,7 +479,14 @@ def main(argv=None):
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", required=True)
     a = ap.parse_args(argv)
-    payload, expl = run(int(a.target), a.time, a.seed, a.out)
+    t_start = time.time()
+    try:
+        payload, expl = run(int(a.target), a.time, a.seed, a.out)
+    except RuntimeError as exc:
+        _write_dashboard(os.path.dirname(os.path.abspath(a.out)),
+                         _failure_summary(int(a.target), a.time, a.seed,
+                                          t_start, a.out, str(exc)))
+        raise
     print(json.dumps({
         "sum": payload["sum"],
         "best_known": payload["best_known"],
