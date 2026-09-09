@@ -1,0 +1,15 @@
+{
+  "name": "perturb-and-refine",
+  "description": "Jitter the best packing's centers and re-optimize from there.",
+  "applies_when": [
+    "continuous",
+    "fast-verifier",
+    "local-search"
+  ],
+  "transform_ref": "problems.circle_packing.smart_loop:_refine_centers",
+  "successes": 0,
+  "failures": 1,
+  "notes": [
+    "2026-09-09: n=8: no promotion; breaker survived"
+  ]
+}

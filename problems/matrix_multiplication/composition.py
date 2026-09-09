@@ -525,23 +525,34 @@ def block26_composition() -> Decomposition:
 # Composition search
 # ---------------------------------------------------------------------------
 
-def search_compositions(n, max_rank, time_budget_secs, seed=0):
+def search_compositions(n, max_rank, time_budget_secs, seed=0, family_order=None):
     """Search operator applications over the registry for an n×n decomposition.
 
     Enumerates three families of candidates:
-    1. Registry entries with dimension n (e.g. laderman-23 for n=3).
+    1. Registry entries with dimension n (family "library").
     2. Tensor products of registry pairs whose dimensions double to n
-       (e.g. Strassen ⊗ Strassen gives rank 49 for n=4).
+       (family "tensor_product"; e.g. Strassen ⊗ Strassen gives rank 49
+       for n=4).
     3. Block compositions: for each registry decomposition of dimension
        m < n and each m-sized index subset, embed it in a diagonal block,
        add cross-block rank-1 terms, and naive-fill the remaining outputs
-       (this family contains the rank-26 2+1 construction for n=3).
+       (family "block_embed"; this family contains the rank-26 2+1
+       construction for n=3).
 
     Every candidate with rank <= max_rank is verified with the exact
     tensor-identity checker. Returns a list of (rank, decomposition)
     sorted by rank, then name. Enumeration order is shuffled with the
     given seed so a partial budget still covers diverse candidates.
     Stops generating and verifying new candidates once the budget expires.
+
+    family_order: optional list of family names (subset of "library",
+    "tensor_product", "block_embed") giving the order in which families
+    are enumerated. Families not listed keep their default relative
+    order at the end. Within each family the order is still shuffled
+    with seed. When None (default), the historical behavior is kept:
+    all candidates are shuffled together with no family preference.
+    This is the hook the adaptive bandit (bandit.OperatorBandit) uses
+    to steer search toward productive operators under tight budgets.
     """
     deadline = time.monotonic() + time_budget_secs
     rng = random.Random(seed)
@@ -562,19 +573,19 @@ def search_compositions(n, max_rank, time_budget_secs, seed=0):
             results.append((decomp.rank, decomp))
         return True
 
-    candidates = []
+    candidates = []  # list of (family, decomposition)
 
     # 1. Registry entries at dimension n.
     for decomp in REGISTRY.values():
         if decomp.n == n:
-            candidates.append(decomp)
+            candidates.append(("library", decomp))
 
     # 2. Tensor products of equal-dimension registry pairs doubling to n.
     registry = list(REGISTRY.values())
     for i, A in enumerate(registry):
         for B in registry[i:]:
             if A.n == B.n and 2 * A.n == n:
-                candidates.append(tensor_product(A, B))
+                candidates.append(("tensor_product", tensor_product(A, B)))
 
     # 3. Block compositions over registry decompositions of dimension m < n.
     for m in range(2, n):
@@ -586,10 +597,26 @@ def search_compositions(n, max_rank, time_budget_secs, seed=0):
             if D.rank + cross + fill > max_rank:
                 continue
             for block in itertools.combinations(range(n), m):
-                candidates.append(_block_composition(D, n, list(block)))
+                candidates.append(("block_embed", _block_composition(D, n, list(block))))
 
-    rng.shuffle(candidates)
-    for decomp in candidates:
+    if family_order is None:
+        rng.shuffle(candidates)
+    else:
+        # Enumerate preferred families first; shuffle within each family.
+        # Families not named in family_order keep default relative order.
+        default_order = ["library", "tensor_product", "block_embed"]
+        ordered_families = list(dict.fromkeys(list(family_order) + default_order))
+        rank_of = {fam: i for i, fam in enumerate(ordered_families)}
+        by_family: dict[str, list] = {}
+        for fam, decomp in candidates:
+            by_family.setdefault(fam, []).append(decomp)
+        candidates = []
+        for fam in sorted(by_family, key=lambda f: rank_of.get(f, len(rank_of))):
+            group = by_family[fam]
+            rng.shuffle(group)
+            candidates.extend((fam, decomp) for decomp in group)
+
+    for _, decomp in candidates:
         if not consider(decomp):
             break
 

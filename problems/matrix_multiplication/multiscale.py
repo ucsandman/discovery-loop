@@ -28,7 +28,7 @@ import itertools
 import random
 import time
 
-from verify import check
+from verify import verify_fast
 from composition import (
     Decomposition, REGISTRY, block_embed, direct_sum, naive_fill,
     search_compositions,
@@ -36,6 +36,7 @@ from composition import (
 from adversarial import (
     _triple_contribution, _residual_violations, _greedy_repair,
 )
+from multimove import attempt_joint_k_move
 
 # Budget split across levels: L3 gets the most because structural wins
 # dominate; L1 gets the least because it is a bounded local polish.
@@ -132,7 +133,7 @@ def _build_level2(n, assignment, seed):
             for b, d in assignment
         ],
     }
-    res = check(decomp.factors(), n)
+    res = verify_fast(decomp.factors(), n)
     if res.get("feasible"):
         return decomp.rank, decomp
     return None
@@ -199,6 +200,9 @@ def level1_repair(factors, n, time_budget_secs, seed=0, verbose=True):
     that stays feasible (rank drops by 1 each time).
     Phase B: random delete-2 + bounded greedy repair; adopt if the repair
     restores feasibility at strictly lower rank.
+    Phase C: coordinated delete-3 + joint 2-slot coordinate-descent repair
+    (multimove.joint_repair); true k=3 neighborhoods the pool greedy cannot
+    cross. Symmetric deletion sets are deduped via symmetry.cheap_key.
     Every adoption is decided by the exact checker, never by the heuristic.
 
     Returns (best_factors, improvements_made). The input factors must be
@@ -208,7 +212,7 @@ def level1_repair(factors, n, time_budget_secs, seed=0, verbose=True):
     rng = random.Random(seed)
     pool_size = 30 if n <= 3 else 12
 
-    if not check(factors, n).get("feasible"):
+    if not verify_fast(factors, n).get("feasible"):
         return factors, 0
 
     best = list(factors)
@@ -217,7 +221,7 @@ def level1_repair(factors, n, time_budget_secs, seed=0, verbose=True):
     def _attempt_delete(idxs):
         idxset = set(idxs)
         reduced = [t for j, t in enumerate(best) if j not in idxset]
-        if check(reduced, n).get("feasible"):
+        if verify_fast(reduced, n).get("feasible"):
             return reduced
         return None
 
@@ -256,11 +260,22 @@ def level1_repair(factors, n, time_budget_secs, seed=0, verbose=True):
         idxset = {i, j}
         candidate = [t for m, t in enumerate(best) if m not in idxset]
         candidate += [t for t, _ in added]
-        if len(candidate) < len(best) and check(candidate, n).get("feasible"):
+        if len(candidate) < len(best) and verify_fast(candidate, n).get("feasible"):
             best = candidate
             improvements += 1
             if verbose:
                 print(f"  Level 1: delete-2+repair → rank {len(best)} ✓")
+
+    # Phase C: coordinated delete-3 + joint 2-slot repair.
+    tried = set()
+    while time.monotonic() < deadline and len(best) > 3:
+        hit = attempt_joint_k_move(best, n, rng, deadline,
+                                   delete_size=3, repair_slots=2, tried=tried)
+        if hit is not None and len(hit) < len(best):
+            best = hit
+            improvements += 1
+            if verbose:
+                print(f"  Level 1: delete-3+joint-repair → rank {len(best)} ✓")
 
     return best, improvements
 
@@ -281,12 +296,21 @@ def _repaired_decomposition(base, factors):
     )
 
 
-def run_multiscale(n, time_budget_secs, seed=0, verbose=True):
+def run_multiscale(n, time_budget_secs, seed=0, verbose=True, bandit=None):
     """Run Level 3 -> Level 2 -> Level 1, keeping the best verified result.
 
     Returns (best_rank, best_decomposition, level_report). The best
     decomposition is always exactly verified; a level that finds nothing
     better just passes the incumbent down.
+
+    bandit: optional bandit.OperatorBandit. When given, Level 3's
+    operator-family enumeration order follows the bandit's UCB ranking
+    (adaptive search) instead of the fixed family order; when None, the
+    historical fixed order is used. Level 2 enumerates a single operator
+    family (level2_partition), so there is no cross-operator ordering
+    decision there — its operator still earns bandit rewards when it
+    produces the winning construction (rewards are recorded by the
+    caller, e.g. smart_loop.smart_search).
     """
     t0 = time.monotonic()
     f3, f2, f1 = _LEVEL_FRACTIONS
@@ -294,9 +318,13 @@ def run_multiscale(n, time_budget_secs, seed=0, verbose=True):
 
     # Level 3: composition enumeration over the registry.
     t3 = time.monotonic()
+    family_order = None
+    if bandit is not None:
+        family_order = bandit.rank_arms(random.Random(seed ^ 0xBAAD17))
+        level_report["level3_family_order"] = list(family_order)
     l3 = search_compositions(n, max_rank=n ** 3 - 1,
                              time_budget_secs=f3 * time_budget_secs,
-                             seed=seed)
+                             seed=seed, family_order=family_order)
     level_report["level3"] = {
         "candidates_verified": len(l3),
         "best_rank": l3[0][0] if l3 else None,

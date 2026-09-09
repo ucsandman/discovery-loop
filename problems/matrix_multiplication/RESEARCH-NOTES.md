@@ -140,3 +140,59 @@ Research code was written to /tmp and lost to automatic tmp cleanup mid-session
 (satenc2.py, lns1.py, n3-research.md all deleted; had to reconstruct from memory).
 **All durable research code now lives in ~/workspace/discovery-loop-nightly/.
 Never write important files to /tmp.**
+
+## Upgrade: better search (2026-09-09)
+
+### 1. Discrete symmetry canonicalization (`symmetry.py`)
+Two naive assumptions FAILED exact verification and were corrected:
+- cyclic (U,V,W)->(V,W,U) does NOT preserve this repo's tensor convention
+  (failed on Laderman-23: got 0, want 1 at one tensor equation);
+- independent S_n^3 index permutations do NOT preserve the identity;
+  positions 1 and 3 must share a permutation (S_n x S_n subgroup).
+Valid generators: triple permutation, per-triple pairwise sign flips, 6
+factor rearrangement/transpose patterns (found by exhaustive enumeration over
+S3 x transpose masks, all 6 verified), S_n x S_n index relabeling.
+canonical_form() BFSes the exact orbit (Laderman-23 orbit: 1296 keys);
+cheap_key() for hot-loop dedup. Proof script: all 9 generator cases preserve
+exact feasibility; 20 random symmetries -> identical canonical form; naive-2x2
+vs Strassen-2x2 differ; Strassen vs symmetrized copy identical.
+
+### 2. SAT/ILP encoding (`sat_encoding.py`)
+The dominant tensor equations are cardinality equalities
+sum(p_pos + ~p_neg) = R+t. Installed python-sat's PBEnc.equals IGNORED the
+backend argument (identical CNFs for all backends) -- reimplemented with
+genuinely selectable CardEnc.equals backends: pb/seqcounter/sortnetwrk/
+cardnetwrk/totalizer/mtotalizer. n=2 R=7 K=2: all backends SAT and exact-
+verified (legacy pb fastest at 1.2-3.6s despite larger model). n=3 R=26 K=2
+build-only: mtotalizer 1,523,160 clauses / 466,842 vars / 3.8s vs legacy
+2,091,510 / 673,068 / 12.0s (-27% clauses, -31% vars; beats the earlier
+adder-tree -13%/-22%). BUT: n=3 R=26 K=2 mtotalizer still unsolved after
+~143s solver time -- smaller CNF is not automatically faster, and n=3 direct
+SAT remains out of reach. solve_cnf(timeout=...) has no internal interrupt;
+the shell timeout is the real bound (API/doc mismatch to fix).
+
+### 3. Coordinated k=2,3 delete-and-repair LNS (`multimove.py`)
+- PROVEN: for the Laderman-23-minus-pair instance, NO single triple with ANY
+  integer coefficients can complete the repair. Proof: flatten each triple's
+  contribution to 9x81 with row=(a,b) [this groups the flat index as
+  row=idx//81, col=idx%81]; a triple is then exactly an outer product
+  vec(U)(x)(vec(V)(x)vec(W)) hence rank <= 1 (verified rank 1 on real
+  triples). The removed pair sums to rank 2 (exact Bareiss, no floats).
+  IMPORTANT: the flattening choice matters -- rows (a,b)x(c,d,e,f) gives the
+  rank<=1 bound; the naive equation-index flattening does NOT.
+- The k=2 joint neighborhood provably contains a feasible repair absent from
+  every single-move neighborhood: the removed pair itself completes the
+  repair (residual 0, exact-verified). Existence, not discovery.
+- NEGATIVE (stochastic discovery): plain multi-start coordinate descent
+  (600 rounds) best residual 7; simulated annealing (6x40k steps) stuck at
+  15; iterated local search stuck at 15. Mechanism: the violation-count
+  landscape has an all-zero attractor -- from any all-zero triple set, no
+  single-entry move changes any contribution (a triple with a zero matrix
+  contributes nothing), so improving-moves-only search cannot leave the
+  plateau; reaching the true basin needs 3+ coordinated entries before the
+  residual changes at all. Documented in multimove._hill_climb docstring.
+- Wired into multiscale.level1_repair as Phase C (delete-3 + joint 2-slot
+  repair, symmetry-deduped deletion sets); every adoption exact-verified.
+- k=3 wiring: delete-3/repair-2 in attempt_joint_k_move; demo covers k=1,2
+  joint repair + delete-3 Phase C. No rank<23 decomposition was found by any
+  of this -- the machinery is the deliverable, not a new decomposition.

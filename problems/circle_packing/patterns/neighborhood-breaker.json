@@ -1,0 +1,15 @@
+{
+  "name": "neighborhood-breaker",
+  "description": "Perturb + LP-radii attack to test local optimality of a candidate.",
+  "applies_when": [
+    "continuous",
+    "fast-verifier",
+    "local-search"
+  ],
+  "transform_ref": "problems.circle_packing.smart_loop:breaker_suite",
+  "successes": 1,
+  "failures": 0,
+  "notes": [
+    "2026-09-09: n=8: no promotion; breaker survived"
+  ]
+}
