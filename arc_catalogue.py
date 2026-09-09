@@ -88,6 +88,31 @@ ADMISSIONS = {
         "max_allowance": 40.0,
         "max_per_call_allowance": 2.0,
     },
+    "matrix-multiplication": {
+        "plugin": "matrix_multiplication",
+        "baseline": "best-matrix_multiplication/solver.py",
+        "verifier": "problems/matrix_multiplication/verify.py",
+        "beneficiary": (
+            "Faster exact matrix-multiplication algorithms reduce the cost of scientific computing, machine "
+            "learning training, and graphics workloads that all bottom out at matmul."
+        ),
+        "bounded_hypothesis": (
+            "A concrete search-strategy change can lower the verified rank on the development targets "
+            "without losing exact feasibility under the independent tensor-identity check."
+        ),
+        "resources": "The repository's matrix-multiplication plugin, seed solver, exact verifier and local runner.",
+        "split": (
+            "Generate and tune only on the plugin manifest's development targets (n=2,3,4). n=2 is a "
+            "calibration target: rank 7 is proven optimal and cannot be beaten."
+        ),
+        "success_criterion": (
+            "Beat the frozen best-known rank on n=3 or n=4 with zero confirmation failures on the exact "
+            "verifier; otherwise record a bounded negative result."
+        ),
+        "max_minutes": 210,
+        "max_allowance": 40.0,
+        "max_per_call_allowance": 2.0,
+    },
 }
 
 
