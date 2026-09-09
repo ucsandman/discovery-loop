@@ -1,0 +1,15 @@
+{
+  "name": "multistart-penalty-optimization",
+  "description": "Cold multi-start penalty L-BFGS-B over (x, y, r), then LP-optimal radii.",
+  "applies_when": [
+    "continuous",
+    "fast-verifier",
+    "local-search"
+  ],
+  "transform_ref": "problems.circle_packing.smart_loop:propose",
+  "successes": 1,
+  "failures": 0,
+  "notes": [
+    "2026-09-09: n=8: produced the promoted packing; breaker survived"
+  ]
+}

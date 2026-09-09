@@ -21,6 +21,7 @@ Usage:
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 from datetime import date
@@ -31,6 +32,11 @@ class PatternLibrary:
 
     def __init__(self, patterns: dict[str, dict] | None = None):
         self._patterns: dict[str, dict] = dict(patterns or {})
+        # Bandit state is kept separate from pattern records: it is a plain
+        # dict snapshot (see bandit.OperatorBandit.state_dict) managed only
+        # through the get/save_bandit_state methods below. Existing
+        # load/save behavior for pattern files is unchanged.
+        self._bandit_state: dict = {}
 
     @classmethod
     def load(cls, directory: str) -> "PatternLibrary":
@@ -135,6 +141,38 @@ class PatternLibrary:
     def names(self) -> list[str]:
         """Return all registered pattern names, sorted."""
         return sorted(self._patterns)
+
+    # -- bandit state (additive; pattern-record behavior untouched) --------
+
+    def get_bandit_state(self) -> dict:
+        """Return a copy of the in-memory bandit state ({} if never set)."""
+        return copy.deepcopy(self._bandit_state)
+
+    def save_bandit_state(self, state: dict) -> None:
+        """Store a copy of *state* as the in-memory bandit state."""
+        self._bandit_state = copy.deepcopy(dict(state))
+
+    def load_bandit_file(self, path: str) -> None:
+        """Read bandit state from *path* into memory; no-op if missing.
+
+        Raises ValueError if the file exists but is not a JSON object.
+        """
+        if not os.path.exists(path):
+            return
+        with open(path, encoding="utf-8") as fh:
+            state = json.load(fh)
+        if not isinstance(state, dict):
+            raise ValueError(f"bandit state file is not a JSON object: {path}")
+        self.save_bandit_state(state)
+
+    def write_bandit_file(self, path: str) -> None:
+        """Write the in-memory bandit state to *path* as JSON."""
+        directory = os.path.dirname(path)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(self._bandit_state, fh, indent=2)
+            fh.write("\n")
 
 
 def _normalize(record: dict) -> dict:

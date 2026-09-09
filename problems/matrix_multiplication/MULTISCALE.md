@@ -47,6 +47,23 @@ Search over: individual matrix entries, but ONLY within a small neighborhood.
 - Level 1 is huge but now starts from a good solution, so small neighborhoods suffice
 - Each level's output is the next level's starting point
 
+## Adaptive Operator Choice (bandit)
+Level 3 enumerates operator families in a fixed order by default
+(`library` → `tensor_product` → `block_embed`). With adaptation enabled
+(the default; `smart_loop.py --no-adapt` disables it for ablation), the
+family order follows a UCB1 bandit (`bandit.py`) over the real operator
+set (`library`, `tensor_product`, `block_embed`, `level2_partition`,
+`border_terms`, `naive_fill`, `level1_repair`).
+
+Reward per run: 1.0 for operators in the winning construction when the
+candidate is exact-verified and survives the breaker suite, 0.5 when
+verified but broken, 0.0 otherwise. State persists in
+`patterns/_bandit.json` via `PatternLibrary.get/save_bandit_state`
+(the file is skipped by the pattern loader — it carries no `name` key —
+so the ledger is unaffected). This steers enumeration under tight time
+budgets toward operators that have actually produced survivors; it does
+not change which candidates are verified, only the order.
+
 ## Implementation Plan
 1. Composition enumerator: generate all Level 3 compositions up to rank R
    (using composition.py operators)

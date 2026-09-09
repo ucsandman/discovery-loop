@@ -1,0 +1,34 @@
+{
+  "c": 2.0,
+  "epsilon": 0.1,
+  "arms": {
+    "library": {
+      "pulls": 2,
+      "reward": 2.0
+    },
+    "tensor_product": {
+      "pulls": 2,
+      "reward": 0.0
+    },
+    "block_embed": {
+      "pulls": 2,
+      "reward": 0.0
+    },
+    "level2_partition": {
+      "pulls": 2,
+      "reward": 0.0
+    },
+    "border_terms": {
+      "pulls": 2,
+      "reward": 0.0
+    },
+    "naive_fill": {
+      "pulls": 2,
+      "reward": 0.0
+    },
+    "level1_repair": {
+      "pulls": 2,
+      "reward": 0.0
+    }
+  }
+}
