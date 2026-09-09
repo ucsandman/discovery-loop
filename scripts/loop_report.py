@@ -143,6 +143,7 @@ def build_report(summary: dict) -> dict:
         "next_loop": summary.get("next_loop", {"suggestions": []}),
         "record_break": record,
         "publish": publish,
+        "result_file": summary.get("result_file"),
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
 
@@ -203,6 +204,8 @@ def render_dashboard(report: dict) -> str:
             for c in pub["contacts"]
         ) or "<li class='small'>no specific contact on file</li>"
         checklist = "".join(f"<li>{_esc(i)}</li>" for i in pub["checklist"])
+        drafts = "".join(f"<li><code>{_esc(d)}</code></li>"
+                         for d in pub.get("drafts", []))
         pub_banner = (
             '<div class="banner publish">PUBLISHING RECOMMENDED — '
             f'{_esc(pub["reason"])}</div>'
@@ -211,7 +214,9 @@ def render_dashboard(report: dict) -> str:
             f"Bar: {_esc(pub['bar'])}</p>"
             f"<ul>{contacts}</ul>"
             f"<p><b>Pre-outreach checklist:</b></p><ul>{checklist}</ul>"
-            f"<p class='small'>{_esc(pub['note'])}</p></div>"
+            + (f"<p><b>Drafts ready (awaiting wes's approval — nothing sent):</b></p>"
+               f"<ul>{drafts}</ul>" if drafts else "")
+            + f"<p class='small'>{_esc(pub['note'])}</p></div>"
         )
     else:
         pub_banner = (
@@ -271,10 +276,53 @@ never sends anything anywhere; publishing outreach needs wes's approval.</p>
 
 # ------------------------------------------------------------------- write ---
 
+def _write_latest_pointer(problem: str, run_dir: str, dash_path: str) -> None:
+    """Point runs/.latest_<problem>.json at this run (gitignored).
+
+    The next run reads it for cross-night suggestions. Best-effort.
+    """
+    try:
+        runs_dir = os.path.join(_REPO_ROOT, "runs")
+        os.makedirs(runs_dir, exist_ok=True)
+        pointer = os.path.join(runs_dir, f".latest_{problem}.json")
+        with open(pointer, "w") as fh:
+            json.dump({
+                "run_dir": os.path.abspath(run_dir),
+                "dashboard": os.path.abspath(dash_path),
+                "generated_at": datetime.now(timezone.utc).isoformat(
+                    timespec="seconds"),
+            }, fh, indent=2)
+    except OSError:
+        pass
+
+
+def read_previous_suggestions(problem: str, run_dir: str) -> list:
+    """Suggestions left by the previous run of this problem, if any.
+
+    Used at loop startup so manual runs get the same cross-night memory the
+    nightly worker has. Returns [] when there is no previous run.
+    """
+    try:
+        pointer = os.path.join(_REPO_ROOT, "runs", f".latest_{problem}.json")
+        with open(pointer) as fh:
+            prev = json.load(fh)
+        prev_dir = prev.get("run_dir")
+        if not prev_dir or os.path.abspath(run_dir) == os.path.abspath(prev_dir):
+            return []
+        nxt_path = os.path.join(prev_dir, "next_loop.json")
+        with open(nxt_path) as fh:
+            return json.load(fh).get("suggestions", [])
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
 def write_all(run_dir: str, summary: dict) -> dict:
     """Write loop_summary.json, loop_report.json, next_loop.json, dashboard.html.
 
-    Returns the report dict. Never raises: dashboard I/O must not fail a run.
+    When the report recommends publishing outreach, drafts are generated into
+    <run_dir>/publish/ (drafts only -- nothing is ever sent). Also updates the
+    runs/.latest_<problem>.json pointer. Returns the report dict. Never raises:
+    dashboard I/O must not fail a run.
     """
     paths = {}
     try:
@@ -285,6 +333,24 @@ def write_all(run_dir: str, summary: dict) -> dict:
         paths["summary"] = summary_path
 
         report = build_report(summary)
+
+        # Publish pipeline: drafts only, on fully verified record breaks.
+        if report["publish"]["recommended"]:
+            try:
+                sys.path.insert(0, _HERE)
+                import publish_draft
+                gen = publish_draft.generate(
+                    run_dir, report, summary.get("result_file"))
+                if gen.get("ok") and gen.get("drafts"):
+                    report["publish"]["drafts"] = gen["drafts"]
+                    report["publish"]["awaiting_approval"] = True
+                    report["publish"]["draft_note"] = (
+                        "Drafts generated and awaiting wes's approval; "
+                        "no one has been contacted.")
+                    paths["drafts"] = gen["drafts"]
+            except Exception:  # noqa: BLE001 -- drafts are best-effort
+                pass
+
         report_path = os.path.join(run_dir, "loop_report.json")
         with open(report_path, "w") as fh:
             json.dump(report, fh, indent=2, default=str)
@@ -299,6 +365,9 @@ def write_all(run_dir: str, summary: dict) -> dict:
         with open(dash_path, "w") as fh:
             fh.write(render_dashboard(report))
         paths["dashboard"] = dash_path
+
+        _write_latest_pointer(summary.get("problem", "unknown"),
+                              run_dir, dash_path)
         return {"ok": True, "report": report, "paths": paths}
     except OSError as exc:
         return {"ok": False, "error": str(exc), "paths": paths}

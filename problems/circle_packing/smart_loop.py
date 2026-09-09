@@ -237,6 +237,20 @@ def write_explanation(path, *, n, result, record, breaker, patterns_consulted, e
 
 # ---------------------------------------------------------------- dashboard ---
 
+def _read_previous_suggestions(run_dir):
+    """Suggestions from the previous run of this problem, if any.
+
+    Gives manual runs the same cross-night memory the nightly worker has.
+    Best-effort: never fails the run.
+    """
+    try:
+        sys.path.insert(0, os.path.join(REPO_ROOT, "scripts"))
+        import loop_report
+        return loop_report.read_previous_suggestions("circle_packing", run_dir)
+    except Exception:  # noqa: BLE001
+        return []
+
+
 def _write_dashboard(run_dir, summary):
     """Write the post-loop dashboard. Dashboard I/O must never fail the run."""
     try:
@@ -257,7 +271,8 @@ def _write_dashboard(run_dir, summary):
 
 
 def _dashboard_summary(n, budget, seed, t_start, best, record, breaker,
-                       transferred, operator_promoted, out, expl_path):
+                       transferred, operator_promoted, out, expl_path,
+                       prev_suggestions):
     """Assemble the loop_summary dict for scripts/loop_report.py."""
     s, _, prov = best
     gap = None if record is None else s - record
@@ -285,6 +300,13 @@ def _dashboard_summary(n, budget, seed, t_start, best, record, breaker,
         "cross-problem transfer consulted "
         f"{len(transferred)} pattern(s); keep recording outcomes so the "
         "matrix-multiplication library keeps learning from packing runs.")
+    tried_notes = [
+        f"budget split: {0.8 * budget:.0f}s search / {0.2 * budget:.0f}s breaker",
+        f"{len(transferred)} transferable pattern(s) consulted from "
+        "the matrix-multiplication library",
+        f"winning provenance: {prov['operator']} (seed {prov['seed']})",
+    ]
+    tried_notes += [f"previous run suggested: {s}" for s in prev_suggestions]
     return {
         "problem": "circle_packing",
         "run_name": None,
@@ -304,12 +326,7 @@ def _dashboard_summary(n, budget, seed, t_start, best, record, breaker,
                 "perturb-and-refine (jitter best centers, re-optimize)",
                 "neighborhood-breaker (perturb + LP-radii local-optimality attack)",
             ],
-            "notes": [
-                f"budget split: {0.8 * budget:.0f}s search / {0.2 * budget:.0f}s breaker",
-                f"{len(transferred)} transferable pattern(s) consulted from "
-                "the matrix-multiplication library",
-                f"winning provenance: {prov['operator']} (seed {prov['seed']})",
-            ],
+            "notes": tried_notes,
         },
         "best": {"metric": "sum_of_radii", "value": s,
                  "higher_is_better": True},
@@ -336,6 +353,7 @@ def _dashboard_summary(n, budget, seed, t_start, best, record, breaker,
             "files": [out, expl_path],
         },
         "next_loop": {"suggestions": suggestions},
+        "result_file": os.path.abspath(out),
     }
 
 
@@ -343,6 +361,13 @@ def _dashboard_summary(n, budget, seed, t_start, best, record, breaker,
 
 def run(n, budget, seed, out):
     t_start = time.time()
+    run_dir = os.path.dirname(os.path.abspath(out))
+    os.makedirs(run_dir, exist_ok=True)
+    prev_suggestions = _read_previous_suggestions(run_dir)
+    if prev_suggestions:
+        print("Previous run's suggestions for this loop:")
+        for s in prev_suggestions:
+            print(f"  - {s}")
     table = records.load()
     record = table.get(n)
 
@@ -437,7 +462,8 @@ def run(n, budget, seed, out):
     _write_dashboard(os.path.dirname(os.path.abspath(out)),
                      _dashboard_summary(n, budget, seed, t_start, best, record,
                                         breaker, transferred,
-                                        operator_promoted, out, expl_path))
+                                        operator_promoted, out, expl_path,
+                                        prev_suggestions))
     return payload, expl_path
 
 
