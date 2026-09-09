@@ -196,3 +196,59 @@ the shell timeout is the real bound (API/doc mismatch to fix).
 - k=3 wiring: delete-3/repair-2 in attempt_joint_k_move; demo covers k=1,2
   joint repair + delete-3 Phase C. No rank<23 decomposition was found by any
   of this -- the machinery is the deliverable, not a new decomposition.
+
+## 2026-09-09 — Laderman calibration, rank-22 LNS campaign, mixed-K encoder
+
+### What worked
+1. **K-sparsity calibration against Laderman-23** (`discovery-loop-nightly/laderman.py`,
+   `laderman-2026-09-09.md`). Transcribed Laderman's 23 triples over {-1,0,1} and
+   exact-verified feasibility. K distribution over triples: {1:5, 2:8, 3:4, 7:6}
+   — SIX triples need K=7. All prior n=3 SAT/LNS work used K<=3, i.e. searched
+   a space containing no rank-23 solution. Durable lesson: calibrate sparsity
+   budgets against known solutions before searching; a "failing" solver can mean
+   a wrong encoding, not a hard problem.
+2. **Laderman-minus-1 + K=7 LNS is tractable** (`lns_laderman.py`). Removing one
+   triple and re-optimizing 6 triples at K=7 yields UNSAT *proofs* in 546–1787s
+   (~250k clauses / ~87k vars). First time K=7 search gave verdicts instead of
+   timeouts. The neighborhood is small enough to prove empty.
+3. **W-coverage subset selection** (`laderman-2026-09-09.md`). For a removed
+   triple, the triples whose W matrices touch the same output cells are the
+   minimal absorbing neighborhood (T19 -> {6,14}; T21 -> {14,16,17,18}).
+   Replaces random subset choice; targeted runs are the ones to trust.
+4. **Mixed-K encoder** (`mixedk_sat.py`, `mixedk-2026-09-09.md`). Per-triple K
+   budgets. Honest negative on CNF size: mixed-K does NOT shrink the CNF
+   (1.58M clauses either way — adder trees dominate). Positive on search space:
+   tight K=1 budgets force entries to zero, pruning ~10^108 assignments.
+   Benefit is pruning, not encoding size. Self-test passes (Laderman K
+   distribution pinned SAT in 3.2s); first R=22 shot queued.
+5. **Glue-triple analysis** (`laderman-structure.md`). 8 of 23 triples (T2, T5,
+   T8, T9, T13, T15, T17, T18) source ZERO true monomials — pure cancellation
+   machinery. Attack implication inverted: remove glue, not sparse triples.
+   Exhaustive screen: local compression possible ONLY at 5->4 (60/33649 5-sets;
+   0/1771 at 3->2, 0/8855 at 4->3, 0/253 pair fusions). Do-not-rerun list in
+   the doc.
+6. **Champion improvements**: n=3 27->26 (exact 2+1 block: Strassen-7 +
+   a12·b21^T-4, C12=6, C21=6, c22=3 on disjoint outputs), n=4 64->49 (Strassen
+   recursion). Both exact-verified + reproducibility cycle.
+
+### What didn't work
+1. **4/4 LNS rank-22 shots UNSAT** (dead ends de-008..de-011): random subsets
+   {1,4,8,9,18,21} and {2,3,4,9,14} (637s, 627s), targeted {1,3,6,10,11,14}
+   (1787s) and {1,3,14,16,17,18} (546s). All proofs, not timeouts. The 6-triple
+   K=7 neighborhoods around glue triples T19/T21 are provably tight. Do not
+   re-run these exact configurations; next attacks: wider K assignments,
+   remaining surviving 5-sets, symmetry-broken direct R=22.
+2. **n=4 "record matched" claim was wrong** (corrected 2026-09-09). Record is
+   48 (rational coeffs, Dumas–Pernet–Sedoglavic 2025; 47 in Z2 via AlphaTensor
+   2022), not 49. Our 49 = Strassen recursion, one short. n=3 record 23
+   confirmed standing ("frozen for almost five decades", arXiv 2508.03857).
+   Record-breaking targets: rank 22 (n=3), rank <=47 general coeffs (n=4).
+3. **Mixed-K CNF-size hope**: mixed budgets do not reduce clause/var counts
+   (see above) — the win is purely search-space pruning.
+
+### Open threads
+- Glue experiments A/B/C (remove T8/T2/T17, re-opt 4 triples at K=7) and
+  mixed-K R=22 direct search (90 min) queued behind the LNS runs.
+- War plan (`warplan-rank22.md`): dormant until a SAT hit. Verification bar:
+  explicit machine-checkable certificate, exact integer arithmetic. No public
+  claims without wes's approval.

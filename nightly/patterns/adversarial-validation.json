@@ -1,0 +1,10 @@
+{
+  "name": "adversarial-validation",
+  "abstract_description": "Before accepting a candidate, attack it: random counterexamples, redundancy checks, sparsity analysis. Only survivors get promoted.",
+  "origin_problem": "matrix_multiplication",
+  "origin_result": "Block-26 survived 100 random trials, redundancy check, sparsity analysis",
+  "applicability": "Any problem with a fast verifier and generatable test cases",
+  "operators": ["random_attack", "redundancy_attack", "sparsity_attack"],
+  "success_count": 1,
+  "failure_count": 0
+}

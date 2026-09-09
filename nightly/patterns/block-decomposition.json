@@ -1,0 +1,10 @@
+{
+  "name": "block-decomposition",
+  "abstract_description": "Partition the problem into blocks, solve each block with the best available method, combine results for disjoint outputs.",
+  "origin_problem": "matrix_multiplication",
+  "origin_result": "rank 26 for n=3 via 2+1 block split (2026-09-09)",
+  "applicability": "Problems with natural block/subproblem structure and disjoint outputs",
+  "operators": ["block_embed", "direct_sum", "naive_fill"],
+  "success_count": 1,
+  "failure_count": 0
+}

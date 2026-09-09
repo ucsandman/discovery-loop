@@ -1,0 +1,1 @@
+# sparrow-nightly/2026-09-09-seed20260909: 3x3 multiplication in rank 26

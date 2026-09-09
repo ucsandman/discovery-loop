@@ -1,0 +1,10 @@
+{
+  "name": "glue-analysis",
+  "abstract_description": "Classify components into workhorses (carry the real load) vs glue (exist purely for cancellation/constraint satisfaction). Attack/remove glue first: removing it orphans nothing load-bearing.",
+  "origin_problem": "matrix_multiplication",
+  "origin_result": "8 of Laderman's 23 triples source zero true monomials; glue-targeted rank-22 LNS experiments derived (2026-09-09)",
+  "applicability": "Any composite construction: proofs, circuits, decompositions, ensembles",
+  "operators": ["sole_source_analysis", "cancellation_accounting", "remove_glue_first"],
+  "success_count": 0,
+  "failure_count": 0
+}
