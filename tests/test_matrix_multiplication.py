@@ -58,9 +58,9 @@ def test_evaluate_score_beats_roundtrip(tmp_path):
         )
         value, _ = problem.evaluate(str(path), t)
         assert value == len(seed.factors_for(int(t)))
-        # Seed never beats a record (n=2 ties the optimum).
+        # Seed never beats a record (n=2 ties the optimum, n=4 ties the record).
         assert problem.beats(value, rec[t]) is False
-        if t == "2":
+        if t in ("2", "4"):
             assert value == rec[t]
             assert problem.score(value, rec[t]) == 0.0
         else:
