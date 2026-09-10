@@ -9,7 +9,9 @@ using exactly R scalar multiplications. The rank is the minimum feasible R.
 Targets are the exact ranks for n = 2, 3, 4 against best-known upper bounds:
   n=2: 7  (Strassen 1969; proven optimal by Winograd 1971 -- calibration target)
   n=3: 23 (Laderman 1976; lower bound 19 -- genuine open target)
-  n=4: 48 (Dumas-Pernet-Sedoglavic 2025, rational coeffs; beatable in principle)
+  n=4: 49 (Strassen recursion; integer-matrix record. Rank 48 is known over the
+       rationals -- Dumas-Pernet-Sedoglavic 2025, arXiv:2506.13242 -- but needs
+       fractional coefficients, so it sits outside the integer search space)
 
 Correctness is the exact tensor identity
     sum_r U_r[a,b] V_r[c,d] W_r[e,f] == d(a,e) d(b,c) d(d,f)
@@ -140,7 +142,10 @@ Using it: m_r = (sum U_r[a,b] A[a,b]) * (sum V_r[c,d] B[c,d]); C[e,f] = sum_r m_
 TARGETS (minimise rank; integers; lower is better):
   n=2: best known 7 (Strassen 1969, PROVEN OPTIMAL -- reach 7 to prove your search works; it cannot be beaten)
   n=3: best known 23 (Laderman 1976; lower bound 19 -- beating 23 is a genuine publishable breakthrough)
-  n=4: best known 48 (Dumas-Pernet-Sedoglavic 2025, rational coeffs; beatable in principle)
+  n=4: best known 49 for INTEGER matrices (Strassen recursion). Rank 48 exists over the
+    rationals (Dumas-Pernet-Sedoglavic 2025, arXiv:2506.13242) but needs fractional
+    coefficients, so it is outside your integer search space; an integer rank-48 would
+    be a genuine publishable breakthrough)
 
 INTERFACE CONTRACT (keep exactly):
   python solver.py --target N --time SECONDS --seed S --out PATH

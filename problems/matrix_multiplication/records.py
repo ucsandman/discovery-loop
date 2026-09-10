@@ -2,7 +2,9 @@
 
 n=2: 7, Strassen (1969); proven optimal by Winograd (1971) -- calibration target.
 n=3: 23, Laderman (1976); lower bound 19 -- genuine open target.
-n=4: 49, Strassen recursion (7^2); no stronger general construction published.
+n=4: 49, Strassen recursion (7^2); integer-matrix record. Rank 48 is known over the
+rationals (Dumas-Pernet-Sedoglavic 2025, arXiv:2506.13242) and 47 in
+characteristic 2 -- both outside the integer search space.
 """
 
 from __future__ import annotations

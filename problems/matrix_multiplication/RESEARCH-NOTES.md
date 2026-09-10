@@ -266,3 +266,26 @@ the shell timeout is the real bound (API/doc mismatch to fix).
   stable absolute paths before drawing any conclusion.
 - Lesson: never move files out from under a running process; pin long-run
   outputs to absolute paths first.
+
+### 2026-09-09: LLM crossover operator prototyped; n=4 record clarified
+- New module `crossover.py`: FunSearch-style crossover for solver programs.
+  `build_crossover_prompt(worse_src, better_src, ...)` shows two parent solvers
+  (weaker first) and asks for one coherent child fusing their mechanisms;
+  child must emit `IDEA: [kind: crossover]` as its first line. `validate_child`
+  checks syntax + AST-fingerprint novelty vs both parents via
+  `research_memory.analyze_candidate`. Wired to the existing
+  `providers.call_model` path (no new dependencies).
+- Prototype child `nightly/candidates/crossover-proto-2026-09-09.py` (champion x
+  nightly candidate fusion): valid Python, non-duplicate fingerprint, smoke
+  test n=2 -> rank 7 feasible, n=3 -> rank 26 feasible. No record broken;
+  mechanism proven, value unproven.
+- Nightly trial wired via cron spec step 4b (not in this repo): 7-night trial
+  2026-09-10..16, crossover generation on 09-12 and 09-15, `"generation":
+  "crossover"` logged in loop_summary.json for comparison vs mutation nights.
+- n=4 record discrepancy resolved: Dumas-Pernet-Sedoglavic arXiv:2506.13242
+  (June 2025) is real but rank 48 over the RATIONALS (needs 1/2). The loop
+  searches integer matrices only, so the integer record stays 49 (Strassen
+  recursion) and that is what records.json/sc scoring use. Corrected the
+  problem.py docstring + PROMPT (they claimed 48 as the target, contradicting
+  the scorer) and the records.py comment. Reverses the 48-claim introduced in
+  845fa27/50aa65c; the claim was verified against the paper before correcting.
