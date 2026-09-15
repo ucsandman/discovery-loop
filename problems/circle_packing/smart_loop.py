@@ -37,6 +37,7 @@ else:
 
 WIN_MARGIN = 1e-10  # same margin as problem.py: beats() requires strict improvement
 PATTERN_DIR = os.path.join(HERE, "patterns")
+ELITE_DIR = os.path.join(HERE, "elite")  # all-time best packing per n (tracked)
 MATRIX_PATTERN_DIR = os.path.join(
     REPO_ROOT, "problems", "matrix_multiplication", "patterns"
 )
@@ -70,7 +71,7 @@ def _refine_centers(circles, budget):
     return seed_solver.feasible_sum(c, r)
 
 
-def propose(n, budget, seed):
+def propose(n, budget, seed, start_k=0):
     """Yield (sum, circles, provenance) candidates until *budget* seconds elapse.
 
     Operator: multistart -- cold multi-start penalty optimization via
@@ -78,9 +79,11 @@ def propose(n, budget, seed):
     run(), seeded from the multistart winner.
     Every yielded candidate is feasible per seed_solver.feasible_sum, which the
     caller re-checks with the independent stdlib verifier before adoption.
+    start_k advances the seed stream (seed + 1000*k) so a resumed run does not
+    repeat work already done before a reboot.
     """
     t0 = time.time()
-    k = 0
+    k = start_k
     while time.time() - t0 < budget:
         remaining = budget - (time.time() - t0)
         s, circ = seed_solver.solve(n, max(1.0, remaining / 3), seed + 1000 * k)
@@ -272,7 +275,7 @@ def _write_dashboard(run_dir, summary):
 
 def _dashboard_summary(n, budget, seed, t_start, best, record, breaker,
                        transferred, operator_promoted, out, expl_path,
-                       prev_suggestions):
+                       prev_suggestions, status_override=None, resumed=False):
     """Assemble the loop_summary dict for scripts/loop_report.py."""
     s, _, prov = best
     gap = None if record is None else s - record
@@ -307,14 +310,18 @@ def _dashboard_summary(n, budget, seed, t_start, best, record, breaker,
         f"winning provenance: {prov['operator']} (seed {prov['seed']})",
     ]
     tried_notes += [f"previous run suggested: {s}" for s in prev_suggestions]
+    if resumed:
+        tried_notes.append("resumed from checkpoint.json after a host reboot; "
+                           "seed stream continued, remaining budget honored")
+    status = status_override or ("success" if breaker["verdict"] == "survived"
+                                 else "adversarial_failed")
     return {
         "problem": "circle_packing",
         "run_name": None,
         "target": f"n={n}",
         "time_budget_s": budget,
         "seed": seed,
-        "status": "success" if breaker["verdict"] == "survived"
-                  else "adversarial_failed",
+        "status": status,
         "started": datetime.fromtimestamp(t_start, timezone.utc).isoformat(
             timespec="seconds"),
         "ended": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -357,9 +364,158 @@ def _dashboard_summary(n, budget, seed, t_start, best, record, breaker,
     }
 
 
+# ---------------------------------------------------------- checkpoints ---
+
+CHECKPOINT_NAME = "checkpoint.json"
+CHECKPOINT_EVERY_S = 60  # wall-clock cadence for time-based checkpoints
+RESUME_MIN_REMAINING_S = 60  # below this, finalize from the checkpoint as-is
+
+
+def _checkpoint_path(run_dir):
+    return os.path.join(run_dir, CHECKPOINT_NAME)
+
+
+def _write_checkpoint(run_dir, state):
+    """Atomic checkpoint write. Must never fail the run."""
+    try:
+        tmp = _checkpoint_path(run_dir) + ".tmp"
+        with open(tmp, "w") as fh:
+            json.dump(state, fh)
+        os.replace(tmp, _checkpoint_path(run_dir))
+    except OSError as exc:
+        print(f"checkpoint write failed (non-fatal): {exc}")
+
+
+def _read_checkpoint(run_dir, n, seed):
+    """Load a checkpoint iff it matches this (n, seed). Else None."""
+    try:
+        with open(_checkpoint_path(run_dir)) as fh:
+            cp = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return None
+    if cp.get("n") != n or cp.get("seed") != seed:
+        return None
+    best = cp.get("best")
+    if not best or not best.get("circles"):
+        return None
+    return cp
+
+
+def _checkpoint_state(n, budget, seed, t_start_wall, multistart_k, best):
+    s, circles, prov = best
+    return {
+        "n": n,
+        "seed": seed,
+        "budget": budget,
+        "t_start_wall": t_start_wall,  # original wall-clock start; never reset,
+        "multistart_k": multistart_k,  # seed stream offset; never reset,
+        "best": {"sum": s, "circles": circles, "provenance": prov},
+        "updated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+
+
+# -------------------------------------------------------------- elite ---
+
+def _elite_path(n):
+    return os.path.join(ELITE_DIR, f"n{n}.json")
+
+
+def _load_elite(n):
+    """All-time best packing this loop has archived for n, or None.
+
+    Cross-night elitism: refine seeds from the best packing any previous
+    run produced, not just tonight's multistart winner. Best-effort: a
+    missing, corrupt, or infeasible file is ignored, never fatal.
+    """
+    try:
+        with open(_elite_path(n)) as fh:
+            el = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return None
+    circles = el.get("circles")
+    if not circles or len(circles) != n:
+        return None
+    try:
+        chk = verify.check(circles, n)
+    except Exception:  # noqa: BLE001 -- malformed archive entry
+        return None
+    if not chk["feasible"]:
+        return None
+    return {"sum": chk["sum"], "circles": circles,
+            "updated_at": el.get("updated_at")}
+
+
+def _maybe_save_elite(n, best, out):
+    """Archive best as the elite for n if it strictly improves the archive."""
+    s, circles, prov = best
+    try:
+        cur = _load_elite(n)
+    except Exception:  # noqa: BLE001 -- best-effort
+        cur = None
+    if cur is not None and s <= cur["sum"] + WIN_MARGIN:
+        return False
+    try:
+        os.makedirs(ELITE_DIR, exist_ok=True)
+        tmp = _elite_path(n) + ".tmp"
+        with open(tmp, "w") as fh:
+            json.dump({
+                "n": n, "sum": s, "circles": circles,
+                "provenance": prov, "source_run": os.path.abspath(out),
+                "updated_at": datetime.now(timezone.utc).isoformat(
+                    timespec="seconds"),
+            }, fh)
+        os.replace(tmp, _elite_path(n))
+        return True
+    except OSError as exc:
+        print(f"elite save failed (non-fatal): {exc}")
+        return False
+
+
+def _finalize_from_checkpoint(n, seed, t_start, out, run_dir, record,
+                              best, prev_suggestions, resumed):
+    """Write result + explanation + dashboard when the resume window expired.
+
+    The checkpoint best was already verified feasible when it was promoted,
+    so finalizing from it is honest: no new search, no breaker, status says
+    exactly what happened.
+    """
+    s, circles, prov = best
+    breaker = {"verdict": "skipped",
+               "reason": "resume window expired after reboot; no time left "
+                         "for adversarial validation",
+               "reverify": {"ok": True}, "attempts": 0}
+    payload = {
+        "n": n,
+        "circles": circles,
+        "sum": s,
+        "provenance": prov,
+        "verification": {"feasible": True,
+                         "checker": "problems.circle_packing.verify.check"},
+        "breaker": {k: v for k, v in breaker.items()
+                    if k != "attack_circles"},
+        "best_known": record,
+        "gap_to_best_known": None if record is None else s - record,
+        "elapsed_s": time.time() - t_start,
+        "resumed_from_checkpoint": True,
+    }
+    with open(out, "w") as fh:
+        json.dump(payload, fh)
+    expl_path = os.path.splitext(out)[0] + ".explanation.md"
+    write_explanation(expl_path, n=n, result=best, record=record,
+                      breaker=breaker, patterns_consulted=[],
+                      elapsed=time.time() - t_start)
+    _write_dashboard(run_dir,
+                     _dashboard_summary(n, 0, seed, t_start, best, record,
+                                        breaker, [], {prov["operator"]},
+                                        out, expl_path, prev_suggestions,
+                                        status_override="resumed_no_time",
+                                        resumed=resumed))
+    return payload, expl_path
+
+
 # ------------------------------------------------------------------- loop ---
 
-def run(n, budget, seed, out):
+def run(n, budget, seed, out, resume=False, cap=None):
     t_start = time.time()
     run_dir = os.path.dirname(os.path.abspath(out))
     os.makedirs(run_dir, exist_ok=True)
@@ -370,6 +526,45 @@ def run(n, budget, seed, out):
             print(f"  - {s}")
     table = records.load()
     record = table.get(n)
+
+    # Resume: pick up the best-so-far and the seed-stream offset from the
+    # checkpoint written before the reboot. The original wall-clock start is
+    # kept, so the remaining budget shrinks across resumes (no infinite
+    # extension by repeated reboot-resume cycles).
+    best = None  # (sum, circles, provenance)
+    start_k = 0
+    resumed = False
+    t_start_wall = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    orig_budget = budget  # the --time budget; checkpoints record this, never remaining
+    if resume:
+        cp = _read_checkpoint(run_dir, n, seed)
+        if cp is None:
+            print("resume requested but no matching checkpoint found; "
+                  "starting fresh")
+        else:
+            b = cp["best"]
+            best = (b["sum"], b["circles"], b["provenance"])
+            start_k = int(cp.get("multistart_k", 0))
+            t_start_wall = cp["t_start_wall"]
+            elapsed = time.time() - datetime.fromisoformat(
+                t_start_wall).timestamp()
+            remaining = cp.get("budget", budget) - elapsed
+            resumed = True
+            print(f"resumed from checkpoint: best sum {best[0]:.12f}, "
+                  f"seed offset k={start_k}, {remaining:.0f}s remaining "
+                  f"of {cp.get('budget', budget):.0f}s budget")
+            if remaining < RESUME_MIN_REMAINING_S:
+                print("resume window expired; finalizing from checkpoint best")
+                return _finalize_from_checkpoint(
+                    n, seed, t_start, out, run_dir, record, best,
+                    prev_suggestions, resumed=True)
+            orig_budget = cp.get("budget", budget)
+            budget = remaining
+    # Horizon cap: applies to fresh and resumed runs alike, so the resumer
+    # can honor the stability gate even when no checkpoint exists yet.
+    if cap is not None and budget > cap:
+        print(f"horizon cap: effective budget {budget:.0f}s -> {cap:.0f}s")
+        budget = cap
 
     # Cross-problem transfer: consult the shared library for applicable tricks.
     transferred = []
@@ -398,18 +593,51 @@ def run(n, budget, seed, out):
     breaker_budget = budget * 0.2
     multistart_budget = search_budget * 0.6
     refine_budget = search_budget - multistart_budget
-    best = None  # (sum, circles, provenance)
     operator_promoted = set()
-    for s, circ, prov in propose(n, multistart_budget, seed):
+    # Checkpointing: on every promotion and every CHECKPOINT_EVERY_S seconds,
+    # so a reboot loses at most ~60s of search. Records the ORIGINAL budget
+    # and wall-clock start; remaining time shrinks across resumes.
+    last_k = start_k
+    last_checkpoint = time.time()
+
+    def _maybe_checkpoint(force=False):
+        nonlocal last_checkpoint
+        if best is None:
+            return
+        if force or time.time() - last_checkpoint >= CHECKPOINT_EVERY_S:
+            _write_checkpoint(run_dir, _checkpoint_state(
+                n, orig_budget, seed, t_start_wall, last_k, best))
+            last_checkpoint = time.time()
+
+    for s, circ, prov in propose(n, multistart_budget, seed, start_k=start_k):
+        last_k = (prov["seed"] - seed) // 1000 + 1
         chk = verify.check(circ, n)
         if not chk["feasible"]:
+            _maybe_checkpoint()
             continue
         if best is None or chk["sum"] > best[0] + WIN_MARGIN:
             best = (chk["sum"], circ, prov)
             operator_promoted.add(prov["operator"])
+            _maybe_checkpoint(force=True)
+        else:
+            _maybe_checkpoint()
+    _maybe_checkpoint(force=True)
 
     if best is None:
         raise RuntimeError("no feasible candidate found in the time budget")
+
+    # Cross-night elitism: the refine phase seeds from the all-time best
+    # packing this loop has archived for n, not just tonight's winner.
+    # (On a resume, best already holds the checkpoint's best-so-far.)
+    elite = _load_elite(n)
+    elite_adopted = False
+    if elite is not None and elite["sum"] > best[0] + WIN_MARGIN:
+        best = (elite["sum"], elite["circles"],
+                {"operator": "elite-archive", "seed": seed,
+                 "elite_updated_at": elite["updated_at"]})
+        elite_adopted = True
+        print(f"elite archive: adopted all-time best sum {elite['sum']:.12f} "
+              f"for n={n} as the refine seed")
 
     # Operator 2: perturb-and-refine around the multistart winner.
     if refine_budget > 2:
@@ -433,9 +661,15 @@ def run(n, budget, seed, out):
             name, name in operator_promoted or
             (name == "neighborhood-breaker" and breaker["verdict"] == "survived"),
             note=f"n={n}: {'produced the promoted packing' if name in operator_promoted else 'no promotion'}; "
-                 f"breaker {breaker['verdict']}",
+                 f"breaker {breaker['verdict']}"
+                 + ("; elite archive adopted as refine seed" if elite_adopted else ""),
         )
     lib.save(PATTERN_DIR)
+
+    elite_saved = _maybe_save_elite(n, best, out)
+    if elite_saved:
+        print(f"elite archive: new all-time best for n={n} saved "
+              f"(sum {best[0]:.12f})")
 
     payload = {
         "n": n,
@@ -447,6 +681,7 @@ def run(n, budget, seed, out):
         "best_known": record,
         "gap_to_best_known": None if record is None else best[0] - record,
         "elapsed_s": time.time() - t_start,
+        "resumed_from_checkpoint": resumed,
     }
     if "attack_circles" in breaker:
         payload["breaker_attack_circles"] = breaker["attack_circles"]
@@ -459,11 +694,22 @@ def run(n, budget, seed, out):
                       elapsed=time.time() - t_start)
 
     # Post-loop dashboard: tried / learned / recorded / next / record / publish.
-    _write_dashboard(os.path.dirname(os.path.abspath(out)),
-                     _dashboard_summary(n, budget, seed, t_start, best, record,
-                                        breaker, transferred,
-                                        operator_promoted, out, expl_path,
-                                        prev_suggestions))
+    summary = _dashboard_summary(n, budget, seed, t_start, best, record,
+                                 breaker, transferred,
+                                 operator_promoted, out, expl_path,
+                                 prev_suggestions, resumed=resumed)
+    if elite is not None:
+        summary["tried"]["notes"].append(
+            f"elite archive consulted: all-time best sum {elite['sum']:.12f} "
+            f"for n={n}"
+            + ("; adopted as refine seed" if elite_adopted
+               else "; tonight's best was already better"))
+    if elite_saved:
+        summary["recorded"]["items"].append(
+            f"elite archive updated: new all-time best sum {best[0]:.12f} "
+            f"for n={n}")
+        summary["recorded"]["files"].append(os.path.abspath(_elite_path(n)))
+    _write_dashboard(os.path.dirname(os.path.abspath(out)), summary)
     return payload, expl_path
 
 
@@ -504,10 +750,18 @@ def main(argv=None):
     ap.add_argument("--time", type=float, default=60)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--resume", action="store_true",
+                    help="resume from checkpoint.json next to --out after a "
+                         "reboot (validates n/seed, honors remaining budget)")
+    ap.add_argument("--cap", type=float, default=None,
+                    help="hard cap on effective compute seconds, applied after "
+                         "resume math (lets the resumer honor the host "
+                         "horizon gate)")
     a = ap.parse_args(argv)
     t_start = time.time()
     try:
-        payload, expl = run(int(a.target), a.time, a.seed, a.out)
+        payload, expl = run(int(a.target), a.time, a.seed, a.out,
+                            resume=a.resume, cap=a.cap)
     except RuntimeError as exc:
         _write_dashboard(os.path.dirname(os.path.abspath(a.out)),
                          _failure_summary(int(a.target), a.time, a.seed,
