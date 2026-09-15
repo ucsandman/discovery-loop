@@ -6,6 +6,11 @@
 - `load_schedule` accepts extra research slots beyond the trial pair: problems must be unique, required trial problems present, configured providers limited to fable/astra/paired.
 - `evaluation.build_manifest` supports `CONFIRMATION_ON_DEVELOPMENT`: confirmation re-runs the development targets under fresh seeds (classification `same_target_fresh_seed_replication`), and the manifest now reports `concealed` targets separately from `confirmation`.
 - `matrix_multiplication.prompt_for_targets` keeps the interface contract, strategy notes and honest framing while dropping lines that name withheld targets.
+- Dashboard allowance validation matches the scheduler's 130-unit ceiling, so the new 105-unit default can be saved without reducing existing slot allowances.
+- The task installer prepares a 21:00 start and 9h15m scheduler limit, with the runner still stopping at 06:00. Existing Windows task registrations require separate activation; morning jobs keep their times.
+- Matrix-multiplication workers receive the allowlisted exact verifier, so the incumbent and generated solvers can execute through Docker isolation.
+- Matrix multiplication accepts a replicated gain on one target when no matched evaluation regresses. Other plugins retain their median gate; evidence keeps the overall median and reports target gains separately. Local incumbent advancement remains separate from publication.
+- Partial research runs no longer count as successful runs in advisory scheduling history.
 
 ## Cross-problem prompt context and schedule advice, 2026-09-14
 

@@ -1,5 +1,17 @@
 # Errors and lessons
 
+## 2026-09-14: Nightly allowance exceeded dashboard validation
+
+The matrix-multiplication slot raised the default allowance to 105 units while the dashboard form and API still capped it at 90. Saving the unchanged schedule failed despite the scheduler accepting it. Aligning both dashboard limits with the scheduler's 130-unit ceiling restores settings saves. Schedule changes now receive an unchanged-default save check through the human control surface as well as the runner's dry run.
+
+The same review found that a 540-minute plan was still constrained by a 22:00 task start and the runner's 06:00 cutoff. The prepared installer now starts at 21:00 with a 9h15m task limit, preserving the morning jobs. Verification covers the catch-up boundary and actual installer values; existing task activation remains separate from code delivery. Historical activation evidence retains the values actually checked at that time.
+
+A real worker probe rejected `matrix_multiplication` before execution because the Docker input allowlist omitted the plugin. Adding its trusted `verify.py` helper enables the existing worker path without mounting other repository files. New governed slots receive one real isolated incumbent evaluation before their schedule is considered runnable.
+
+The default median across all three matrix sizes also rejected a single-target improvement when the other sizes tied. Matrix multiplication now opts into a target-aware gate requiring a replicated improvement and no matched-case regressions. Synthetic tests cover both acceptance and rejection, and keep local promotion distinct from the existing all-target release gate. Future plugin admission checks include an achievable improvement case and a regression case, alongside real worker execution.
+
+The incremental commit hook omitted callers in unstaged files and flagged the worker mount test helper, dynamic pattern tags, and plugin capability marker. Their callers were verified before adding these names to the existing Vulture whitelist; the hook remains enabled.
+
 ## 2026-09-08: Real catalogue and scheduler probes caught fixture-shaped assumptions
 
 The first ARC import rejected a valid 40-character Git commit because its validator incorrectly reused the 64-character SHA-256 pattern. Splitting Git object validation from content-hash validation fixed the real import. The same review found that a cached snapshot could have been edited after validation and that its normalized hash changed with every import timestamp. Cache loads now recompute a timestamp-independent normalized hash, compare executable admissions to the local reviewed bindings, and retain a raw hash over every source byte. The live checkout also records `worktree_dirty` because its two integration cards were local additions beyond the cited commit.

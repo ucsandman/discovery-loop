@@ -56,16 +56,16 @@ Preview without changing task registration:
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-night-tasks.ps1
 ```
 
-The installer exports existing task XML and prints rollback instructions. The operator installation applied these changes with `-Apply` on 2026-09-05 after confirmation. New installations should review the preview before applying it. Task registration is machine-local and is not installed by cloning the repository.
+The installer exports existing task XML and prints rollback instructions. The operator installation applied the earlier 22:00 schedule with `-Apply` on 2026-09-05 after confirmation. The nine-hour schedule below is prepared in code and requires a separately approved task update on existing installations. Task registration is machine-local and is not installed by cloning, merging or pulling the repository. Until updated, a 22:00 installation still stops at 06:00 and cannot provide every slot its full configured time.
 
-| Task | Registered behavior |
+| Task | Behavior configured by the installer |
 | --- | --- |
-| `discovery-loop-night` | 22:00 research with `--scheduled`, bounded catch-up and an 8h15m scheduler limit |
+| `discovery-loop-night` | 21:00 research with `--scheduled`, bounded catch-up and a 9h15m scheduler limit |
 | `NightlyMeditation` | 06:40, inject sanitized fresh research context into the existing runner |
 | `FleetBriefing7am` | 06:57, require a current meditation artifact before the existing briefing |
 | `discovery-loop-dashboard` | Start the localhost dashboard at logon |
 
-`--scheduled` accepts starts only between 21:50 and 06:00 local time. After midnight it uses the preceding night's date and caps execution at 06:00. Its canonical checkpoint ID is `<local-evening-date>-scheduled`, with the logical date recorded separately as `scheduled_run_id`; a completed manual `<date>` run cannot suppress it. Existing scheduled checkpoints resume automatically; completed scheduled nights return without new work.
+`--scheduled` accepts starts only between 20:50 and 06:00 local time. After midnight it uses the preceding night's date and caps execution at 06:00. Its canonical checkpoint ID is `<local-evening-date>-scheduled`, with the logical date recorded separately as `scheduled_run_id`; a completed manual `<date>` run cannot suppress it. Existing scheduled checkpoints resume automatically; completed scheduled nights return without new work. Slot durations are maxima sharing the same deadline: startup overhead and late catch-up reduce available work time, and daylight-saving transitions can change elapsed overnight hours.
 
 `scripts/morning-research.py` creates `runs/research/morning.json`. Missing or partial research is reported explicitly. The integration preserves the existing briefing's external delivery behavior; activation is separate from running the local report. The meditation wrapper does not edit harness source files.
 
@@ -87,7 +87,7 @@ This runs three test suites in separate interpreters, Ruff and Python compilatio
 
 ## Activation verification, 2026-09-05
 
-All four task registrations were read back after installation. The next research trigger was 22:00 local, followed by meditation at 06:40 and briefing at 06:57 the next morning. The dashboard was restarted through its new task and served the current 105-unit, 540-minute configuration on loopback.
+All four task registrations were read back after installation. The next research trigger was 22:00 local, followed by meditation at 06:40 and briefing at 06:57 the next morning. The dashboard was restarted through its new task and served the then-current 90-unit, 480-minute configuration on loopback. This historical check does not verify activation of later schedule changes.
 
 Both subscription authentication probes and the immutable Docker worker preflight passed. The actual transformed meditation script passed Bash syntax checking without executing it. The artifact freshness check accepted a fresh fixture and rejected a stale one. The local report correctly reported missing current-night evidence before the first scheduled run; activation is not proof of a completed overnight experiment.
 

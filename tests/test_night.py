@@ -53,6 +53,9 @@ def test_command_separates_per_call_and_slot_caps():
 
 
 def test_scheduled_window_blocks_daytime_catchup():
+    assert not night.scheduled_window(datetime(2026, 9, 5, 20, 49))
+    assert night.scheduled_window(datetime(2026, 9, 5, 20, 50))
+    assert night.scheduled_window(datetime(2026, 9, 5, 21, 0))
     assert night.scheduled_window(datetime(2026, 9, 5, 22, 0))
     assert night.scheduled_window(datetime(2026, 9, 6, 5, 59))
     assert not night.scheduled_window(datetime(2026, 9, 6, 6, 0))
@@ -203,7 +206,9 @@ def test_installer_defaults_to_review_only():
     assert "[switch]$Apply" in source
     assert "if (-not $Apply)" in source
     assert "Export-ScheduledTask" in source
-    assert "PT8H15M" in source and "--scheduled" in source
+    assert "PT9H15M" in source and "--scheduled" in source
+    assert 'New-ScheduledTaskTrigger -Daily -At "21:00"' in source
+    assert "New-TimeSpan -Hours 9 -Minutes 15" in source
 
 
 def test_morning_report_is_sanitized_and_zero_work_is_visible(tmp_path, monkeypatch):

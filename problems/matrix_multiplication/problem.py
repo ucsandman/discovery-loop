@@ -40,8 +40,22 @@ RELEASE_HOLDOUT = []
 # The solver is stochastic: confirmation re-runs the development targets under
 # fresh seeds (repeatability, not generalization), so nothing is withheld.
 CONFIRMATION_ON_DEVELOPMENT = True
+# A gain on either open target matters, while the proven-optimal n=2 target
+# must not regress. The default cross-problem evaluator keeps its median gate.
+COMPARISON_POLICY = "per_target_pareto"
 DEFAULTS = {"time": 300, "workers": 1}
-PATTERN_TAGS = ["block-structure", "disjoint-outputs", "subproblems", "recursive-structure", "multiplicative-cost", "technique-library", "composition-operators", "huge-raw-search-space", "fast-verifier", "generatable-test-cases"]
+PATTERN_TAGS = [
+    "block-structure",
+    "disjoint-outputs",
+    "subproblems",
+    "recursive-structure",
+    "multiplicative-cost",
+    "technique-library",
+    "composition-operators",
+    "huge-raw-search-space",
+    "fast-verifier",
+    "generatable-test-cases",
+]
 MAXIMIZE = False
 FAIL_SCORE = -1.0  # crash / timeout / infeasible output; worse than any feasible run
 GAP_CLIP = 0.5
@@ -134,9 +148,7 @@ def save(t, payload, value, best, author):
         {"target": t, "rank": value, "factors": payload, "author": author},
         open(raw_path(t, best), "w"),
     )
-    open(sub_path(t, best), "w", encoding="utf-8").write(
-        f"# {author}: {t}x{t} multiplication in rank {value}\n"
-    )
+    open(sub_path(t, best), "w", encoding="utf-8").write(f"# {author}: {t}x{t} multiplication in rank {value}\n")
 
 
 PROMPT = """You are evolving a Python solver that searches for low-rank bilinear algorithms for n x n matrix
@@ -189,7 +201,9 @@ _TARGET_EDGE = r"[A-Za-z0-9_]"
 
 
 def _names_target(line, name):
-    return re.search(r"(?<!" + _TARGET_EDGE + ")" + re.escape(str(name)) + r"(?!" + _TARGET_EDGE + ")", line) is not None
+    return (
+        re.search(r"(?<!" + _TARGET_EDGE + ")" + re.escape(str(name)) + r"(?!" + _TARGET_EDGE + ")", line) is not None
+    )
 
 
 def prompt_for_targets(targets):
@@ -215,8 +229,7 @@ Keep every saved candidate exactly feasible -- the checker has no tolerance. Do 
 failed unless you fix its specific failure."""
 
 TOTAL_DESC = (
-    "negative relative gap to the best known rank, summed over targets "
-    "(0 = matching every best known; a failure = -1)"
+    "negative relative gap to the best known rank, summed over targets (0 = matching every best known; a failure = -1)"
 )
 SUBMIT_NOTE = (
     "A verified rank below the best known for n=3 or n=4 is reported as a mathematical result: "

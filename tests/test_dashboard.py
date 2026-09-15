@@ -287,7 +287,11 @@ def test_lower_allowance_scales_allocations_and_remains_runnable(dashboard_serve
     "payload",
     [
         {"duration_minutes": 59, "nightly_budget_usd": 30, "provider_caps_usd": {"fable": 1, "astra": 1, "paired": 1}},
-        {"duration_minutes": 360, "nightly_budget_usd": 91, "provider_caps_usd": {"fable": 1, "astra": 1, "paired": 1}},
+        {
+            "duration_minutes": 360,
+            "nightly_budget_usd": 131,
+            "provider_caps_usd": {"fable": 1, "astra": 1, "paired": 1},
+        },
         {"duration_minutes": 360, "nightly_budget_usd": 30, "provider_caps_usd": {"fable": 1, "astra": 1}},
         {
             "duration_minutes": 360,

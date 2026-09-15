@@ -819,7 +819,7 @@ def scheduled_window(current=None):
     """Permit catch-up only overnight, never as surprise daytime CPU work."""
     local = current or datetime.now().astimezone()
     minutes = local.hour * 60 + local.minute
-    return minutes >= 21 * 60 + 50 or minutes < 6 * 60
+    return minutes >= 20 * 60 + 50 or minutes < 6 * 60
 
 
 def scheduled_run_id(current=None):
@@ -850,7 +850,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--resume", action="store_true")
-    ap.add_argument("--scheduled", action="store_true", help="skip delayed catch-up starts between 06:00 and 21:50")
+    ap.add_argument("--scheduled", action="store_true", help="skip delayed catch-up starts between 06:00 and 20:50")
     ap.add_argument("--run-id", help="dated run id (YYYY-MM-DD); defaults to the local date")
     ap.add_argument("--schedule", default=SCHEDULE)
     ap.add_argument("--routing", choices=sorted(VALID_ROUTING_POLICIES), help="routing policy for this run")

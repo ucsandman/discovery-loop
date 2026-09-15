@@ -8,6 +8,9 @@ _.DEVELOPMENT_TARGETS
 _.VALIDATION_TARGETS
 _.HOLDOUT
 _.DEFAULTS
+# research_context reads tags through getattr; plugin integrity tests check capabilities.
+_.PATTERN_TAGS
+_.RELEASE_VALIDATION_SUPPORTED
 _.MAXIMIZE
 _.FAIL_SCORE
 _.TOTAL_DESC
@@ -47,6 +50,8 @@ _.do_POST
 _.retro_slot
 _.publish_slot
 _.official_solution_path
+# Isolation tests inspect the bounded worker mount through this helper.
+_._mount_source
 # pytest invokes this autouse fixture by registration.
 _.subscription_auth
 # Canonical provider API callers may be outside an incremental staged-file scan.

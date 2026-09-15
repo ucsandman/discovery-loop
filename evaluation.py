@@ -129,7 +129,7 @@ def score_rows(problem, records, rows):
     return scored
 
 
-def compare_paired(incumbent_rows, candidate_rows, min_effect, min_seeds=3):
+def compare_paired(incumbent_rows, candidate_rows, min_effect, min_seeds=3, *, policy="median"):
     """Compare exact target/seed pairs using a robust replicated gate."""
     if isinstance(min_effect, bool) or not isinstance(min_effect, (int, float)) or not math.isfinite(min_effect):
         raise ValueError("min_effect must be a finite positive number")
@@ -137,6 +137,8 @@ def compare_paired(incumbent_rows, candidate_rows, min_effect, min_seeds=3):
         raise ValueError("min_effect must be a finite positive number")
     if isinstance(min_seeds, bool) or not isinstance(min_seeds, int) or min_seeds < 1:
         raise ValueError("min_seeds must be a positive integer")
+    if policy not in {"median", "per_target_pareto"}:
+        raise ValueError("comparison policy must be median or per_target_pareto")
     incumbent = _index_rows(incumbent_rows, "incumbent")
     candidate = _index_rows(candidate_rows, "candidate")
     if set(incumbent) != set(candidate):
@@ -188,7 +190,7 @@ def compare_paired(incumbent_rows, candidate_rows, min_effect, min_seeds=3):
     median_gain = statistics.median(gains)
     failure_rate_ok = candidate_failures <= incumbent_failures
     replication_ok = len(seed_sets[0]) >= min_seeds
-    return {
+    result = {
         "pairs": pairs,
         "gains": gains,
         "per_seed": per_seed,
@@ -203,6 +205,35 @@ def compare_paired(incumbent_rows, candidate_rows, min_effect, min_seeds=3):
         "replication_ok": replication_ok,
         "passes": median_gain >= min_effect and candidate_failures == 0 and failure_rate_ok and replication_ok,
     }
+    if policy == "per_target_pareto":
+        per_target = []
+        for target in sorted(seeds_by_target, key=str):
+            target_gains = [pair["gain"] for pair in pairs if pair["target"] == target]
+            target_median = statistics.median(target_gains)
+            per_target.append(
+                {
+                    "target": target,
+                    "median_gain": target_median,
+                    "gains": target_gains,
+                    "regressions": sum(gain < 0 for gain in target_gains),
+                }
+            )
+        selection_gain = max(item["median_gain"] for item in per_target)
+        non_regressing = all(pair["gain"] >= 0 for pair in pairs)
+        result.update(
+            policy=policy,
+            per_target=per_target,
+            selection_gain=selection_gain,
+            non_regressing=non_regressing,
+            passes=(
+                selection_gain >= min_effect
+                and non_regressing
+                and candidate_failures == 0
+                and failure_rate_ok
+                and replication_ok
+            ),
+        )
+    return result
 
 
 def _index_rows(rows, label):

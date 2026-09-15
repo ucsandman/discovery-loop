@@ -393,7 +393,7 @@ class DashboardApp:
         duration = payload["duration_minutes"]
         if isinstance(duration, bool) or not isinstance(duration, int) or not 60 <= duration <= 720:
             raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_payload", "Duration must be a whole number from 60 to 720.")
-        budget = _number(payload["nightly_budget_usd"], "Nightly research allowance", 0, 90)
+        budget = _number(payload["nightly_budget_usd"], "Nightly research allowance", 0, 130)
         if budget <= 0:
             raise ApiError(
                 HTTPStatus.BAD_REQUEST, "invalid_payload", "Nightly research allowance must be greater than zero."

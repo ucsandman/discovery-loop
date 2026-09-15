@@ -237,7 +237,7 @@ On Windows, preview the scheduled-task changes first:
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-night-tasks.ps1
 ```
 
-The installer exports existing XML before any change. Its `-Apply` switch updates the 22:00 research task, connects the 06:40 meditation and 06:57 briefing to fresh evidence, and installs the localhost dashboard at logon. Rollback commands are printed with the backup paths. Scheduled catch-up is restricted to the overnight window. The original meditation runner is reused with sanitized research context injected in memory; no harness source file is modified.
+The installer exports existing XML before any change. Its `-Apply` switch configures research for 21:00–06:00 with a 9h15m scheduler limit, connects the 06:40 meditation and 06:57 briefing to fresh evidence, and installs the localhost dashboard at logon. Existing 22:00 installations need a separately approved task update to provide the full nine-hour window; merging or pulling code does not change Windows task registration. Rollback commands are printed with the backup paths. Scheduled catch-up is restricted to the overnight window. The original meditation runner is reused with sanitized research context injected in memory; no harness source file is modified.
 
 A missing or partial research run is explicitly reported to meditation. The briefing requires a current meditation artifact rather than silently reusing yesterday's. The existing briefing's external delivery behavior is unchanged; installation does not send a message.
 
