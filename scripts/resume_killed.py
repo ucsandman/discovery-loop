@@ -18,6 +18,9 @@ state ('lost', or 'running' with a dead PID). For each candidate:
      --time when it is smaller than the recorded budget.
   6. The killed run's directory is moved aside to <name>.killed-<ts>
      (evidence preserved) before the fresh launch reuses the name.
+     Directories containing '.killed-' are never candidates: the evidence
+     they hold was already processed, and re-scanning them would relaunch
+     the same killed run every tick.
 
 Idempotent: a run that is alive is never touched. Safe to run every 30 min.
 
@@ -98,6 +101,11 @@ def _candidates(auto: bool, max_age_h: float):
     for child in sorted(os.listdir(_RUNS_DIR)):
         run_dir = os.path.join(_RUNS_DIR, child)
         if not os.path.isdir(run_dir):
+            continue
+        # Evidence dirs from previous move-asides are never candidates.
+        # Their run.json still says 'lost', so without this exclusion the
+        # resumer would relaunch the same killed run on every tick.
+        if ".killed-" in child:
             continue
         if not os.path.exists(os.path.join(run_dir, "run.json")):
             continue
