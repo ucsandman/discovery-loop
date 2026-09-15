@@ -118,8 +118,8 @@ def load_schedule(path=SCHEDULE):
     # scheduled trial policy over the canonical default chain, so normalize in
     # memory without requiring a schedule migration.
     night["routing"] = routing_config(config)
-    if not 0 < float(night.get("budget_usd", 0)) <= 90:
-        raise ValueError("night API-equivalent allowance must be in (0, 90]")
+    if not 0 < float(night.get("budget_usd", 0)) <= 130:
+        raise ValueError("night API-equivalent allowance must be in (0, 130]")
     if not 1 <= int(night.get("deadline_minutes", 0)) <= 720:
         raise ValueError("night deadline_minutes must be in [1, 720]")
     modes = {"fable", "astra", "paired"}
@@ -135,9 +135,17 @@ def load_schedule(path=SCHEDULE):
         if sorted(entry.get("order", [])) != ["cvrp", "miplib_heur"]:
             raise ValueError("each trial night must order cvrp and miplib_heur once")
     slots = config.get("slots", [])
+    problems = [slot.get("problem") for slot in slots]
+    if len(set(problems)) != len(problems):
+        raise ValueError("each problem may appear in at most one slot")
     research = {slot.get("problem") for slot in slots if slot.get("kind") == "research"}
-    if research != {"cvrp", "miplib_heur"}:
-        raise ValueError("research slots must be exactly cvrp and miplib_heur")
+    if not {"cvrp", "miplib_heur"} <= research:
+        raise ValueError("research slots must include cvrp and miplib_heur")
+    if any(
+        slot.get("kind") == "research" and slot.get("provider") is not None and slot["provider"] not in modes
+        for slot in slots
+    ):
+        raise ValueError("configured slot providers must be fable, astra, or paired")
     validation = [slot for slot in slots if slot.get("problem") == "pglib_opf"]
     if len(validation) != 1 or validation[0].get("kind") != "validation":
         raise ValueError("pglib_opf must appear exactly once and validation-only")
@@ -185,9 +193,44 @@ def planned_slots(config, run_id):
             float(config["night"]["provider_caps_usd"][slot["provider"]]),
         )
         ordered.append(slot)
+    # Research slots outside the trial keep their configured provider and run
+    # in information-gain order before the validation tail.
+    extras = [
+        slot
+        for problem, slot in by_problem.items()
+        if problem not in assignment["order"] and problem != "pglib_opf" and slot.get("kind") == "research"
+    ]
+    try:
+        from scripts.schedule_night import score_problem
+
+        extras.sort(key=lambda slot: score_problem(slot["problem"])["score"], reverse=True)
+    except Exception:
+        pass  # ordering is advisory; never break the night's plan
+    for slot in extras:
+        slot["provider"] = slot.get("provider") or "paired"
+        slot["effective_slot_budget_usd"] = min(
+            float(slot["slot_budget_usd"]),
+            float(config["night"]["provider_caps_usd"][slot["provider"]]),
+        )
+        ordered.append(slot)
     # PGLib is confirmation-only and deliberately has no generation provider.
     ordered.append(by_problem["pglib_opf"])
     return ordered
+
+
+def schedule_advice(config, slots):
+    """Advisory information-gain allocation for the night's status and morning report."""
+    try:
+        from scripts.schedule_night import allocate
+    except ImportError:
+        return None
+    try:
+        return allocate(
+            float(config["night"]["deadline_minutes"]) * 60.0,
+            [slot["problem"] for slot in slots],
+        )
+    except Exception:
+        return None
 
 
 def _routing_families(config, slots):
@@ -510,6 +553,7 @@ def run_night(
     ledger_path = run_root / "budget.json"
     slots = planned_slots(config, run_id)
     planned_order = [slot["id"] for slot in slots]
+    schedule_plan = schedule_advice(config, slots)
     arc_plan, arc_summary = _prepare_arc(config, slots, run_id)
     requested_next = arc_summary.get("requested_next")
     chosen_slot = next(
@@ -530,6 +574,7 @@ def run_night(
             "budget_accounting": config["night"].get("budget_accounting"),
             "deadline_minutes": int(config["night"]["deadline_minutes"]),
             "slots": slots,
+            "schedule_plan": schedule_plan,
             "routing": {**routing, "override": bool(run_routing_override)},
             "arc": arc_summary,
         }
@@ -585,6 +630,7 @@ def run_night(
                 scheduled_run_id=scheduled_run_id,
             )
             status["arc"] = arc_summary
+            status["schedule_plan"] = schedule_plan
             disabled_slot_ids = set(arc_summary.get("disabled_slot_ids", []))
             for slot_id, mission in arc_plan.items():
                 plugin = mission["plugin"]

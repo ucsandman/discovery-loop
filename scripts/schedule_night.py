@@ -56,6 +56,22 @@ def _history(problem: str) -> list:
             continue
         if rep.get("problem") == problem:
             reports.append(rep)
+    # Governed research runs: runs/research/<run-id>/<problem>/run.json.
+    for path in glob.glob(os.path.join(_RUNS_DIR, "research", "*", problem, "run.json")):
+        try:
+            with open(path) as fh:
+                run = json.load(fh)
+        except (OSError, json.JSONDecodeError):
+            continue
+        if run.get("problem") != problem:
+            continue
+        reports.append(
+            {
+                "problem": problem,
+                "generated_at": run.get("finished_at") or run.get("updated_at") or run.get("started_at"),
+                "status": "success" if run.get("status") in {"completed", "partial"} else run.get("status"),
+            }
+        )
     reports.sort(key=lambda r: r.get("generated_at", ""), reverse=True)
     return reports
 

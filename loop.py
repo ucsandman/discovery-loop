@@ -29,6 +29,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import evaluation
+import research_context
 from model_registry import (
     DEFAULT_CHAIN,
     MODEL_REGISTRY,
@@ -40,8 +41,11 @@ from model_registry import (
 from research_memory import (
     analyze_candidate,
     is_development_observation,
+    mentions_target,
     operational_stats,
     rank_auto_allocation,
+    redact_targets,
+    strip_local_paths,
     summarize_development,
 )
 from routing import RoutingJournal, route_call, routing_summary
@@ -339,8 +343,16 @@ th{{background:#eee}}.win{{background:#c8f7c5}}h1{{margin:0}}</style>
         retro_memory=None,
         history_total=None,
         mission=None,
+        context_blocks=None,
     ):
         """Build a prompt from development data only."""
+        if context_blocks is None:
+            name = getattr(self, "name", None)
+            context_blocks = (
+                research_context.blocks(name, self.P, getattr(self, "root", HERE), hidden_targets)
+                if name
+                else {"text": "", "dead_ends": [], "patterns": []}
+            )
         if hasattr(self.P, "prompt_for_targets"):
             context = self.P.prompt_for_targets(list(targets))
         else:
@@ -364,11 +376,7 @@ th{{background:#eee}}.win{{background:#c8f7c5}}h1{{margin:0}}</style>
         prior = json.dumps(memory, sort_keys=True, separators=(",", ":")) if memory["entries"] else "(none yet)"
         retro = {key: str((retro_memory or {}).get(key, ""))[:1000] for key in ("lessons", "next_experiment")}
         for key, value in retro.items():
-            for target in hidden_targets:
-                value = value.replace(str(target), "[withheld reference removed]")
-            retro[key] = re.sub(
-                r"(?<![:\w])(?:[A-Za-z]:[\\/]|/(?!/))[A-Za-z0-9_.~\\/-]+", "[local path removed]", value
-            )
+            retro[key] = strip_local_paths(redact_targets(value, hidden_targets))
         retro_text = json.dumps(retro, sort_keys=True, separators=(",", ":")) if any(retro.values()) else "(none yet)"
         mission_text = "(no reviewed ARC mission is bound to this run)"
         if mission:
@@ -415,6 +423,8 @@ DEVELOPMENT HISTORY ONLY:
 PRIOR RETROSPECTIVE NOTES (the next experiment is an untested hypothesis, not evidence):
 {retro_text}
 
+{context_blocks['text']}
+
 {self.P.TASK}
 
 Begin the idea with an algorithm-family tag: "IDEA: [kind: <algorithm family>] <one sentence>".
@@ -424,7 +434,7 @@ that explanation is specific. Treat every expected effect as a hypothesis; do no
 correctness.
 
 OUTPUT FORMAT: the tagged IDEA line, then exactly one ```python block with the full file. Nothing else."""
-        leaked = [str(target) for target in hidden_targets if str(target) in prompt]
+        leaked = [str(target) for target in hidden_targets if mentions_target(prompt, target)]
         if leaked:
             raise ValueError(f"generation prompt exposes withheld targets: {leaked}")
         return prompt
@@ -741,6 +751,23 @@ def _load_problem_for_research(name, root):
         return safe_load_problem(name)
 
 
+def _prompt_context(prior_evidence, problem, plugin, root, hidden_targets):
+    """Prompt context for a run, restored verbatim on resume.
+
+    The rendered context is recorded in evidence, so a resumed run reuses the
+    exact text its earlier generations saw instead of rebuilding from ledgers
+    that may have changed since.
+    """
+    recorded = prior_evidence.get("prompt_context") if isinstance(prior_evidence, dict) else None
+    if isinstance(recorded, dict) and isinstance(recorded.get("text"), str):
+        return {
+            "text": recorded["text"],
+            "dead_ends": list(recorded.get("dead_ends") or []),
+            "patterns": list(recorded.get("patterns") or []),
+        }
+    return research_context.blocks(problem, plugin, root, hidden_targets)
+
+
 def run_research(
     problem,
     provider="paired",
@@ -980,6 +1007,7 @@ def run_research(
     retro_memory = read_json(os.path.join(evidence_base, "development-history", f"{problem}-retro.json"), {}) or {}
     if not isinstance(retro_memory, dict) or retro_memory.get("schema_version") not in (None, 1):
         retro_memory = {}
+    prompt_context = _prompt_context(prior_evidence, problem, plugin, root, hidden_targets)
     effective_routing_chain = routing_chain
     auto_allocation = None
     if routing_policy == "auto":
@@ -1096,6 +1124,7 @@ def run_research(
         "usage": usage,
         "limitations": list(manifest["limitations"]),
         "mission": mission,
+        "prompt_context": prompt_context,
         "legacy_incumbent": {
             "path": _repo_relative(incumbent_snapshot, root),
             "sha256": _sha256(incumbent_snapshot),
@@ -1182,6 +1211,7 @@ def run_research(
                 retro_memory,
                 development_memory["total_observations"],
                 mission,
+                prompt_context,
             )
             responses = []
             deferred_stop = None

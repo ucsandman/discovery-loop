@@ -45,6 +45,7 @@ DEVELOPMENT = TARGETS
 VALIDATION = []
 RELEASE_HOLDOUT = []
 DEFAULTS = {"time": 90, "workers": 4}
+PATTERN_TAGS = ["continuous", "fast-verifier", "local-search"]
 MAXIMIZE = False
 FAIL_SCORE = -1.0
 WIN_MARGIN = 1e-4  # conservative preliminary screen; release validation uses each row's exact printed uncertainty
