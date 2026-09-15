@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 """Host stability horizon: should we spend a long compute budget right now?
 
-The host reboots roughly hourly. This script keeps a persistent boot log
-(runs/host_boots.jsonl) and recommends whether a compute budget fits inside
-the expected stable window.
+Host model (diagnosed 2026-09-15): this machine is an ephemeral container
+(systemd-nspawn) recycled by the platform roughly every 1-4h. The recycling
+is orchestrator-initiated: it strikes with zero load, on irregular intervals,
+and no in-container cause exists (no cron, no timers, no failed units, no
+auto-upgrade reboot; RAM plentiful). Only the home directory persists across
+cycles, so the loop never tries to prevent recycles; it budgets inside the
+expected stable window and resumes afterwards.
+
+This script keeps a persistent boot log (runs/host_boots.jsonl) and recommends
+whether a compute budget fits inside the expected stable window.
 
 Usage:
     python3 scripts/host_horizon.py --budget 3600 [--record-only]
