@@ -22,6 +22,33 @@ _VALID_DEVELOPMENT_STATUSES = {"rejected", "promising", "promising_unreviewed", 
 _ABSOLUTE_PATH = re.compile(r"(?<![:\w])(?:[A-Za-z]:[\\/]|/(?!/))[A-Za-z0-9_.~\\/-]+")
 _FINGERPRINT = re.compile(r"[0-9a-f]{64}")
 _PROVIDER_FAMILIES = {"anthropic", "openai", "fable", "astra", "paired"}
+_TARGET_EDGE = r"[A-Za-z0-9_]"
+
+
+def target_pattern(target):
+    """Match a withheld target only as a standalone token.
+
+    Substring matching mangles unrelated text and false-flags leaks for
+    targets whose names are single characters (for example ``"4"`` inside
+    ``de-004`` or ``400s``).
+    """
+    return re.compile(r"(?<!" + _TARGET_EDGE + ")" + re.escape(str(target)) + r"(?!" + _TARGET_EDGE + ")")
+
+
+def redact_targets(text, hidden_targets):
+    """Replace each withheld target name where it appears as a token."""
+    for target in hidden_targets:
+        text = target_pattern(target).sub("[withheld reference removed]", text)
+    return text
+
+
+def mentions_target(text, target):
+    """Whether *text* names *target* as a standalone token."""
+    return bool(target_pattern(target).search(text))
+
+
+def strip_local_paths(text):
+    return _ABSOLUTE_PATH.sub("[local path removed]", text)
 
 
 def is_development_observation(record):
@@ -62,9 +89,8 @@ def analyze_candidate(code, known_fingerprints=()):
 
 def _redact(value, hidden_targets, limit):
     text = str(value) if isinstance(value, str) else ""
-    for target in hidden_targets:
-        text = text.replace(str(target), "[withheld reference removed]")
-    return _ABSOLUTE_PATH.sub("[local path removed]", text)[:limit]
+    text = redact_targets(text, hidden_targets)
+    return strip_local_paths(text)[:limit]
 
 
 def _family(record, idea):

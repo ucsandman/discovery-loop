@@ -1,5 +1,11 @@
 # Changelog
 
+## Cross-problem prompt context and schedule advice, 2026-09-14
+
+- Generation prompts now carry the repo-wide dead-ends ledger (problem-scoped, sanitized) and a ranked cross-problem pattern digest aggregated from `problems/*/patterns/` and `nightly/patterns/`; injected ids are recorded in `evidence.json` under `prompt_context`.
+- Plugins declare structural `PATTERN_TAGS` used to rank transferable patterns.
+- `scripts/schedule_night.py` scores governed `runs/research/*/run.json` history alongside legacy loop reports; nightly planning orders non-trial research slots by its heuristic and records the advisory allocation as `schedule_plan` in the night status, without touching the counterbalanced trial assignments.
+
 ## ARC-AGI-N local companion, 2026-09-08
 
 - Import a bounded, content-hashed local snapshot of reviewed ARC-AGI-N catalogue records without pulling, executing upstream code, or passing upstream prose into model prompts.

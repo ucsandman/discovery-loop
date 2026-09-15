@@ -17,6 +17,7 @@ DEVELOPMENT = TARGETS
 VALIDATION = []
 RELEASE_HOLDOUT = []
 DEFAULTS = {"time": 120, "workers": 3}
+PATTERN_TAGS = ["continuous", "fast-verifier", "local-search", "generatable-test-cases"]
 MAXIMIZE = True
 FAIL_SCORE = 0.0
 WIN_MARGIN = 1e-10

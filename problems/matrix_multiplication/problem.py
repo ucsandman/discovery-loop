@@ -37,6 +37,7 @@ DEVELOPMENT = TARGETS
 VALIDATION = []
 RELEASE_HOLDOUT = []
 DEFAULTS = {"time": 300, "workers": 1}
+PATTERN_TAGS = ["block-structure", "disjoint-outputs", "subproblems", "recursive-structure", "multiplicative-cost", "technique-library", "composition-operators", "huge-raw-search-space", "fast-verifier", "generatable-test-cases"]
 MAXIMIZE = False
 FAIL_SCORE = -1.0  # crash / timeout / infeasible output; worse than any feasible run
 GAP_CLIP = 0.5

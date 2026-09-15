@@ -212,8 +212,8 @@ Supporting scripts:
 
 - `scripts/loop_report.py` — build the dashboard; `--dir` regenerates one for an old run
 - `scripts/publish_draft.py` — draft generation for verified record breaks
-- `scripts/dead_ends.py` — repo-wide ledger of failed approaches (`list`/`check`/`record`), consulted before each night's candidate design
-- `scripts/schedule_night.py` — split the night's compute budget across problems by expected information gain
+- `scripts/dead_ends.py` — repo-wide ledger of failed approaches (`list`/`check`/`record`); matching entries are injected into every night's candidate prompt automatically
+- `scripts/schedule_night.py` — scores problems by expected information gain; orders non-trial night slots and records the advisory allocation
 - `scripts/detached.py` — `status` prints the dashboard path when one exists
 
 ## Nightly integration

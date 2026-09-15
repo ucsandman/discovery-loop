@@ -46,6 +46,7 @@ def _desc(name):
 
 INFO = {t: _desc(t) for t in TARGETS}
 DEFAULTS = {"time": 60, "workers": 3}
+PATTERN_TAGS = ["local-search", "fast-verifier", "combinatorial", "huge-raw-search-space", "generatable-test-cases"]
 MAXIMIZE = False
 FAIL_SCORE = -1.0  # added to the champion total directly (score space), so a failed target costs a 100% gap
 WIN_MARGIN = 1e-4  # gap must improve on HiGHS default by 0.01% of the objective to count (timing noise floor)

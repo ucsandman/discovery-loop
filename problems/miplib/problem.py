@@ -45,6 +45,7 @@ INFO = {
     "neos-5045105-creuse": "3848 vars / 252 rows, integer knapsacks, general integers",
 }
 DEFAULTS = {"time": 400, "workers": 3}
+PATTERN_TAGS = ["local-search", "combinatorial", "huge-raw-search-space"]
 MAXIMIZE = False
 FAIL_SCORE = -10.0
 REL_TOL = 1e-6

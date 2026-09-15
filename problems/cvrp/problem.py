@@ -24,6 +24,7 @@ DEVELOPMENT = TARGETS
 VALIDATION = []
 RELEASE_HOLDOUT = []
 DEFAULTS = {"time": 120, "workers": 3}
+PATTERN_TAGS = ["local-search", "fast-verifier", "combinatorial", "route-structure", "generatable-test-cases", "huge-raw-search-space"]
 MAXIMIZE = False
 FAIL_SCORE = -1.0  # a crash / timeout / infeasible output; strictly worse than any feasible run (gap clipped at 0.5)
 GAP_CLIP = 0.5

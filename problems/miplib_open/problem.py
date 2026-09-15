@@ -28,6 +28,7 @@ DEVELOPMENT = TARGETS
 VALIDATION = []
 RELEASE_HOLDOUT = []
 DEFAULTS = {"time": 600, "workers": 3}  # justified from a measured seed run in BASELINE.md
+PATTERN_TAGS = ["local-search", "combinatorial", "huge-raw-search-space"]
 MAXIMIZE = False  # value is min-sense (lower is better); the loop maximises total = minus the summed value
 FAIL_SCORE = -1.0  # a crash / timeout / infeasible output, in score space (worse than any clipped feasible gap)
 GAP_CLIP = 1.0  # one hopeless instance (100% above best-known) cannot dominate the champion total
