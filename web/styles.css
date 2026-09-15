@@ -131,6 +131,20 @@ legend { padding: 0; }
 .finding dt { font-size: .78rem; font-weight: 750; letter-spacing: .07em; text-transform: uppercase; }
 .finding dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .metric { font-family: var(--serif); font-size: 1.4rem; font-variant-numeric: tabular-nums; }
+.island-evolution { margin-top: 1.75rem; padding-top: 1rem; border-top: 3px double var(--ink); }
+.island-evolution h3 { margin: .2rem 0 .45rem; }
+.island-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .8rem; margin-top: 1rem; }
+.island-card { border-top: 3px solid var(--ink); padding-top: .65rem; min-width: 0; }
+.island-head { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; margin-bottom: .35rem; }
+.island-head h4 { margin: 0; font-family: var(--serif); font-size: 1.05rem; }
+.parent-card { display: grid; width: 100%; gap: .12rem; margin-top: .45rem; padding: .62rem; text-align: left; font-size: .78rem; font-weight: 500; }
+.parent-card strong { color: var(--green); text-transform: capitalize; }
+.parent-card[aria-pressed="true"] { outline: 2px solid var(--green); outline-offset: 1px; background: var(--green-pale); }
+.parent-card code { font-size: .73rem; }
+.ancestry-detail { min-height: 1.5rem; margin-top: .8rem; }
+.ancestry-records { margin-top: .5rem; }
+.ancestry-list { margin: .4rem 0 0; padding-left: 1.25rem; font-size: .8rem; color: var(--muted); }
+.ancestry-list li + li { margin-top: .3rem; }
 details { border-top: 1px solid var(--line); margin-top: 1.25rem; }
 summary { display: flex; align-items: center; cursor: pointer; font-weight: 700; }
 pre { overflow: auto; max-height: 32rem; padding: 1rem; background: var(--ink); color: var(--paper); font-size: .78rem; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -152,6 +166,7 @@ code { overflow-wrap: anywhere; }
 @media (max-width: 56rem) {
   .workspace, .evidence-grid { grid-template-columns: minmax(0, 1fr); }
   .mission-list { grid-template-columns: minmax(0, 1fr); }
+  .island-grid { grid-template-columns: minmax(0, 1fr); }
   .evidence { grid-column: auto; }
   .rail { order: -1; }
 }

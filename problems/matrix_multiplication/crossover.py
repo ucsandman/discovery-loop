@@ -27,18 +27,17 @@ if REPO not in sys.path:
 from providers import call_model  # noqa: E402
 from research_memory import analyze_candidate  # noqa: E402
 
-PLUGIN_DIR = os.path.dirname(os.path.abspath(__file__))
-if PLUGIN_DIR not in sys.path:
-    sys.path.insert(0, PLUGIN_DIR)
+if __package__:
+    from . import problem  # noqa: E402
+else:
+    from problems.matrix_multiplication import problem  # noqa: E402
 
-import problem  # noqa: E402
 
-
-def build_crossover_prompt(worse_src, better_src, idea_worse="", idea_better=""):
-    """Two parents, worst-to-best (FunSearch ordering), asking for a fused v3."""
+def build_crossover_prompt(canonical_context, worse_src, better_src, idea_worse="", idea_better=""):
+    """Add two verified parents to the governed, sanitized generation context."""
     note_a = f" (its IDEA line was: {idea_worse})" if idea_worse else ""
     note_b = f" (its IDEA line was: {idea_better})" if idea_better else ""
-    return f"""{problem.PROMPT}
+    return f"""{canonical_context}
 
 You are performing CROSSOVER, a genetic-algorithm operator: combine two parent
 solvers into ONE child solver that is strictly better than both.
@@ -86,10 +85,14 @@ def crossover(
     """Run one crossover. Returns a dict with idea/code/cost/validation."""
     worse_src = open(worse_path, encoding="utf-8").read()
     better_src = open(better_path, encoding="utf-8").read()
-    prompt = build_crossover_prompt(worse_src, better_src, idea_worse, idea_better)
+    prompt = build_crossover_prompt(problem.PROMPT, worse_src, better_src, idea_worse, idea_better)
     result = call_model(
-        prompt, provider="fable", model=model, timeout=timeout,
-        max_cost=max_cost, purpose="crossover",
+        prompt,
+        provider="fable",
+        model=model,
+        timeout=timeout,
+        max_cost=max_cost,
+        purpose="crossover",
     )
     if result.get("error"):
         return {"ok": False, "error": result["error"], "cost": result.get("cost") or 0.0}
@@ -98,15 +101,24 @@ def crossover(
         return {"ok": False, "error": "model returned no code", "idea": idea, "cost": cost}
     validation = validate_child(code, known_fingerprints)
     if not validation["valid"]:
-        return {"ok": False, "error": "syntax: " + validation["syntax_error"],
-                "idea": idea, "cost": cost, "validation": validation}
+        return {
+            "ok": False,
+            "error": "syntax: " + validation["syntax_error"],
+            "idea": idea,
+            "cost": cost,
+            "validation": validation,
+        }
     if validation["duplicate"]:
-        return {"ok": False, "error": "child is an AST duplicate of a known candidate",
-                "idea": idea, "cost": cost, "validation": validation}
+        return {
+            "ok": False,
+            "error": "child is an AST duplicate of a known candidate",
+            "idea": idea,
+            "cost": cost,
+            "validation": validation,
+        }
     with open(out_path, "w", encoding="utf-8") as fh:
         fh.write(code)
-    return {"ok": True, "idea": idea, "cost": cost, "out": out_path,
-            "fingerprint": validation["fingerprint"]}
+    return {"ok": True, "idea": idea, "cost": cost, "out": out_path, "fingerprint": validation["fingerprint"]}
 
 
 def main(argv=None):
@@ -118,8 +130,9 @@ def main(argv=None):
     ap.add_argument("--idea-worse", default="")
     ap.add_argument("--idea-better", default="")
     args = ap.parse_args(argv)
-    res = crossover(args.worse, args.better, args.out, model=args.model,
-                    idea_worse=args.idea_worse, idea_better=args.idea_better)
+    res = crossover(
+        args.worse, args.better, args.out, model=args.model, idea_worse=args.idea_worse, idea_better=args.idea_better
+    )
     if res["ok"]:
         print(f"[crossover] OK cost=${res['cost']:.2f} IDEA: {res['idea']}")
         print(f"[crossover] child -> {res['out']} fp={res['fingerprint'][:12]}")

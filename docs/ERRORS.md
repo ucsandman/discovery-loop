@@ -1,5 +1,9 @@
 # Errors and lessons
 
+## 2026-09-15: Freeze the complete island iteration across a crash
+
+Review found that restoring parent hashes alone could still rebuild a paired prompt from changed development history, repeat a call whose response was lost, or compare persisted fitness against a newly evaluated incumbent. The repaired path freezes the full prompt and development baseline, records a call as started before execution, and validates run-scoped files on resume. Future population changes must exercise interruption between paired calls and resume after the incumbent has been evicted from the breeding population. Synthetic regressions and a real 15-evaluation Docker probe verified these boundaries without live provider calls.
+
 ## 2026-09-14: Nightly allowance exceeded dashboard validation
 
 The matrix-multiplication slot raised the default allowance to 105 units while the dashboard form and API still capped it at 90. Saving the unchanged schedule failed despite the scheduler accepting it. Aligning both dashboard limits with the scheduler's 130-unit ceiling restores settings saves. Schedule changes now receive an unchanged-default save check through the human control surface as well as the runner's dry run.

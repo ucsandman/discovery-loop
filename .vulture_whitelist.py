@@ -6,6 +6,11 @@ _.TITLE
 _.TARGETS
 _.DEVELOPMENT_TARGETS
 _.VALIDATION_TARGETS
+# Alternate plugin manifest fields read by evaluation.build_manifest via getattr.
+_.DEVELOPMENT
+_.VALIDATION
+_.RELEASE_HOLDOUT
+_.CONFIRMATION_ON_DEVELOPMENT
 _.HOLDOUT
 _.DEFAULTS
 # research_context reads tags through getattr; plugin integrity tests check capabilities.

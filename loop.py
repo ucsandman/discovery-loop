@@ -29,6 +29,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import evaluation
+import island_evolution
 import research_context
 from model_registry import (
     DEFAULT_CHAIN,
@@ -480,6 +481,18 @@ def _repo_relative(path, root):
         raise ValueError(f"evidence path is outside the checkout: {path_obj.name}") from exc
 
 
+def _validate_island_prompt(record, root, run_dir):
+    iteration = record.get("iteration") if isinstance(record, dict) else None
+    if isinstance(iteration, bool) or not isinstance(iteration, int):
+        raise ValueError("island prompt iteration is invalid")
+    prompt_file = Path(root, record.get("prompt_path", "")).resolve()
+    _repo_relative(prompt_file, root)
+    expected = Path(run_dir, "prompts", f"iter{iteration:03d}.txt").resolve()
+    if prompt_file != expected or not prompt_file.is_file() or _sha256(prompt_file) != record.get("prompt_hash"):
+        raise ValueError("island prompt does not match recorded hash")
+    return os.fspath(prompt_file)
+
+
 def _evidence_rows(rows, root):
     """Drop bulky solution payloads and normalize local paths before serialization."""
     allowed = ("target", "seed", "value", "score", "failed", "error", "returncode", "secs")
@@ -574,7 +587,7 @@ def _incumbent_provenance(loop, root, read_json):
 
 
 def _validate_completed_evidence(
-    evidence, root, problem, provider, model, routing_policy, routing_chain, disabled_families
+    evidence, root, problem, provider, model, routing_policy, routing_chain, disabled_families, run_dir=None
 ):
     if evidence.get("problem") != problem or evidence.get("provider") != provider or evidence.get("model") != model:
         raise ValueError("completed run id belongs to different problem or provider settings")
@@ -602,6 +615,22 @@ def _validate_completed_evidence(
         _repo_relative(artifact, root)
         if not artifact.is_file() or _sha256(artifact) != expected_hash:
             raise ValueError("completed artifact does not match recorded hash")
+    evolution = (evidence.get("development") or {}).get("evolution") or {}
+    if evolution:
+        population = island_evolution.validate_population(evolution.get("population"), root, run_dir)
+        incumbent = evidence.get("legacy_incumbent") or {}
+        island_evolution.validate_membership(
+            population,
+            (evidence.get("development") or {}).get("candidates", []),
+            incumbent.get("path"),
+            incumbent.get("sha256"),
+        )
+        for pending in (evidence.get("development") or {}).get("pending_generations", []):
+            island_evolution.validate_plan(pending, population)
+            island_evolution.validate_plan_files(pending, root, run_dir)
+        for candidate in (evidence.get("development") or {}).get("candidates", []):
+            island_evolution.validate_plan_files(candidate, root, run_dir)
+            _validate_island_prompt(candidate, root, run_dir)
 
 
 def _provider_names(mode):
@@ -932,7 +961,7 @@ def run_research(
         if prior_evidence.get("mission") != mission:
             raise ValueError("completed evidence mission does not match the invocation")
         _validate_completed_evidence(
-            prior_evidence, root, problem, provider, model, routing_policy, routing_chain, disabled_families
+            prior_evidence, root, problem, provider, model, routing_policy, routing_chain, disabled_families, run_dir
         )
         return prior_evidence
 
@@ -956,6 +985,10 @@ def run_research(
     loop = Loop(problem, root=root, problem_module=plugin, initialize_best=False)
     manifest = evaluation.build_manifest(plugin, problem)
     comparison_policy = getattr(plugin, "COMPARISON_POLICY", "median")
+    evolution_policy = getattr(plugin, "EVOLUTION_POLICY", None)
+    if evolution_policy not in (None, "solver_islands_v1"):
+        raise ValueError("unsupported solver evolution policy")
+    evolution_enabled = evolution_policy == "solver_islands_v1"
     development_targets = manifest["development"]
     if targets is not None:
         requested = list(dict.fromkeys(targets))
@@ -1046,11 +1079,17 @@ def run_research(
             raise ValueError("resume must preserve its development target scope")
         for pending in prior_development.get("pending_generations", []):
             item = dict(pending)
-            candidate_file = Path(root, item.get("candidate_path", "")).resolve()
-            _repo_relative(candidate_file, root)
-            if not candidate_file.is_file() or _sha256(candidate_file) != item.get("candidate_hash"):
-                raise ValueError("resume pending generation does not match recorded hash")
-            item["_candidate_file"] = os.fspath(candidate_file)
+            if item.get("candidate_path"):
+                candidate_file = Path(root, item["candidate_path"]).resolve()
+                _repo_relative(candidate_file, root)
+                if not candidate_file.is_file() or _sha256(candidate_file) != item.get("candidate_hash"):
+                    raise ValueError("resume pending generation does not match recorded hash")
+                item["_candidate_file"] = os.fspath(candidate_file)
+            elif item.get("status") != "planned":
+                if item.get("status") != "started":
+                    raise ValueError("resume pending generation is incomplete")
+            if evolution_enabled:
+                item["_prompt_file"] = _validate_island_prompt(item, root, run_dir)
             pending_generations.append(item)
         for prior in prior_development.get("candidates", []):
             record = dict(prior)
@@ -1083,6 +1122,7 @@ def run_research(
         else max(numeric_iterations, default=-1) + 1
     )
     promotion_candidate = None
+    population = None
     development_matrix = []
     incumbent_rows = []
     generation_stop = None
@@ -1169,21 +1209,115 @@ def run_research(
         development_memory["total_observations"] += 1
         return history_entry
 
+    def development_snapshot():
+        snapshot = {
+            "targets": development_targets,
+            "matrix": development_matrix,
+            "incumbent": _evidence_rows(incumbent_rows, root),
+            "pending_generations": [
+                {key: value for key, value in item.items() if not key.startswith("_")} for item in pending_generations
+            ],
+            "candidates": [
+                {key: value for key, value in item.items() if key != "_candidate_file"} for item in candidate_records
+            ],
+        }
+        if population is not None:
+            snapshot["evolution"] = {
+                "policy": evolution_policy,
+                "island_count": island_evolution.ISLAND_COUNT,
+                "capacity_per_island": island_evolution.ISLAND_CAPACITY,
+                "time_budget": float(budget),
+                "workers": workers,
+                "comparison_policy": comparison_policy,
+                "min_effect": float(min_effect),
+                "population": population,
+            }
+        return snapshot
+
+    def checkpoint_development():
+        evidence["development"] = development_snapshot()
+        checkpoint_routing()
+
     checkpoint_routing()
 
     try:
         _check_research_control(root, deadline, paused_fn)
         development_matrix = evaluation.build_matrix(development_targets, 1, base_seed=10_000)
-        incumbent_rows = loop.evaluate_matrix(
-            incumbent_snapshot,
-            development_matrix,
-            budget,
-            os.path.join(run_dir, "development", "incumbent"),
-            workers,
-            solver_runner,
-            deadline,
-        )
-        incumbent_rows = evaluation.score_rows(plugin, records, incumbent_rows)
+        prior_development = prior_evidence.get("development") or {} if isinstance(prior_evidence, dict) else {}
+        prior_evolution = prior_development.get("evolution") or {}
+        if evolution_enabled and prior_evolution:
+            expected_evolution = {
+                "policy": evolution_policy,
+                "island_count": island_evolution.ISLAND_COUNT,
+                "capacity_per_island": island_evolution.ISLAND_CAPACITY,
+                "time_budget": float(budget),
+                "workers": workers,
+                "comparison_policy": comparison_policy,
+                "min_effect": float(min_effect),
+            }
+            if any(prior_evolution.get(key) != value for key, value in expected_evolution.items()):
+                raise ValueError("resume must preserve island evolution and development evaluation settings")
+            if prior_development.get("matrix") != development_matrix:
+                raise ValueError("resume must preserve the frozen island development matrix")
+            incumbent_rows = [
+                {key: value for key, value in row.items() if key != "output_path"}
+                for row in (prior_development.get("incumbent") or [])
+                if isinstance(row, dict)
+            ]
+            if len(incumbent_rows) != len(development_matrix) or any(
+                row.get("target") != cell["target"]
+                or row.get("seed") != cell["seed"]
+                or row.get("failed")
+                or not isinstance(row.get("score"), (int, float))
+                for row, cell in zip(incumbent_rows, development_matrix)
+            ):
+                raise ValueError("resumed island incumbent development rows are invalid")
+        else:
+            incumbent_rows = loop.evaluate_matrix(
+                incumbent_snapshot,
+                development_matrix,
+                budget,
+                os.path.join(run_dir, "development", "incumbent"),
+                workers,
+                solver_runner,
+                deadline,
+            )
+            incumbent_rows = evaluation.score_rows(plugin, records, incumbent_rows)
+        if evolution_enabled:
+            incumbent_record = {
+                "candidate_path": _repo_relative(incumbent_snapshot, root),
+                "candidate_hash": _sha256(incumbent_snapshot),
+                "fingerprint": incumbent_analysis["fingerprint"],
+                "idea": "Frozen incumbent evaluated on this run's development matrix.",
+                "iteration": -1,
+                "provider": "incumbent",
+                "selection_gain": 0.0,
+                "median_gain": 0.0,
+                "valid": not any(row.get("failed") or "value" not in row for row in incumbent_rows),
+                "development_verified": True,
+            }
+            if not incumbent_record["valid"]:
+                raise ValueError("island evolution requires a feasible development incumbent")
+            prior_population = prior_evolution.get("population")
+            if prior_population is not None:
+                population = island_evolution.validate_population(prior_population, root, run_dir)
+            else:
+                population = island_evolution.new_population(incumbent_record)
+            island_evolution.validate_membership(
+                population,
+                candidate_records,
+                incumbent_record["candidate_path"],
+                incumbent_record["candidate_hash"],
+            )
+            for pending in pending_generations:
+                island_evolution.validate_plan(pending, population)
+                island_evolution.validate_plan_files(pending, root, run_dir)
+            for candidate in candidate_records:
+                island_evolution.validate_plan_files(candidate, root, run_dir)
+                _validate_island_prompt(candidate, root, run_dir)
+        elif pending_generations and any(item.get("operator") for item in pending_generations):
+            raise ValueError("resume evidence enables islands for a plugin that does not opt in")
+        checkpoint_development()
         _check_research_control(root, deadline, paused_fn)
         for local_iteration in range(max(iters, 1 if pending_generations else 0)):
             iteration = iteration_offset + local_iteration
@@ -1198,8 +1332,18 @@ def run_research(
                 }
                 break
             names = _provider_names("paired" if routing_policy == "paired" else provider)
-            pending_names = {item.get("provider") for item in pending_generations if item.get("iteration") == iteration}
-            required = call_budget * sum(name not in pending_names for name in names)
+            completed_names = (
+                {item.get("provider") for item in candidate_records if item.get("iteration") == iteration}
+                if evolution_enabled
+                else set()
+            )
+            pending_names = {
+                item.get("provider")
+                for item in pending_generations
+                if item.get("iteration") == iteration
+                and (item.get("candidate_path") or item.get("status") == "started")
+            }
+            required = call_budget * sum(name not in pending_names and name not in completed_names for name in names)
             if (
                 starting_scope_charge + usage["charged"] + required > invocation_limit + 1e-9
                 or ledger.remaining + 1e-9 < required
@@ -1209,20 +1353,107 @@ def run_research(
                     "required_call_allowance": required,
                 }
                 break
-            prompt = loop.build_research_prompt(
-                incumbent_text,
-                development_targets,
-                records,
-                development_history,
-                hidden_targets,
-                retro_memory,
-                development_memory["total_observations"],
-                mission,
-                prompt_context,
-            )
+            generation_plan = None
+            prompt_parent = incumbent_text
+            if evolution_enabled:
+                iteration_pending = [item for item in pending_generations if item.get("iteration") == iteration]
+                recorded_plans = {
+                    json.dumps(
+                        {
+                            key: item.get(key)
+                            for key in (
+                                "iteration",
+                                "island",
+                                "operator",
+                                "parent_hashes",
+                                "parent_paths",
+                                "prompt_path",
+                                "prompt_hash",
+                            )
+                        },
+                        sort_keys=True,
+                    )
+                    for item in iteration_pending
+                }
+                if len(recorded_plans) > 1:
+                    raise ValueError("paired providers do not share one frozen island parent plan")
+                generation_plan = (
+                    {
+                        key: iteration_pending[0].get(key)
+                        for key in (
+                            "iteration",
+                            "island",
+                            "operator",
+                            "parent_hashes",
+                            "parent_paths",
+                            "prompt_path",
+                            "prompt_hash",
+                        )
+                    }
+                    if iteration_pending
+                    else island_evolution.plan(population, iteration)
+                )
+                island_evolution.validate_plan(generation_plan, population)
+                parent_sources = [
+                    open(Path(root, path), encoding="utf-8").read() for path in generation_plan["parent_paths"]
+                ]
+                prompt_parent = parent_sources[-1]
+            if evolution_enabled and iteration_pending:
+                prompt_path = iteration_pending[0]["_prompt_file"]
+                prompt = open(iteration_pending[0]["_prompt_file"], encoding="utf-8").read()
+            else:
+                prompt = loop.build_research_prompt(
+                    prompt_parent
+                    if not generation_plan or generation_plan["operator"] == "mutation"
+                    else "[verified parents below]",
+                    development_targets,
+                    records,
+                    development_history,
+                    hidden_targets,
+                    retro_memory,
+                    development_memory["total_observations"],
+                    mission,
+                    prompt_context,
+                )
+                if generation_plan and generation_plan["operator"] == "crossover":
+                    from problems.matrix_multiplication.crossover import build_crossover_prompt
+
+                    parent_by_hash = {
+                        parent["candidate_hash"]: parent
+                        for parent in population["islands"][generation_plan["island"]]["parents"]
+                    }
+                    prompt = build_crossover_prompt(
+                        prompt,
+                        parent_sources[0],
+                        parent_sources[1],
+                        parent_by_hash[generation_plan["parent_hashes"][0]].get("idea") or "",
+                        parent_by_hash[generation_plan["parent_hashes"][1]].get("idea") or "",
+                    )
+                if generation_plan:
+                    prompt_dir = os.path.join(run_dir, "prompts")
+                    os.makedirs(prompt_dir, exist_ok=True)
+                    prompt_path = os.path.join(prompt_dir, f"iter{iteration:03d}.txt")
+                    with open(prompt_path, "w", encoding="utf-8", newline="\n") as stream:
+                        stream.write(prompt)
+                    generation_plan.update(
+                        prompt_path=_repo_relative(prompt_path, root),
+                        prompt_hash=_sha256(prompt_path),
+                    )
+            if generation_plan:
+                for name in names:
+                    if name not in completed_names and not any(
+                        item.get("iteration") == iteration and item.get("provider") == name
+                        for item in pending_generations
+                    ):
+                        pending_generations.append(
+                            {**generation_plan, "provider": name, "status": "planned", "_prompt_file": prompt_path}
+                        )
+                checkpoint_development()
             responses = []
             deferred_stop = None
             for name in names:
+                if name in completed_names:
+                    continue
                 pending = next(
                     (
                         item
@@ -1231,7 +1462,7 @@ def run_research(
                     ),
                     None,
                 )
-                if pending is not None:
+                if pending is not None and pending.get("_candidate_file"):
                     response = {
                         "code": open(pending["_candidate_file"], encoding="utf-8").read(),
                         "idea": pending.get("idea"),
@@ -1243,6 +1474,22 @@ def run_research(
                     }
                     responses.append((name, response))
                     continue
+                if pending is not None and pending.get("status") == "started":
+                    responses.append(
+                        (
+                            name,
+                            {
+                                "error": "lost_response: prior physical generation call ended without durable output",
+                                "error_kind": "lost_response_indeterminate",
+                                "provider": name,
+                                "_routing_attempts": pending.get("routing_attempts", []),
+                            },
+                        )
+                    )
+                    continue
+                if pending is not None:
+                    pending.update(status="started", started_at=_utc_now())
+                    checkpoint_development()
                 try:
                     response = _call_with_budget(
                         call_model_fn,
@@ -1273,10 +1520,9 @@ def run_research(
                     pending_path = os.path.join(pending_dir, "solver.py")
                     with open(pending_path, "w", encoding="utf-8", newline="\n") as stream:
                         stream.write(response["code"])
-                    pending_generations.append(
+                    pending_record = pending if pending is not None else {"iteration": iteration, "provider": name}
+                    pending_record.update(
                         {
-                            "iteration": iteration,
-                            "provider": name,
                             "actual_provider": response.get("provider"),
                             "actual_model": response.get("model"),
                             "family": response.get("family"),
@@ -1285,13 +1531,12 @@ def run_research(
                             "candidate_hash": _sha256(pending_path),
                             "routing_attempts": response.get("_routing_attempts", []),
                             "_candidate_file": pending_path,
+                            "status": "generated",
                         }
                     )
-                    evidence["development"]["pending_generations"] = [
-                        {key: value for key, value in item.items() if key != "_candidate_file"}
-                        for item in pending_generations
-                    ]
-                    checkpoint_routing()
+                    if pending is None:
+                        pending_generations.append(pending_record)
+                    checkpoint_development()
             for name, response in responses:
                 response_attempts = response.get("_routing_attempts", [])
                 physical_attempts = [item for item in response_attempts if item.get("physical") is True]
@@ -1312,8 +1557,18 @@ def run_research(
                         sum(float(item.get("elapsed_seconds") or 0.0) for item in physical_attempts), 6
                     ),
                     "generation_error": response.get("error"),
+                    "generation_error_kind": response.get("error_kind"),
                     "generation_diagnostic": response.get("diagnostic_path"),
                 }
+                if generation_plan is not None:
+                    record.update(
+                        operator=generation_plan["operator"],
+                        island=generation_plan["island"],
+                        parent_hashes=list(generation_plan["parent_hashes"]),
+                        parent_paths=list(generation_plan["parent_paths"]),
+                        prompt_path=generation_plan["prompt_path"],
+                        prompt_hash=generation_plan["prompt_hash"],
+                    )
                 code = response.get("code")
                 if response.get("error") or not code:
                     consecutive_generation_failures += 1
@@ -1332,7 +1587,7 @@ def run_research(
                         for item in pending_generations
                         if not (item.get("iteration") == iteration and item.get("provider") == name)
                     ]
-                    checkpoint_routing()
+                    checkpoint_development()
                     continue
                 consecutive_generation_failures = 0
                 analysis = analyze_candidate(code, () if compatibility_callback else known_fingerprints)
@@ -1355,7 +1610,7 @@ def run_research(
                         for item in pending_generations
                         if not (item.get("iteration") == iteration and item.get("provider") == name)
                     ]
-                    checkpoint_routing()
+                    checkpoint_development()
                     continue
                 known_fingerprints.add(analysis["fingerprint"])
                 candidate_dir = os.path.join(run_dir, "candidates", f"iter{iteration:03d}-{name}")
@@ -1388,6 +1643,7 @@ def run_research(
                     median_gain=comparison["median_gain"],
                     comparison=comparison,
                     valid=comparison["candidate_failures"] == 0,
+                    development_verified=comparison["candidate_failures"] == 0,
                     promising=bool(comparison["passes"]),
                 )
                 if "selection_gain" in comparison:
@@ -1403,20 +1659,7 @@ def run_research(
                     for item in pending_generations
                     if not (item.get("iteration") == iteration and item.get("provider") == name)
                 ]
-                evidence["development"] = {
-                    "targets": development_targets,
-                    "matrix": development_matrix,
-                    "incumbent": _evidence_rows(incumbent_rows, root),
-                    "pending_generations": [
-                        {key: value for key, value in item.items() if key != "_candidate_file"}
-                        for item in pending_generations
-                    ],
-                    "candidates": [
-                        {key: value for key, value in item.items() if key != "_candidate_file"}
-                        for item in candidate_records
-                    ],
-                }
-                checkpoint_routing()
+                checkpoint_development()
                 if comparison["passes"]:
                     _check_research_control(root, deadline, paused_fn)
                     if (
@@ -1472,22 +1715,14 @@ def run_research(
                         record["critique"] = {"provider": _opposite_provider(name), "error": "budget_exhausted"}
                         record["status"] = "promising_unreviewed"
                 append_development_record(record)
-                evidence["development"] = {
-                    "targets": development_targets,
-                    "matrix": development_matrix,
-                    "incumbent": _evidence_rows(incumbent_rows, root),
-                    "pending_generations": [
-                        {key: value for key, value in item.items() if key != "_candidate_file"}
-                        for item in pending_generations
-                    ],
-                    "candidates": [
-                        {key: value for key, value in item.items() if key != "_candidate_file"}
-                        for item in candidate_records
-                    ],
-                }
-                checkpoint_routing()
+                checkpoint_development()
             if deferred_stop is not None:
                 raise deferred_stop
+            if evolution_enabled:
+                for record in candidate_records:
+                    if record.get("iteration") == iteration:
+                        island_evolution.admit(population, generation_plan["island"], record)
+                checkpoint_development()
             state.update(
                 iterations=local_iteration + 1,
                 usage=usage,
@@ -1510,19 +1745,8 @@ def run_research(
 
         eligible = [record for record in candidate_records if record.get("status") == "promising"]
         best = max(eligible, key=_selection_gain, default=None)
-        evidence_candidates = [
-            {key: value for key, value in record.items() if key != "_candidate_file"} for record in candidate_records
-        ]
-        development_evidence = {
-            "targets": development_targets,
-            "matrix": development_matrix,
-            "incumbent": _evidence_rows(incumbent_rows, root),
-            "pending_generations": [
-                {key: value for key, value in item.items() if key != "_candidate_file"} for item in pending_generations
-            ],
-            "candidates": evidence_candidates,
-            "best_median_gain": best["median_gain"] if best else None,
-        }
+        development_evidence = development_snapshot()
+        development_evidence["best_median_gain"] = best["median_gain"] if best else None
         if comparison_policy != "median":
             development_evidence["best_selection_gain"] = _selection_gain(best) if best else None
         evidence["development"] = development_evidence
@@ -1674,19 +1898,11 @@ def run_research(
         evidence["error"] = f"{type(exc).__name__}: {exc}"[:800]
 
     if incumbent_rows:
-        evidence_candidates = [
-            {key: value for key, value in record.items() if key != "_candidate_file"} for record in candidate_records
-        ]
-        development_evidence = {
-            "targets": development_targets,
-            "matrix": development_matrix,
-            "incumbent": _evidence_rows(incumbent_rows, root),
-            "candidates": evidence_candidates,
-            "best_median_gain": max(
-                (record["median_gain"] for record in candidate_records if record.get("status") == "promising"),
-                default=None,
-            ),
-        }
+        development_evidence = development_snapshot()
+        development_evidence["best_median_gain"] = max(
+            (record["median_gain"] for record in candidate_records if record.get("status") == "promising"),
+            default=None,
+        )
         if comparison_policy != "median":
             development_evidence["best_selection_gain"] = max(
                 (_selection_gain(record) for record in candidate_records if record.get("status") == "promising"),

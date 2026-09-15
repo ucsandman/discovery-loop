@@ -25,7 +25,7 @@ A local research lab for improving optimization solvers. A configured subscripti
 
 | Capability | What it gives you |
 | --- | --- |
-| Independent proposals | The scheduled trial records Fable, Astra or paired requested arms; paired work starts from the same frozen development brief and cross-reviews promising candidates. |
+| Independent proposals | The scheduled trial records Fable, Astra or paired requested arms; paired work starts from the same frozen development brief and cross-reviews promising candidates. Matrix multiplication also evolves verified solver programs across three bounded, run-local islands. |
 | Reproducible comparisons | Matched targets and seeds, independent feasibility checks and a recorded immutable worker image. |
 | Bounded overnight work | A shared allowance, checkpoints, pause controls and an explicit deadline. |
 | Human review | Evidence inspection and approvals bound to exact files, with no automatic publication. |
@@ -50,7 +50,7 @@ This is the only domain in the repository with an externally accepted, published
 
 Open **dashboard.cmd** on Windows, or visit **http://localhost:8766** when the dashboard is running.
 
-The dashboard shows completed work, incomplete stages, legacy observations, paired evidence, the 14-night model comparison, and a validated local snapshot of the [ARC-AGI-N](https://github.com/yorkeccak/arc-agi-n) problem atlas. You can search the atlas, distinguish executable benchmark missions from questions that still need a plugin and verifier, enable or disable a mission, choose which admitted mission runs first next night, inspect evidence, and queue approval for an exact release. Continue clears a pause request; it does not start a new run. Approval is local and does not send messages or push results.
+The dashboard shows completed work, incomplete stages, legacy observations, paired evidence, the 14-night model comparison, and a validated local snapshot of the [ARC-AGI-N](https://github.com/yorkeccak/arc-agi-n) problem atlas. Matrix-multiplication evidence also shows the three solver-program islands, their occupancy, and each candidate's mutation or crossover ancestry. Other plugins are labeled as having islands disabled. You can search the atlas, distinguish executable benchmark missions from questions that still need a plugin and verifier, enable or disable a mission, choose which admitted mission runs first next night, inspect evidence, and queue approval for an exact release. Continue clears a pause request; it does not start a new run. Approval is local and does not send messages or push results.
 
 Historical scores remain visible as **unvalidated**. In particular, the earlier power-grid improvement depended on numerical tolerance and is not treated as a scientific discovery.
 
@@ -105,6 +105,8 @@ python arc_catalogue.py refresh --source ..\arc-agi-n
 All normal research runs stop at local evidence. `--no-publish` remains a compatibility flag and makes that intent explicit. Manual loop runs receive separate run identifiers; `--run-id` and `--ledger` connect scheduled work to a shared night. Per-invocation iteration and allowance limits do not count old runs. Resume preserves the existing night's ledger.
 
 A small development-only probe can select `--targets`, lower `--time`, and set `--wall-minutes`. Such a probe is not a claim of performance at the standard benchmark budget. Confirmation requires at least three distinct matched seeds.
+
+`matrix_multiplication` opts into bounded solver-program islands inside the same `run_research` command. A run keeps three islands with no more than three independently development-verified program files each. Mutation uses one verified parent; when two distinct parents are available, alternating iterations can use governed crossover. Parent choice and the full prompt are frozen before paired providers run, and resume validates their hashes. These are populations of complete `solver.py` programs, not the `--workers` processes a solver may use internally. The current incumbent emits rank 26 for n=3 while the plugin's reference rank is 23; island membership is research continuity, not a record claim.
 
 ## Sourced mission intake
 
