@@ -88,14 +88,14 @@ $plan = [ordered]@{
     tasks = @(
         [ordered]@{
             name = "discovery-loop-night"
-            trigger = "daily 22:00"
+            trigger = "daily 21:00"
             action = "$python $nightArguments"
             settings = [ordered]@{
-                execution_time_limit = "PT8H15M"
+                execution_time_limit = "PT9H15M"
                 multiple_instances = "IgnoreNew"
                 wake_to_run = $true
                 start_when_available = $true
-                catch_up_window = "21:50-06:00 enforced by night.py --scheduled"
+                catch_up_window = "20:50-06:00 enforced by night.py --scheduled"
             }
         },
         [ordered]@{
@@ -170,9 +170,9 @@ if (-not $Apply) {
 
 try {
     $nightAction = New-ScheduledTaskAction -Execute $python -Argument $nightArguments -WorkingDirectory $repo
-    $nightTrigger = New-ScheduledTaskTrigger -Daily -At "22:00"
+    $nightTrigger = New-ScheduledTaskTrigger -Daily -At "21:00"
     $nightSettings = New-ScheduledTaskSettingsSet `
-        -ExecutionTimeLimit (New-TimeSpan -Hours 8 -Minutes 15) `
+        -ExecutionTimeLimit (New-TimeSpan -Hours 9 -Minutes 15) `
         -MultipleInstances IgnoreNew `
         -WakeToRun `
         -StartWhenAvailable

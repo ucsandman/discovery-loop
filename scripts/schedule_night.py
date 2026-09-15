@@ -69,7 +69,7 @@ def _history(problem: str) -> list:
             {
                 "problem": problem,
                 "generated_at": run.get("finished_at") or run.get("updated_at") or run.get("started_at"),
-                "status": "success" if run.get("status") in {"completed", "partial"} else run.get("status"),
+                "status": "success" if run.get("status") == "completed" else run.get("status"),
             }
         )
     reports.sort(key=lambda r: r.get("generated_at", ""), reverse=True)
@@ -106,8 +106,7 @@ def score_problem(problem: str) -> dict:
     staleness = min(staleness_h / 24.0, 7.0)
 
     recent = history[:5]
-    velocity = (sum(1 for r in recent if r.get("status") == "success")
-                / max(1, len(recent))) * 3.0 if recent else 0.0
+    velocity = (sum(1 for r in recent if r.get("status") == "success") / max(1, len(recent))) * 3.0 if recent else 0.0
 
     exploration = 2.0 if len(history) < 3 else 0.0
 
@@ -164,20 +163,14 @@ def allocate(budget_s: float, problems: list, floor_s: float = 600.0) -> dict:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--budget", type=float, default=7200,
-                    help="total seconds for the night (default 7200)")
-    ap.add_argument("--problems", nargs="+",
-                    default=["matrix_multiplication", "circle_packing"])
-    ap.add_argument("--floor", type=float, default=600,
-                    help="minimum seconds per problem (default 600)")
-    ap.add_argument("--save", default=None,
-                    help="write the plan JSON here (default: "
-                         "runs/schedule_YYYYMMDD.json)")
+    ap.add_argument("--budget", type=float, default=7200, help="total seconds for the night (default 7200)")
+    ap.add_argument("--problems", nargs="+", default=["matrix_multiplication", "circle_packing"])
+    ap.add_argument("--floor", type=float, default=600, help="minimum seconds per problem (default 600)")
+    ap.add_argument("--save", default=None, help="write the plan JSON here (default: runs/schedule_YYYYMMDD.json)")
     a = ap.parse_args(argv)
 
     plan = allocate(a.budget, a.problems, a.floor)
-    save_path = a.save or os.path.join(
-        _RUNS_DIR, f"schedule_{datetime.now(timezone.utc):%Y%m%d}.json")
+    save_path = a.save or os.path.join(_RUNS_DIR, f"schedule_{datetime.now(timezone.utc):%Y%m%d}.json")
     try:
         os.makedirs(_RUNS_DIR, exist_ok=True)
         with open(save_path, "w") as fh:
@@ -188,12 +181,14 @@ def main(argv=None) -> int:
     print(f"Nightly budget: {a.budget:.0f}s across {len(a.problems)} problems")
     for prob, alloc in plan["allocations"].items():
         c = alloc["components"]
-        print(f"- {prob}: {alloc['seconds']}s "
-              f"(score {alloc['score']}: staleness {c['staleness']}, "
-              f"velocity {c['velocity']}, exploration {c['exploration']}; "
-              f"{alloc.get('runs_recorded', '?')} runs recorded, "
-              f"last run {alloc.get('hours_since_last_run', '?')}h ago)"
-              + (f" [{alloc['note']}]" if alloc.get("note") else ""))
+        print(
+            f"- {prob}: {alloc['seconds']}s "
+            f"(score {alloc['score']}: staleness {c['staleness']}, "
+            f"velocity {c['velocity']}, exploration {c['exploration']}; "
+            f"{alloc.get('runs_recorded', '?')} runs recorded, "
+            f"last run {alloc.get('hours_since_last_run', '?')}h ago)"
+            + (f" [{alloc['note']}]" if alloc.get("note") else "")
+        )
     print(f"Plan saved: {save_path}")
     return 0
 

@@ -234,37 +234,17 @@ def test_prompt_context_restored_from_evidence_on_resume(tmp_path):
 
 def test_planned_slots_orders_extra_research_before_validation():
     config = night.load_schedule(Path(night.HERE) / "night.json")
-    config["slots"].insert(
-        2,
-        {
-            "id": "matmul-research",
-            "problem": "matrix_multiplication",
-            "kind": "research",
-            "provider": "paired",
-            "minutes": 30,
-            "research_minutes": 20,
-            "retro_minutes": 10,
-            "slot_budget_usd": 10.0,
-            "per_call_budget_usd": 2.0,
-            "retro_budget_usd": 2.0,
-            "iters": 10,
-            "seed_count": 1,
-            "min_effect": 0.0001,
-            "time_per_target": 60,
-            "workers": 1,
-        },
-    )
     slots = night.planned_slots(config, "2026-09-06")
     assert [slot["problem"] for slot in slots][-2:] == ["matrix_multiplication", "pglib_opf"]
     matmul = slots[2]
     assert matmul["provider"] == "paired"
     assert "trial_index" not in matmul
-    assert matmul["effective_slot_budget_usd"] == 10.0
+    assert matmul["effective_slot_budget_usd"] == 12.0
 
 
 def test_load_schedule_rejects_unknown_configured_provider(tmp_path):
     config = json.loads((Path(night.HERE) / "night.json").read_text(encoding="utf-8"))
-    config["slots"][0]["provider"] = "bogus"
+    config["slots"][2]["provider"] = "bogus"
     path = tmp_path / "night.json"
     path.write_text(json.dumps(config), encoding="utf-8")
     with pytest.raises(ValueError, match="configured slot providers"):
@@ -298,5 +278,10 @@ def test_dry_run_reports_schedule_plan(tmp_path):
     config["night"]["evidence_root"] = str(tmp_path)
     plan = night.run_night(config, "2026-09-12", dry_run=True)
     assert plan["dry_run"] is True
-    assert plan["schedule_plan"]["budget_s"] == 480 * 60.0
-    assert set(plan["schedule_plan"]["allocations"]) >= {"cvrp", "miplib_heur", "pglib_opf"}
+    assert plan["schedule_plan"]["budget_s"] == 540 * 60.0
+    assert set(plan["schedule_plan"]["allocations"]) >= {
+        "cvrp",
+        "miplib_heur",
+        "matrix_multiplication",
+        "pglib_opf",
+    }

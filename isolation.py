@@ -20,6 +20,7 @@ HERE = Path(__file__).resolve().parent
 DEFAULT_IMAGE = "discovery-loop-worker:local"
 _NAME = re.compile(r"^[A-Za-z0-9_.-]+$")
 _HELPERS = {
+    "matrix_multiplication": ("verify.py",),
     "circle_packing": ("records.py", "verify.py"),
     "cvrp": ("records.py", "verify.py"),
     "miplib": ("records.py", "verify.py"),

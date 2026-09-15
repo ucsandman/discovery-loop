@@ -423,7 +423,7 @@ DEVELOPMENT HISTORY ONLY:
 PRIOR RETROSPECTIVE NOTES (the next experiment is an untested hypothesis, not evidence):
 {retro_text}
 
-{context_blocks['text']}
+{context_blocks["text"]}
 
 {self.P.TASK}
 
@@ -768,6 +768,12 @@ def _prompt_context(prior_evidence, problem, plugin, root, hidden_targets):
     return research_context.blocks(problem, plugin, root, hidden_targets)
 
 
+def _selection_gain(record):
+    """Candidate ordering score, with compatibility for pre-policy evidence."""
+    value = record.get("selection_gain")
+    return record.get("median_gain", float("-inf")) if value is None else value
+
+
 def run_research(
     problem,
     provider="paired",
@@ -949,6 +955,7 @@ def run_research(
     plugin = problem_module or _load_problem_for_research(problem, root)
     loop = Loop(problem, root=root, problem_module=plugin, initialize_best=False)
     manifest = evaluation.build_manifest(plugin, problem)
+    comparison_policy = getattr(plugin, "COMPARISON_POLICY", "median")
     development_targets = manifest["development"]
     if targets is not None:
         requested = list(dict.fromkeys(targets))
@@ -959,7 +966,7 @@ def run_research(
             raise ValueError("--targets must select at least one development target")
         development_targets = requested
     confirmation_targets = manifest["confirmation"]
-    hidden_targets = manifest["validation"] + manifest["confirmation"] + manifest["release_holdout"]
+    hidden_targets = manifest["concealed"]
     if not development_targets:
         raise ValueError("problem manifest has no development targets")
     incumbent_source = loop.champ
@@ -1366,7 +1373,13 @@ def run_research(
                     deadline,
                 )
                 candidate_rows = evaluation.score_rows(plugin, records, candidate_rows)
-                comparison = evaluation.compare_paired(incumbent_rows, candidate_rows, min_effect, min_seeds=1)
+                comparison = evaluation.compare_paired(
+                    incumbent_rows,
+                    candidate_rows,
+                    min_effect,
+                    min_seeds=1,
+                    policy=comparison_policy,
+                )
                 record.update(
                     status="promising" if comparison["passes"] else "rejected",
                     candidate_path=_repo_relative(candidate_path, root),
@@ -1377,6 +1390,8 @@ def run_research(
                     valid=comparison["candidate_failures"] == 0,
                     promising=bool(comparison["passes"]),
                 )
+                if "selection_gain" in comparison:
+                    record["selection_gain"] = comparison["selection_gain"]
                 if comparison["candidate_failures"]:
                     record.update(
                         status="evaluation_failed",
@@ -1494,11 +1509,11 @@ def run_research(
                 break
 
         eligible = [record for record in candidate_records if record.get("status") == "promising"]
-        best = max(eligible, key=lambda record: record["median_gain"], default=None)
+        best = max(eligible, key=_selection_gain, default=None)
         evidence_candidates = [
             {key: value for key, value in record.items() if key != "_candidate_file"} for record in candidate_records
         ]
-        evidence["development"] = {
+        development_evidence = {
             "targets": development_targets,
             "matrix": development_matrix,
             "incumbent": _evidence_rows(incumbent_rows, root),
@@ -1508,6 +1523,9 @@ def run_research(
             "candidates": evidence_candidates,
             "best_median_gain": best["median_gain"] if best else None,
         }
+        if comparison_policy != "median":
+            development_evidence["best_selection_gain"] = _selection_gain(best) if best else None
+        evidence["development"] = development_evidence
         if generation_stop:
             evidence["generation_stop"] = generation_stop
         if best is not None and confirmation_targets:
@@ -1533,7 +1551,12 @@ def run_research(
             )
             confirmation_incumbent = evaluation.score_rows(plugin, records, confirmation_incumbent)
             confirmation_candidate = evaluation.score_rows(plugin, records, confirmation_candidate)
-            confirmation = evaluation.compare_paired(confirmation_incumbent, confirmation_candidate, min_effect)
+            confirmation = evaluation.compare_paired(
+                confirmation_incumbent,
+                confirmation_candidate,
+                min_effect,
+                policy=comparison_policy,
+            )
             confirmation.update(
                 classification=manifest["classification"],
                 targets=confirmation_targets,
@@ -1654,7 +1677,7 @@ def run_research(
         evidence_candidates = [
             {key: value for key, value in record.items() if key != "_candidate_file"} for record in candidate_records
         ]
-        evidence["development"] = {
+        development_evidence = {
             "targets": development_targets,
             "matrix": development_matrix,
             "incumbent": _evidence_rows(incumbent_rows, root),
@@ -1664,6 +1687,12 @@ def run_research(
                 default=None,
             ),
         }
+        if comparison_policy != "median":
+            development_evidence["best_selection_gain"] = max(
+                (_selection_gain(record) for record in candidate_records if record.get("status") == "promising"),
+                default=None,
+            )
+        evidence["development"] = development_evidence
     if generation_stop and "generation_stop" not in evidence:
         evidence["generation_stop"] = generation_stop
 
