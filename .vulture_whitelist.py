@@ -62,3 +62,6 @@ _.subscription_auth
 # Canonical provider API callers may be outside an incremental staged-file scan.
 _.preflight
 _.call_model
+# CVRP save/export and unchanged plugin tests use these outside staged scans.
+_.to_sol
+_.parse_sol

@@ -126,6 +126,46 @@
           </aside>
         </div>
       </section>
+
+      <section class="holdout" aria-labelledby="holdout-title">
+        <div class="section-head">
+          <div><p class="kicker">Release evidence / one-use check</p><h2 id="holdout-title">Sealed synthetic CVRP cohort</h2></div>
+          <span class="folio" id="holdout-state">Not prepared</span>
+        </div>
+        <div class="holdout-grid">
+          <div>
+            <p class="holdout-lede">Freeze one candidate and the seed baseline before creating six fresh private cases. Starting evaluation consumes the cohort, even if a solver fails or the dashboard closes.</p>
+            <dl class="holdout-facts">
+              <div><dt>Cohort</dt><dd id="holdout-cohort">6 cases · uniform and clustered</dd></div>
+              <div><dt>Matched work</dt><dd id="holdout-volume">2 seeds · 24 solver runs</dd></div>
+              <div><dt>Compute limit</dt><dd id="holdout-limit">48 solver seconds</dd></div>
+            </dl>
+            <label class="field holdout-candidate">Candidate
+              <select id="holdout-candidate" aria-describedby="holdout-note"></select>
+            </label>
+            <div class="control-row">
+              <button type="button" id="holdout-prepare">Prepare sealed cohort</button>
+              <button type="button" class="rust" id="holdout-evaluate" disabled>Evaluate once</button>
+            </div>
+            <p class="notice" id="holdout-note" role="status"></p>
+          </div>
+          <aside class="holdout-boundary">
+            <p class="kicker">Evidence boundary</p>
+            <p id="holdout-boundary">Fresh synthetic CVRP cases only. This is not unseen public-benchmark proof, a world record, or publication approval.</p>
+            <p class="hash-line" id="holdout-hashes">Candidate, baseline, and cohort hashes appear after preparation.</p>
+          </aside>
+        </div>
+        <div class="holdout-results" id="holdout-results" hidden>
+          <div class="minor-head"><h3>Matched descriptive results</h3><span class="folio" id="holdout-result-count"></span></div>
+          <p class="trial-note" id="holdout-result-note"></p>
+          <div class="table-wrap trial-table-wrap">
+            <table>
+              <thead><tr><th>Case</th><th>Repeat</th><th>Baseline</th><th>Candidate</th><th>Outcome</th></tr></thead>
+              <tbody id="holdout-result-list"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
     </div>
     <p class="footnote">Only confirmed, publishable evidence can enter the local release queue. Candidate and evidence files are re-hashed when approval is recorded.</p>
   </main>

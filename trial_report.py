@@ -1,6 +1,7 @@
 """Descriptive comparison of scheduled research modes; never a model ranking claim."""
 
 from collections import Counter, defaultdict
+from datetime import date, timedelta
 from pathlib import Path
 import json
 import math
@@ -20,6 +21,11 @@ def _routing_attempts(routing):
     return [attempt for attempt in attempts if isinstance(attempt, dict)] if isinstance(attempts, list) else []
 
 
+def _physical_attempt(attempt):
+    """Legacy records omitted physical; treat that omission consistently as physical."""
+    return attempt.get("physical") is not False
+
+
 def routing_execution_summary(evidence, retro):
     """Merge immutable research and retro routing records for every report surface."""
     routing = evidence.get("routing") if isinstance(evidence.get("routing"), dict) else None
@@ -28,10 +34,21 @@ def routing_execution_summary(evidence, retro):
     retro_routing = retro.get("routing") if isinstance(retro.get("routing"), dict) else None
     retro_status = retro.get("status") if isinstance(retro.get("status"), str) else "missing"
     reasons = [item for item in routing.get("ineligibility_reasons", []) if isinstance(item, str)]
+    research_attempts = _routing_attempts(routing)
+    successful_research = [
+        attempt
+        for attempt in research_attempts
+        if _is_generation_attempt(attempt) and attempt.get("status") == "completed" and _physical_attempt(attempt)
+    ]
+    if not successful_research:
+        reasons.append("no_successful_physical_research_call")
+    if evidence.get("status") != "completed":
+        reasons.append("research_not_completed")
     if retro_status != "completed" or retro_routing is None:
         reasons.append("retro_pending_or_unreadable")
     elif retro_routing.get("formal_trial_eligible") is not True:
-        reasons.extend(item for item in retro_routing.get("ineligibility_reasons", []) if isinstance(item, str))
+        retro_reasons = [item for item in retro_routing.get("ineligibility_reasons", []) if isinstance(item, str)]
+        reasons.extend(retro_reasons or ["retro_not_formally_eligible"])
     models, families, successful_models, failures, fallbacks = Counter(), Counter(), Counter(), Counter(), Counter()
     allowance, allowance_complete, attempts = 0.0, True, 0
     research_failed = retro_failed = 0
@@ -87,6 +104,127 @@ def routing_execution_summary(evidence, retro):
     }
 
 
+def _scheduled_date(run_id):
+    """Return a logical scheduled date, accepting legacy and suffixed run ids only."""
+    if not isinstance(run_id, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}(?:-scheduled)?", run_id):
+        return None
+    try:
+        return date.fromisoformat(run_id[:10])
+    except ValueError:
+        return None
+
+
+def _schedule(root):
+    path = Path(root) / "night.json"
+    if not path.is_file():
+        path = Path(__file__).resolve().with_name("night.json")
+    try:
+        config = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    trial = config.get("trial") if isinstance(config, dict) else None
+    if not isinstance(trial, dict) or not isinstance(trial.get("cycle"), list):
+        return None
+    try:
+        anchor = date.fromisoformat(trial["anchor_date"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    cycle = [entry for entry in trial["cycle"] if isinstance(entry, dict)]
+    tracks = set.intersection(*(set(entry) - {"order"} for entry in cycle)) if cycle else set()
+    return {"anchor": anchor, "cycle": cycle, "tracks": tracks}
+
+
+def _assignment(schedule, logical_date, problem):
+    if schedule is None or problem not in schedule["tracks"]:
+        return None
+    index = (logical_date - schedule["anchor"]).days
+    if not 0 <= index < len(schedule["cycle"]):
+        return None
+    arm = schedule["cycle"][index].get(problem)
+    return arm if isinstance(arm, str) else None
+
+
+def _attempt_matches_arm(attempt, arm):
+    aliases = {"fable", "astra"} if arm == "paired" else {arm}
+    requested_alias = attempt.get("requested_alias")
+    actual_alias = attempt.get("model_alias")
+    if isinstance(requested_alias, str) and isinstance(actual_alias, str):
+        return requested_alias in aliases and actual_alias == requested_alias
+    if isinstance(requested_alias, str):
+        return requested_alias in aliases
+    model = attempt.get("model")
+    if not isinstance(model, str):
+        return False
+    lowered = model.lower()
+    return arm in lowered or (arm == "paired" and any(name in lowered for name in ("fable", "astra")))
+
+
+def _is_generation_attempt(attempt):
+    """Legacy routing records omitted purpose; current records must say generation."""
+    return attempt.get("purpose") in (None, "generation")
+
+
+def _coverage(
+    schedule,
+    observed_dates,
+    observed_slots,
+    completed_slots,
+    attempted_research_calls,
+    successful_research_calls,
+    successful_generation_calls,
+    generation_research_calls,
+    critique_research_calls,
+):
+    if schedule is None:
+        return {
+            "observed_date_window": None,
+            "expected_slots": 0,
+            "missing_slots": [],
+            "completed_slots": 0,
+            "attempted_research_calls": attempted_research_calls,
+            "successful_research_calls": successful_research_calls,
+            "successful_generation_calls": successful_generation_calls,
+            "generation_research_calls": generation_research_calls,
+            "critique_research_calls": critique_research_calls,
+            "partial_cycle": True,
+            "complete": False,
+        }
+    expected = []
+    for index in range(len(schedule["cycle"])):
+        current = schedule["anchor"] + timedelta(days=index)
+        for problem in sorted(schedule["tracks"]):
+            arm = _assignment(schedule, current, problem)
+            if arm is not None:
+                expected.append((current.isoformat(), problem, arm))
+    missing = [
+        {"run_date": run_date, "problem": problem, "requested_arm": arm}
+        for run_date, problem, arm in expected
+        if (run_date, problem) not in observed_slots
+    ]
+    complete = completed_slots == len(expected) and not missing
+    return {
+        "observed_date_window": (
+            {
+                "start": min(observed_dates).isoformat(),
+                "end": max(observed_dates).isoformat(),
+                "days": (max(observed_dates) - min(observed_dates)).days + 1,
+            }
+            if observed_dates
+            else None
+        ),
+        "expected_slots": len(expected),
+        "missing_slots": missing,
+        "completed_slots": completed_slots,
+        "attempted_research_calls": attempted_research_calls,
+        "successful_research_calls": successful_research_calls,
+        "successful_generation_calls": successful_generation_calls,
+        "generation_research_calls": generation_research_calls,
+        "critique_research_calls": critique_research_calls,
+        "partial_cycle": not complete,
+        "complete": complete,
+    }
+
+
 def _group():
     return {
         "runs": 0,
@@ -136,13 +274,18 @@ def _routing_fields(data):
 
 
 def summarize(root):
+    schedule = _schedule(root)
     groups = defaultdict(_group)
     clean_groups = defaultdict(_group)
     operational_groups = defaultdict(_group)
     ineligible_reasons = Counter()
     unreadable = 0
+    observed_dates, observed_slots = set(), set()
+    completed_slots = attempted_research_calls = successful_research_calls = 0
+    successful_generation_calls = generation_research_calls = critique_research_calls = 0
     for path in sorted((Path(root) / "runs/research").glob("*/*/evidence.json")):
-        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", path.parent.parent.name):
+        logical_date = _scheduled_date(path.parent.parent.name)
+        if logical_date is None:
             continue  # Exclude manual probes and UI fixtures from the scheduled trial.
         try:
             evidence = json.loads(path.read_text(encoding="utf-8"))
@@ -153,9 +296,25 @@ def summarize(root):
             continue
         provider = evidence.get("provider")
         problem = evidence.get("problem")
-        if provider not in ("fable", "astra", "paired") or not isinstance(problem, str):
+        if not isinstance(provider, str) or not isinstance(problem, str):
             unreadable += 1
             continue
+        assigned_arm = _assignment(schedule, logical_date, problem)
+        canonical = assigned_arm is not None
+        duplicate_of_scheduled = (
+            not path.parent.parent.name.endswith("-scheduled")
+            and (
+                path.parent.parent.with_name(f"{logical_date.isoformat()}-scheduled")
+                / path.parent.name
+                / "evidence.json"
+            ).is_file()
+        )
+        if duplicate_of_scheduled:
+            canonical = False
+        if canonical:
+            observed_dates.add(logical_date)
+            observed_slots.add((logical_date.isoformat(), problem))
+            completed_slots += evidence.get("status") == "completed"
         routing = evidence.get("routing")
         if not isinstance(routing, dict):
             _add_evidence(groups[(problem, provider)], evidence)
@@ -169,9 +328,57 @@ def summarize(root):
             retro = {}
         execution = routing_execution_summary(evidence, retro)
         arm = routing.get("requested_arm") if isinstance(routing.get("requested_arm"), str) else provider
-        group = (
-            clean_groups[(problem, arm)] if execution["formal_trial_eligible"] else operational_groups[(problem, arm)]
-        )
+        if canonical:
+            research_attempts = _routing_attempts(routing)
+            attempted_research_calls += sum(
+                _physical_attempt(attempt) and attempt.get("status") != "skipped" for attempt in research_attempts
+            )
+            successful_research_calls += sum(
+                attempt.get("status") == "completed" and _physical_attempt(attempt) for attempt in research_attempts
+            )
+            generation_research_calls += sum(
+                _physical_attempt(attempt) and attempt.get("status") != "skipped" and _is_generation_attempt(attempt)
+                for attempt in research_attempts
+            )
+            critique_research_calls += sum(
+                _physical_attempt(attempt)
+                and attempt.get("status") != "skipped"
+                and attempt.get("purpose") == "critique"
+                for attempt in research_attempts
+            )
+            successful_generation_calls += sum(
+                attempt.get("status") == "completed" and _physical_attempt(attempt) and _is_generation_attempt(attempt)
+                for attempt in research_attempts
+            )
+            if arm != assigned_arm:
+                execution["formal_trial_eligible"] = False
+                execution["ineligibility_reasons"] = sorted(
+                    set(execution["ineligibility_reasons"] + ["requested_arm_does_not_match_trial_assignment"])
+                )
+            elif not any(
+                attempt.get("status") == "completed"
+                and _physical_attempt(attempt)
+                and _is_generation_attempt(attempt)
+                and _attempt_matches_arm(attempt, arm)
+                for attempt in _routing_attempts(routing)
+            ):
+                execution["formal_trial_eligible"] = False
+                execution["ineligibility_reasons"] = sorted(
+                    set(execution["ineligibility_reasons"] + ["successful_call_does_not_match_requested_arm"])
+                )
+        else:
+            execution["formal_trial_eligible"] = False
+        if canonical and execution["formal_trial_eligible"]:
+            group = clean_groups[(problem, arm)]
+        else:
+            provenance = (
+                "historical_duplicate"
+                if duplicate_of_scheduled
+                else "routing_recorded_ineligible"
+                if canonical
+                else "operational_extra"
+            )
+            group = operational_groups[(problem, arm, provenance)]
         _add_evidence(group, evidence)
         _add_usage(group, retro)
         for name, count in execution["actual_model_calls"].items():
@@ -236,7 +443,7 @@ def summarize(root):
             }
         )
     operational_rows = []
-    for (problem, arm), data in sorted(operational_groups.items()):
+    for (problem, arm, provenance), data in sorted(operational_groups.items()):
         charged = (
             data["routing_allowance"] if data.pop("routing_allowance_complete", False) else data["allowance_charged"]
         )
@@ -246,7 +453,7 @@ def summarize(root):
                 "problem": problem,
                 "provider": arm,
                 "requested_arm": arm,
-                "provenance": "routing_recorded_ineligible",
+                "provenance": provenance,
                 "formal_trial_eligible": False,
                 **data,
                 **_routing_fields(data),
@@ -266,7 +473,18 @@ def summarize(root):
         "operational_rows": operational_rows,
         "unreadable": unreadable,
         "ineligible_reasons": dict(sorted(ineligible_reasons.items())),
-        "note": "Historical evidence is readable but has unverified routing provenance. Clean ratios include only formally eligible routing evidence. Allowance uses API-equivalent estimates or conservative reservations, not subscription billing. Solver hours sum worker elapsed time, not CPU time. Small samples do not establish a model ranking.",
+        "coverage": _coverage(
+            schedule,
+            observed_dates,
+            observed_slots,
+            completed_slots,
+            attempted_research_calls,
+            successful_research_calls,
+            successful_generation_calls,
+            generation_research_calls,
+            critique_research_calls,
+        ),
+        "note": "Historical evidence is readable but has unverified routing provenance. Clean ratios include only canonical 14-night slots with recorded successful physical research calls, matching requested assignments, eligible routing, and completed retros. Operational extras and validation are descriptive only. Allowance uses API-equivalent estimates or conservative reservations, not subscription billing. Solver hours sum worker elapsed time, not CPU time. Small samples do not establish a model ranking or justify automatic reallocation.",
     }
 
 
