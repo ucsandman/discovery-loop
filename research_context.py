@@ -12,6 +12,11 @@ Two repo-local ledgers feed this module, both development-only:
   ``success_count``) -- both are normalized to a name, a one-line description,
   an origin problem and an outcome count.
 
+Duplicate names are merged deterministically (tag union, summed outcomes) so
+the problem-schema record's exact ``applies_when`` tags are never lost to a
+looser nightly record. Outcome counts rank patterns locally but never reach
+the prompt, and ``transform_ref`` paths stay out of prompts too.
+
 Everything injected here is sanitized like the rest of development memory:
 withheld target names and local paths are stripped before reaching a prompt,
 and the run evidence records exactly which entries were injected.
@@ -101,8 +106,8 @@ def load_patterns(root):
     roots = glob.glob(os.path.join(root, "problems", "*", "patterns")) + glob.glob(
         os.path.join(root, "*", "patterns")
     )
-    patterns = []
-    seen = set()
+    patterns = {}
+    order = []
     for directory in sorted(set(roots)):
         for path in sorted(glob.glob(os.path.join(directory, "*.json"))):
             if os.path.basename(path).startswith("_"):
@@ -112,12 +117,23 @@ def load_patterns(root):
                     record = json.load(fh)
             except (OSError, UnicodeDecodeError, json.JSONDecodeError):
                 continue
-            if not isinstance(record, dict) or not record.get("name") or record["name"] in seen:
+            if not isinstance(record, dict) or not record.get("name"):
                 continue
-            seen.add(record["name"])
+            name = record["name"]
             origin = record.get("origin_problem") or os.path.basename(os.path.dirname(directory))
-            patterns.append(_normalize_pattern(record, origin, path))
-    return patterns
+            normalized = _normalize_pattern(record, origin, path)
+            existing = patterns.get(name)
+            if existing is not None:
+                existing["tags"] |= normalized["tags"]
+                existing["outcomes"] += normalized["outcomes"]
+                if not existing["description"]:
+                    existing["description"] = normalized["description"]
+                if not existing["ref"]:
+                    existing["ref"] = normalized["ref"]
+                continue
+            patterns[name] = normalized
+            order.append(name)
+    return [patterns[name] for name in order]
 
 
 def patterns_for(problem, plugin, root, hidden_targets=(), limit=10):
@@ -132,12 +148,10 @@ def patterns_for(problem, plugin, root, hidden_targets=(), limit=10):
     chosen = scored[:limit]
     lines = []
     for overlap, _outcomes, _name, pattern in chosen:
-        line = f"- {pattern['name']} (from {pattern['origin']}, {pattern['outcomes']} outcome(s)"
+        line = f"- {pattern['name']} (from {pattern['origin']}"
         if overlap:
             line += f", {overlap} matching tag(s)"
         line += f"): {pattern['description']}"
-        if pattern["ref"]:
-            line += f" [{pattern['ref'][:100]}]"
         lines.append(line)
     return _sanitize("\n".join(lines), hidden_targets), [item[3]["name"] for item in chosen]
 

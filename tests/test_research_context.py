@@ -3,6 +3,8 @@ import os
 import types
 from pathlib import Path
 
+import pytest
+
 import loop
 import night
 import research_context
@@ -79,13 +81,29 @@ def test_patterns_normalize_both_schemas_and_rank(tmp_path):
             "failure_count": 1,
         },
     )
+    _write(
+        tmp_path,
+        "nightly/patterns/block_dup.json",
+        {
+            "name": "block-decomposition",
+            "abstract_description": "nightly wording without exact tags",
+            "applicability": "block moves",
+            "success_count": 1,
+            "failure_count": 0,
+        },
+    )
     _write(tmp_path, "problems/x/patterns/_bandit.json", {"state": True})
+    merged = [p for p in research_context.load_patterns(str(tmp_path)) if p["name"] == "block-decomposition"]
+    assert len(merged) == 1
+    assert "block-structure" in merged[0]["tags"]
+    assert merged[0]["outcomes"] == 3
     plugin = types.SimpleNamespace(PATTERN_TAGS=["block-structure"])
     text, names = research_context.patterns_for("cvrp", plugin, str(tmp_path))
     assert names[0] == "block-decomposition"
     assert "glue-analysis" in names
     assert "state" not in names
-    assert "2 outcome(s)" in text
+    assert "outcome" not in text
+    assert "transform_ref" not in text and "composition.py" not in text
     assert "remove cancellation-only" in text
 
 
@@ -191,8 +209,27 @@ def test_run_research_records_prompt_context(tmp_path):
         solver_runner=_runner,
     )
     assert evidence["prompt_context"]["dead_ends"] == ["de-7"]
+    assert "KNOWN DEAD ENDS" in evidence["prompt_context"]["text"]
     assert "KNOWN DEAD ENDS" in calls[0]
     assert "blind restart" in calls[0]
+
+
+def test_prompt_context_restored_from_evidence_on_resume(tmp_path):
+    recorded = {
+        "text": "KNOWN DEAD ENDS (verified failures in this lab):\n- [de-1] old context",
+        "dead_ends": ["de-1"],
+        "patterns": ["p-1"],
+    }
+    _write(
+        tmp_path,
+        "problems/_dead_ends.json",
+        [{"id": "de-9", "problem": "fake", "approach": "newer entry", "why_failed": "x"}],
+    )
+    plugin = types.SimpleNamespace(PATTERN_TAGS=[])
+    restored = loop._prompt_context({"prompt_context": recorded}, "fake", plugin, str(tmp_path), ())
+    assert restored == recorded
+    fresh = loop._prompt_context({}, "fake", plugin, str(tmp_path), ())
+    assert fresh["dead_ends"] == ["de-9"]
 
 
 def test_planned_slots_orders_extra_research_before_validation():
@@ -221,7 +258,17 @@ def test_planned_slots_orders_extra_research_before_validation():
     assert [slot["problem"] for slot in slots][-2:] == ["matrix_multiplication", "pglib_opf"]
     matmul = slots[2]
     assert matmul["provider"] == "paired"
+    assert "trial_index" not in matmul
     assert matmul["effective_slot_budget_usd"] == 10.0
+
+
+def test_load_schedule_rejects_unknown_configured_provider(tmp_path):
+    config = json.loads((Path(night.HERE) / "night.json").read_text(encoding="utf-8"))
+    config["slots"][0]["provider"] = "bogus"
+    path = tmp_path / "night.json"
+    path.write_text(json.dumps(config), encoding="utf-8")
+    with pytest.raises(ValueError, match="configured slot providers"):
+        night.load_schedule(path)
 
 
 def test_schedule_history_reads_governed_runs(tmp_path, monkeypatch):

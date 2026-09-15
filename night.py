@@ -118,8 +118,8 @@ def load_schedule(path=SCHEDULE):
     # scheduled trial policy over the canonical default chain, so normalize in
     # memory without requiring a schedule migration.
     night["routing"] = routing_config(config)
-    if not 0 < float(night.get("budget_usd", 0)) <= 90:
-        raise ValueError("night API-equivalent allowance must be in (0, 90]")
+    if not 0 < float(night.get("budget_usd", 0)) <= 130:
+        raise ValueError("night API-equivalent allowance must be in (0, 130]")
     if not 1 <= int(night.get("deadline_minutes", 0)) <= 720:
         raise ValueError("night deadline_minutes must be in [1, 720]")
     modes = {"fable", "astra", "paired"}
@@ -135,9 +135,17 @@ def load_schedule(path=SCHEDULE):
         if sorted(entry.get("order", [])) != ["cvrp", "miplib_heur"]:
             raise ValueError("each trial night must order cvrp and miplib_heur once")
     slots = config.get("slots", [])
+    problems = [slot.get("problem") for slot in slots]
+    if len(set(problems)) != len(problems):
+        raise ValueError("each problem may appear in at most one slot")
     research = {slot.get("problem") for slot in slots if slot.get("kind") == "research"}
-    if research != {"cvrp", "miplib_heur"}:
-        raise ValueError("research slots must be exactly cvrp and miplib_heur")
+    if not {"cvrp", "miplib_heur"} <= research:
+        raise ValueError("research slots must include cvrp and miplib_heur")
+    if any(
+        slot.get("kind") == "research" and slot.get("provider") is not None and slot["provider"] not in modes
+        for slot in slots
+    ):
+        raise ValueError("configured slot providers must be fable, astra, or paired")
     validation = [slot for slot in slots if slot.get("problem") == "pglib_opf"]
     if len(validation) != 1 or validation[0].get("kind") != "validation":
         raise ValueError("pglib_opf must appear exactly once and validation-only")

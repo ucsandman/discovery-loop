@@ -751,6 +751,23 @@ def _load_problem_for_research(name, root):
         return safe_load_problem(name)
 
 
+def _prompt_context(prior_evidence, problem, plugin, root, hidden_targets):
+    """Prompt context for a run, restored verbatim on resume.
+
+    The rendered context is recorded in evidence, so a resumed run reuses the
+    exact text its earlier generations saw instead of rebuilding from ledgers
+    that may have changed since.
+    """
+    recorded = prior_evidence.get("prompt_context") if isinstance(prior_evidence, dict) else None
+    if isinstance(recorded, dict) and isinstance(recorded.get("text"), str):
+        return {
+            "text": recorded["text"],
+            "dead_ends": list(recorded.get("dead_ends") or []),
+            "patterns": list(recorded.get("patterns") or []),
+        }
+    return research_context.blocks(problem, plugin, root, hidden_targets)
+
+
 def run_research(
     problem,
     provider="paired",
@@ -990,7 +1007,7 @@ def run_research(
     retro_memory = read_json(os.path.join(evidence_base, "development-history", f"{problem}-retro.json"), {}) or {}
     if not isinstance(retro_memory, dict) or retro_memory.get("schema_version") not in (None, 1):
         retro_memory = {}
-    prompt_context = research_context.blocks(problem, plugin, root, hidden_targets)
+    prompt_context = _prompt_context(prior_evidence, problem, plugin, root, hidden_targets)
     effective_routing_chain = routing_chain
     auto_allocation = None
     if routing_policy == "auto":
@@ -1107,7 +1124,7 @@ def run_research(
         "usage": usage,
         "limitations": list(manifest["limitations"]),
         "mission": mission,
-        "prompt_context": {"dead_ends": prompt_context["dead_ends"], "patterns": prompt_context["patterns"]},
+        "prompt_context": prompt_context,
         "legacy_incumbent": {
             "path": _repo_relative(incumbent_snapshot, root),
             "sha256": _sha256(incumbent_snapshot),
