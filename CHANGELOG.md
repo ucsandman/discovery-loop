@@ -1,5 +1,12 @@
 # Changelog
 
+## Bounded solver-program islands, 2026-09-15
+
+- Matrix-multiplication research now opts into three run-local solver-program islands with at most three development-verified parents per island. Mutation and crossover share the existing governed generation allowance, routing, pause and deadline path; other plugins keep their existing generation behavior.
+- Each paired iteration freezes one parent plan and one rendered prompt before either provider starts. Pending records bind the operator, island, parent files and hashes, and prompt hash; resume reuses durable responses and conservatively records an indeterminate lost response instead of issuing a completed call twice.
+- The existing crossover prompt builder now accepts the loop's sanitized canonical context. Development evaluations alone admit and rank parents; confirmation, publication and promotion data never enters island selection.
+- Morning evidence shows island occupancy and candidate ancestry, including honest disabled and empty states. These islands evolve whole solver programs and are separate from worker processes inside a generated solver.
+
 ## Matrix multiplication joins the governed night, 2026-09-14
 
 - `night.json` gains a fixed-provider `matrix_multiplication` research slot (90 min, 12+3 units) that runs after the counterbalanced trial pair in information-gain order; night allowance is now 105 units over 540 minutes.

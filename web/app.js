@@ -327,6 +327,75 @@
     return parts.length ? parts.join(" · ") : "See the raw confirmation record below.";
   }
 
+  const shortHash = (value) => typeof value === "string" && value.length > 12 ? `${value.slice(0, 12)}…` : (value || "unknown");
+
+  function evolutionView(item) {
+    const section = node("section", "island-evolution");
+    const development = item.development || item.raw?.development || {};
+    const evolution = development.evolution;
+    section.append(node("p", "kicker", "Program evolution"));
+    const heading = node("h3", "", evolution ? "Run-local solver islands" : "Solver islands disabled");
+    section.append(heading);
+    if (!evolution) {
+      section.append(node("p", "subtle", "This plugin used the ordinary frozen-incumbent generation path."));
+      return section;
+    }
+    const population = evolution.population || {};
+    const islands = Array.isArray(population.islands) ? population.islands : [];
+    if (!islands.length) {
+      section.append(node("p", "subtle", "No development-verified parent population was recorded for this run."));
+      return section;
+    }
+    section.append(node("p", "subtle", `Three deterministic islands · up to ${population.capacity_per_island || 3} verified programs each · development evidence only.`));
+    const candidates = Array.isArray(development.candidates) ? development.candidates : [];
+    const byHash = new Map(candidates.filter((candidate) => candidate.candidate_hash).map((candidate) => [candidate.candidate_hash, candidate]));
+    const detail = node("p", "ancestry-detail subtle", "Select a program to inspect its recorded ancestry.");
+    const grid = node("div", "island-grid");
+    islands.forEach((island) => {
+      const card = node("section", "island-card");
+      const parents = Array.isArray(island.parents) ? island.parents : [];
+      const cardHead = node("div", "island-head");
+      cardHead.append(node("h4", "", `Island ${Number(island.id) + 1}`), node("span", "folio", `${parents.length}/${population.capacity_per_island || 3}`));
+      card.append(cardHead);
+      if (!parents.length) {
+        card.append(node("p", "subtle", "No verified parents yet."));
+      } else {
+        parents.forEach((parent) => {
+          const candidate = byHash.get(parent.candidate_hash);
+          const button = node("button", "parent-card");
+          button.type = "button";
+          button.setAttribute("aria-pressed", "false");
+          button.append(
+            node("strong", "", candidate?.operator || (parent.iteration === -1 ? "incumbent" : "verified program")),
+            node("span", "", `Iteration ${parent.iteration ?? "unknown"} · ${parent.provider || "unknown"}`),
+            node("code", "", shortHash(parent.candidate_hash)),
+          );
+          button.addEventListener("click", () => {
+            grid.querySelectorAll(".parent-card").forEach((entry) => entry.setAttribute("aria-pressed", "false"));
+            button.setAttribute("aria-pressed", "true");
+            const ancestry = Array.isArray(candidate?.parent_hashes) ? candidate.parent_hashes.map(shortHash).join(" + ") : "frozen run incumbent";
+            detail.textContent = `${candidate?.operator || "incumbent"} · island ${Number(candidate?.island ?? island.id) + 1} · parents ${ancestry}`;
+          });
+          card.append(button);
+        });
+      }
+      grid.append(card);
+    });
+    section.append(grid, detail);
+    if (candidates.length) {
+      const ancestry = node("details", "ancestry-records");
+      ancestry.append(node("summary", "", `Candidate ancestry (${candidates.length})`));
+      const list = node("ul", "ancestry-list");
+      candidates.slice(-12).reverse().forEach((candidate) => {
+        const parents = Array.isArray(candidate.parent_hashes) ? candidate.parent_hashes.map(shortHash).join(" + ") : "not recorded";
+        list.append(node("li", "", `Iteration ${candidate.iteration} · island ${Number(candidate.island) + 1} · ${candidate.operator || "unknown"} · parents ${parents}`));
+      });
+      ancestry.append(list);
+      section.append(ancestry);
+    }
+    return section;
+  }
+
   function selectEvidence(index, scroll = false) {
     state.selected = index;
     const item = state.evidence[index];
@@ -360,7 +429,7 @@
     const pre = node("pre");
     pre.textContent = JSON.stringify(item.raw, null, 2);
     details.append(pre);
-    body.append(dl, details);
+    body.append(dl, evolutionView(item), details);
     const panel = byId("approval-panel");
     panel.hidden = false;
     const eligible = item.confirmed && item.publishable && item.candidate_path && item.candidate_hash;

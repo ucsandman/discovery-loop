@@ -43,6 +43,9 @@ CONFIRMATION_ON_DEVELOPMENT = True
 # A gain on either open target matters, while the proven-optimal n=2 target
 # must not regress. The default cross-problem evaluator keeps its median gate.
 COMPARISON_POLICY = "per_target_pareto"
+# Opt in to run-local solver-program islands. Other plugins retain the single
+# frozen-incumbent generation path.
+EVOLUTION_POLICY = "solver_islands_v1"
 DEFAULTS = {"time": 300, "workers": 1}
 PATTERN_TAGS = [
     "block-structure",

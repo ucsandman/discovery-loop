@@ -1,5 +1,13 @@
 # Research decisions
 
+## 2026-09-15: Keep solver-program evolution inside the governed run
+
+Enable solver-program islands only through the `matrix_multiplication` plugin's explicit policy. The canonical research loop keeps three run-local islands with at most three distinct, development-verified programs each. It selects one parent for mutation and, on alternating iterations where two are available, two distinct parents for crossover. Admission and ranking use only the frozen development comparison; confirmation, release checks, promotion and publication outcomes are excluded. Other plugins retain the ordinary frozen-incumbent generation path.
+
+Use the existing provider call path for both operators. The crossover module builds a prompt from sanitized canonical loop context and verified parent source, but it does not call a provider or write the loop's candidate. For paired work, choose the island, operator and parents once, persist the rendered prompt and hashes, then give both providers those exact bytes before admitting either peer. A started call with no durable response is recorded as indeterminate on resume and is not reissued.
+
+The population is evidence metadata over solver files already stored in the run. Resume validates its bounds, file containment and hashes, restores the original incumbent development rows, and rejects changed parents or prompts. Deterministic elite sharing moves useful programs between islands without a second database or an extra model call. These islands evolve whole solver programs; internal solver worker processes remain controlled by the existing benchmark setting.
+
 ## 2026-09-14: Governed slot for the matmul frontier
 
 Promote `matrix_multiplication` into `night.json` as a fixed-provider research slot outside the counterbalanced trial: it keeps its configured provider, is ordered by the information-gain heuristic after the trial pair, and runs before pglib validation. The nightly allowance rises from 90 to 105 accounting units and the deadline from 480 to 540 minutes to fund it; trial slot allowances are untouched so the 14-night comparison stays clean.
