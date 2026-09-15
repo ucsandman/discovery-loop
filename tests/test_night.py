@@ -4,6 +4,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import arc_catalogue
 import night
 
 
@@ -139,6 +140,7 @@ def test_resume_skips_completed_slots_and_never_publishes(tmp_path, monkeypatch)
     monkeypatch.setattr(night, "STATUS", str(tmp_path / "runs" / "night-status.json"))
     monkeypatch.setattr(night, "LOCK", tmp_path / "runs" / "night.lock")
     monkeypatch.setattr(night, "paused", lambda _root: False)
+    monkeypatch.setattr(arc_catalogue, "DEFAULT_STATE", tmp_path / "arc")
     monkeypatch.setattr(night, "publish_slot", lambda *_: (_ for _ in ()).throw(AssertionError("published")))
     calls = []
 
