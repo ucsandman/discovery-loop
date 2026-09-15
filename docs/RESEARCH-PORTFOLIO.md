@@ -14,8 +14,10 @@ Continue a track when experiments test distinct mechanisms and produce useful ev
 
 ## Trial measures
 
-Report calls, conservative allowance charged, provider-reported API-equivalent estimates where available, solver evaluations, elapsed compute, candidate failure rate and confirmed effect size. Do not rank providers by unverified wins, summed historical champions, model self-assessment, or estimated dollar charges without labeling the uncertainty.
+Report the configured and observed date windows, expected/missing/completed slots, attempted and successful physical generation/critique calls, conservative allowance charged, provider-reported API-equivalent estimates where available, solver evaluations, elapsed compute, candidate failure rate and confirmed effect size. Clean summaries require the scheduled arm, completed research and retro, eligible actual routing and a successful physical generation call. Do not rank providers by unverified wins, partial cycles, summed historical champions, model self-assessment, or estimated dollar charges.
 
 ## Release boundary
 
-A known-instance record can be a legitimate benchmark result without establishing algorithmic generality. Reusable holdouts provide limited confirmation and are disclosed as such. No previously exposed target is renamed a sealed test. Real-world deployment, outreach and public claims require separate review.
+A known-instance record can be a legitimate benchmark result without establishing algorithmic generality. Reusable holdouts provide limited confirmation and are disclosed as such. No previously exposed target is renamed a sealed test.
+
+The optional CVRP release check freezes one candidate and baseline before generating six fresh synthetic cases, then permits one matched evaluation. It remains separate from routine research, prompts, retrospectives, adaptive allocation and promotion. Its outcome is descriptive synthetic evidence, not proof on unseen public benchmarks, a world record, operational benefit, publication approval or protection from a malicious host. Real-world deployment, outreach and public claims require separate review.

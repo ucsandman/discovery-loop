@@ -16,6 +16,8 @@ demand within the vehicle capacity. The number of routes is unlimited (the .vrp 
 import json
 import os
 import sys
+from collections import Counter
+from pathlib import Path
 
 import numpy as np
 
@@ -44,12 +46,25 @@ def _section(lines, header):
     return out
 
 
-def load_instance(name):
+def load_instance_path(path, name=None):
+    """Parse one explicitly selected trusted instance path.
+
+    This seam is used by the sealed evaluator so verification never relies on
+    the global CVRPLIB cache or imports code from a candidate directory.
+    """
+    path = Path(path)
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("instance path must be a regular file, not a symlink")
+    lines = path.read_text(encoding="utf-8").splitlines()
+    instance_name = str(name) if name is not None else path.stem
+    return _parse_instance(lines, instance_name)
+
+
+def _parse_instance(lines, name):
     """Parse the .vrp into arrays indexed 0..DIMENSION-1 (index 0 = depot, index c = customer c).
 
     Returns {"coords": (N,2) float, "demand": (N,) float, "capacity": float, "n": customers, "name": name}.
     """
-    lines = open(instance_path(name), encoding="utf-8").read().splitlines()
     hdr = {}
     for l in lines:
         m = l.split(":", 1)
@@ -74,6 +89,11 @@ def load_instance(name):
     return {"coords": coords, "demand": demand, "capacity": capacity, "n": dim - 1, "name": name}
 
 
+def load_instance(name):
+    """Load a named instance through the existing CVRPLIB cache."""
+    return load_instance_path(instance_path(name), name)
+
+
 def dist_matrix(coords):
     """Rounded EUC_2D distance matrix (int), nint(x) = floor(x + 0.5)."""
     d = coords[:, None, :] - coords[None, :, :]
@@ -88,24 +108,50 @@ def route_cost(route, D):
     return int(sum(D[path[i], path[i + 1]] for i in range(len(path) - 1)))
 
 
-def check(solution, name):
-    inst = load_instance(name)
+def check_instance(solution, inst):
+    """Check a solution against an already parsed trusted instance."""
     n, cap = inst["n"], inst["capacity"]
     routes = solution.get("routes")
     if not isinstance(routes, list) or not all(isinstance(r, list) for r in routes):
         return {"feasible": False, "reason": "solution.routes must be a list of lists of customer numbers"}
+    if len(routes) > n:
+        return {
+            "feasible": False,
+            "obj": None,
+            "n_routes": None,
+            "capacity": cap,
+            "duplicate_customers": [],
+            "missing_customers": [],
+            "over_capacity": None,
+            "reason": f"solution contains more than the {n} available routes",
+        }
 
-    seen, bad_route = [], None
+    seen, bad_route = Counter(), None
+    total_entries = 0
     for r in routes:
         for c in r:
             if not isinstance(c, int) or isinstance(c, bool) or c < 1 or c > n:
                 return {"feasible": False, "reason": f"customer {c!r} out of range 1..{n}"}
-        seen.extend(r)
+            seen[c] += 1
+            total_entries += 1
+            if total_entries > n:
+                dup = sorted(customer for customer, count in seen.items() if count > 1)
+                missing = sorted(set(range(1, n + 1)) - set(seen))
+                return {
+                    "feasible": False,
+                    "obj": None,
+                    "n_routes": sum(1 for route in routes if route),
+                    "capacity": cap,
+                    "duplicate_customers": dup[:8],
+                    "missing_customers": missing[:8],
+                    "over_capacity": bad_route,
+                    "reason": f"solution contains more than the {n} available customers",
+                }
         load = float(inst["demand"][r].sum()) if r else 0.0
         if load > cap:
             bad_route = {"load": load, "capacity": cap, "customers": len(r)}
 
-    dup = sorted({c for c in seen if seen.count(c) > 1})
+    dup = sorted(c for c, count in seen.items() if count > 1)
     missing = sorted(set(range(1, n + 1)) - set(seen))
     D = dist_matrix(inst["coords"])
     obj = sum(route_cost(r, D) for r in routes)
@@ -126,6 +172,15 @@ def check(solution, name):
             + (f" route over capacity {bad_route}" if bad_route else "")
         ).strip(),
     }
+
+
+def check_instance_path(solution, path, name=None):
+    """Check a solution against one explicit trusted instance file."""
+    return check_instance(solution, load_instance_path(path, name))
+
+
+def check(solution, name):
+    return check_instance(solution, load_instance(name))
 
 
 def to_sol(solution, obj):

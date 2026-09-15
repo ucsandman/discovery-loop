@@ -30,7 +30,7 @@ A local research lab for improving optimization solvers. A configured subscripti
 | Bounded overnight work | A shared allowance, checkpoints, pause controls and an explicit deadline. |
 | Human review | Evidence inspection and approvals bound to exact files, with no automatic publication. |
 
-> **Release status:** The pipeline and dashboard are implemented. The operator installation activated the Windows research, morning-integration and dashboard tasks on 2026-09-05, with rollback backups. New installations still preview before applying task changes. No sealed release dataset or validated real-world impact claim is available.
+> **Release status:** The pipeline and dashboard are implemented. The operator installation activated the Windows research, morning-integration and dashboard tasks on 2026-09-05, with rollback backups. New installations still preview before applying task changes. The dashboard can prepare one fresh synthetic CVRP cohort for a one-use release check; it does not do so automatically, and the result is not a validated real-world impact claim.
 
 ## Published result: circle packing
 
@@ -50,11 +50,15 @@ This is the only domain in the repository with an externally accepted, published
 
 Open **dashboard.cmd** on Windows, or visit **http://localhost:8766** when the dashboard is running.
 
-The dashboard shows completed work, incomplete stages, legacy observations, paired evidence, the 14-night model comparison, and a validated local snapshot of the [ARC-AGI-N](https://github.com/yorkeccak/arc-agi-n) problem atlas. You can search the atlas, distinguish executable benchmark missions from questions that still need a plugin and verifier, enable or disable a mission, choose which admitted mission runs first next night, inspect evidence, and queue approval for an exact release. Continue clears a pause request; it does not start a new run. Approval is local and does not send messages or push results.
+The dashboard shows completed work, incomplete stages, legacy observations, paired evidence, honest coverage of the 14-night model comparison, and a validated local snapshot of the [ARC-AGI-N](https://github.com/yorkeccak/arc-agi-n) problem atlas. You can search the atlas, distinguish executable benchmark missions from questions that still need a plugin and verifier, enable or disable a mission, choose which admitted mission runs first next night, inspect evidence, and queue approval for an exact release. Continue clears a pause request; it does not start a new run. Approval is local and does not send messages or push results.
 
 Historical scores remain visible as **unvalidated**. In particular, the earlier power-grid improvement depended on numerical tolerance and is not treated as a scientific discovery.
 
 “Mark for morning review” saves a human review bookmark and includes the problem in the morning report. It does not launch an extra model call.
+
+The release-evidence section can freeze the current CVRP incumbent or a validated CVRP candidate together with the seed baseline, then generate six private synthetic instances: uniform and clustered cases with 50, 100 and 150 customers. Evaluation runs each solver on two identical private seeds in the existing offline Docker worker, for 24 runs and 48 configured solver seconds. The cohort is consumed before the first solver starts, so a crash, partial result or closed browser cannot turn into an adaptive retry. The dashboard shows only hashes, matched objectives, outcomes, failures and completed volume; it never shows instance data, seeds or raw solver output.
+
+This check is descriptive synthetic evidence. It is not unseen public-benchmark proof, a world record or publication approval. It does not feed prompts, retrospectives, population selection or automatic promotion.
 
 ## Developer setup
 
@@ -146,7 +150,7 @@ For a fixed operational run that must try Astra, then Sol, then Opus and never F
 
 Every physical attempt is recorded. Authentication or unavailable errors open a family breaker; quota, usage-limit, or model-unavailable errors open a model breaker. The per-run routing journal survives research, review, retro, and resume. A malformed or invalid candidate is a result for evaluation, not a reason to switch models. Started attempts reserve and settle allowance, including failed attempts; skipped routes consume no allowance. If no enabled route is available, the stage stops with a routing failure rather than using an API key or an unrecorded fallback.
 
-A clean formal-trial row requires the assigned arm, no route or model override, no fallback/degradation, and completed routing records for research and retro. Historical evidence without routing metadata remains `historical_unverified`; new recorded but ineligible runs are reported separately as operational routing records. See [Operations](docs/OPERATIONS.md#routing-and-recovery) for recovery details.
+A clean formal-trial row requires completed research and retro stages, the configured assignment, eligible routing, and at least one recorded successful physical generation call that matches the requested arm. Zero-call slots, critique-only success, fallbacks, overrides, non-trial work and validation are descriptive operational evidence only. The report covers all 28 configured track-slots from the 14-night schedule, distinguishes attempts from successful physical calls, prefers the canonical `-scheduled` record when a dated duplicate exists, and labels the cycle partial until every slot is present and completed. Historical evidence without routing metadata remains `historical_unverified`. See [Operations](docs/OPERATIONS.md#routing-and-recovery) for recovery details.
 
 ## How an experiment works
 
@@ -172,7 +176,7 @@ flowchart TD
 6. For general MIP heuristics, compare against a freshly executed HiGHS baseline in the same worker environment before making a baseline-superiority claim.
 7. Preserve evidence and confirmed lineage for subsequent nights. Feed only development observations and sanitized lessons into future generation.
 
-Known benchmark targets remain labeled previously exposed. The existing MIP heuristic holdout is reusable confirmation data, not a sealed generalization test. Matrix multiplication confirms on the same development targets under fresh seeds, which measures solver repeatability rather than unseen generalization. There is currently no sealed release dataset.
+Known benchmark targets remain labeled previously exposed. The existing MIP heuristic holdout is reusable confirmation data, not a sealed generalization test. Matrix multiplication confirms on the same development targets under fresh seeds, which measures solver repeatability rather than unseen generalization. The optional CVRP release cohort is generated only after its candidate and baseline are frozen, stays under the ignored `runs/sealed-release/` tree, and can be evaluated once. Because its six cases are synthetic rather than public benchmarks or operational data, it supports only the bounded descriptive comparison shown in the dashboard.
 
 ## Problems
 

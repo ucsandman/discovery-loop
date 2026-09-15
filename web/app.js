@@ -276,9 +276,14 @@
     const rows = [...clean, ...operational, ...historical];
     const list = byId("trial-list");
     list.replaceChildren();
-    byId("trial-count").textContent = rows.length ? `${numberFrom(trial.runs)} scheduled runs` : "Not started";
+    const coverage = trial.coverage || {};
+    const expected = numberFrom(coverage.expected_slots);
+    const completed = numberFrom(coverage.completed_slots);
+    const missing = Array.isArray(coverage.missing_slots) ? coverage.missing_slots.length : 0;
+    const window = coverage.observed_date_window;
+    byId("trial-count").textContent = expected ? `${completed} of ${expected} slots complete` : rows.length ? `${numberFrom(trial.runs)} scheduled runs` : "Not started";
     byId("trial-note").textContent = rows.length
-      ? (trial.note || "Descriptive totals at the configured limits.")
+      ? `${window ? `Observed ${window.start} through ${window.end}. ` : ""}${completed} completed; ${missing} configured slots not yet recorded. ${numberFrom(coverage.successful_research_calls)} successful physical research calls from ${numberFrom(coverage.attempted_research_calls)} attempts. ${coverage.partial_cycle ? "This is a partial cycle. " : "The configured cycle is complete. "}${trial.note || "Descriptive totals at the configured limits."}`
       : "The scheduled Fable, Astra, and paired comparison has not started. No provider outcome is claimed before evidence arrives.";
     if (!rows.length) {
       const row = node("tr");
@@ -303,6 +308,76 @@
         String(numberFrom(item.confirmed)),
         ratio,
       ].forEach((value) => row.append(node("td", "", value)));
+      list.append(row);
+    });
+  }
+
+  function renderHoldout() {
+    const holdout = state.status.holdout || {};
+    const cohort = holdout.cohort;
+    const candidates = Array.isArray(holdout.candidates) ? holdout.candidates : [];
+    const select = byId("holdout-candidate");
+    const previousCandidate = select.value;
+    select.replaceChildren();
+    if (holdout.can_prepare && candidates.length) {
+      candidates.forEach((candidate) => {
+        const option = node("option", "", `${candidate.label} · ${String(candidate.sha256 || "").slice(0, 12)}…`);
+        option.value = candidate.id;
+        select.append(option);
+      });
+      if (candidates.some((candidate) => candidate.id === previousCandidate)) select.value = previousCandidate;
+    } else if (cohort?.candidate) {
+      const option = node("option", "", `${cohort.candidate.label} · ${String(cohort.candidate.sha256 || "").slice(0, 12)}…`);
+      option.value = cohort.candidate.id || "";
+      select.append(option);
+    }
+    select.disabled = !holdout.can_prepare || !candidates.length;
+    byId("holdout-prepare").disabled = !holdout.can_prepare || !candidates.length;
+    byId("holdout-evaluate").disabled = !holdout.can_evaluate;
+    byId("holdout-boundary").textContent = holdout.notice || "Fresh synthetic CVRP cases only.";
+
+    const stateName = String(cohort?.state || "not prepared");
+    byId("holdout-state").textContent = titleCase(stateName);
+    const limits = cohort?.limits || {};
+    byId("holdout-cohort").textContent = cohort ? `${numberFrom(limits.case_count)} cases · ${String(cohort.instance_manifest_hash || "").slice(0, 12)}…` : "6 cases · uniform and clustered";
+    byId("holdout-volume").textContent = cohort ? `${numberFrom(limits.seeds_per_case)} seeds · ${numberFrom(limits.planned_solver_runs)} solver runs` : "2 seeds · 24 solver runs";
+    byId("holdout-limit").textContent = `${numberFrom(limits.solver_seconds_total, 48)} solver seconds`;
+    byId("holdout-hashes").textContent = cohort
+      ? `Candidate ${String(cohort.candidate?.sha256 || "").slice(0, 12)}… · baseline ${String(cohort.baseline?.sha256 || "").slice(0, 12)}… · cohort ${String(cohort.instance_manifest_hash || "").slice(0, 12)}…`
+      : "Candidate, baseline, and cohort hashes appear after preparation.";
+    const messages = {
+      ready: "Prepared locally. Instance data and seeds remain hidden. Evaluation can run once.",
+      running: "Consumed before the first solver started. Evaluation is running and cannot be retried.",
+      completed: "Evaluation complete. Results below are descriptive synthetic evidence only.",
+      partial: "Evaluation ended partially. The cohort is consumed; partial results are a nonclaim.",
+      failed: "Evaluation failed. The cohort is consumed and no result is claimed.",
+      invalid: cohort?.failure || "The seal is invalid. The cohort cannot be evaluated.",
+    };
+    setNotice(byId("holdout-note"), cohort ? messages[stateName] || "The cohort state needs review." : "Choose a candidate to prepare one sealed cohort.", ["partial", "failed", "invalid"].includes(stateName));
+
+    const result = cohort?.result;
+    const resultPanel = byId("holdout-results");
+    resultPanel.hidden = !result;
+    const list = byId("holdout-result-list");
+    list.replaceChildren();
+    if (!result) return;
+    const rows = Array.isArray(result.rows) ? result.rows : [];
+    const volumes = result.volumes || {};
+    byId("holdout-result-count").textContent = `${numberFrom(volumes.matched_pairs)} of ${rows.length} matched pairs`;
+    byId("holdout-result-note").textContent = `${result.classification || "Descriptive synthetic holdout."} ${numberFrom(volumes.completed_solver_runs)} of ${numberFrom(volumes.planned_solver_runs)} solver runs completed; ${numberFrom(volumes.failed_solver_runs)} failed.`;
+    rows.forEach((item) => {
+      const row = node("tr");
+      const baseline = item.baseline?.status === "completed" ? String(item.baseline.objective) : titleCase(item.baseline?.status);
+      const candidate = item.candidate?.status === "completed" ? String(item.candidate.objective) : titleCase(item.candidate?.status);
+      const outcome = item.outcome === "improved"
+        ? "Improved"
+        : item.outcome === "worse"
+          ? "Worse"
+          : item.outcome === "equal_no_improvement"
+            ? "Equal · no improvement"
+            : "Not comparable";
+      [`${titleCase(item.distribution)} · ${numberFrom(item.customers)} customers`, String(numberFrom(item.repetition)), baseline, candidate, outcome]
+        .forEach((value) => row.append(node("td", "", value)));
       list.append(row);
     });
   }
@@ -402,6 +477,7 @@
       renderArc();
       populateSchedule();
       renderTrial();
+      renderHoldout();
       if (state.evidence.length) selectEvidence(0); else renderLedger();
       document.body.classList.add("loaded");
       if (requestedArcId) document.querySelector(`[data-id="${requestedArcId}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -431,6 +507,30 @@
 
   byId("pause").addEventListener("click", () => control("pause"));
   byId("continue").addEventListener("click", () => control("continue"));
+  byId("holdout-prepare").addEventListener("click", async () => {
+    const button = byId("holdout-prepare");
+    button.disabled = true;
+    try {
+      const result = await api("/api/holdout/prepare", { method: "POST", body: JSON.stringify({ candidate_id: byId("holdout-candidate").value }) });
+      state.status.holdout = result.holdout;
+      renderHoldout();
+    } catch (error) {
+      setNotice(byId("holdout-note"), error.message, true);
+      button.disabled = false;
+    }
+  });
+  byId("holdout-evaluate").addEventListener("click", async () => {
+    const button = byId("holdout-evaluate");
+    button.disabled = true;
+    setNotice(byId("holdout-note"), "Cohort is being consumed before the first isolated solver starts…");
+    try {
+      const result = await api("/api/holdout/evaluate", { method: "POST", body: "{}" });
+      state.status.holdout = result.holdout;
+      renderHoldout();
+    } catch (error) {
+      setNotice(byId("holdout-note"), error.message, true);
+    }
+  });
   byId("arc-search").addEventListener("input", renderArc);
   byId("arc-ready-only").addEventListener("change", renderArc);
   byId("approval-check").addEventListener("change", () => {

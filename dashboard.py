@@ -174,6 +174,24 @@ def _trial_summary(root: Path) -> dict[str, Any]:
     }
 
 
+def _holdout_summary(root: Path) -> dict[str, Any]:
+    try:
+        from sealed_holdout import public_status
+
+        result = public_status(root)
+        if isinstance(result, dict):
+            return result
+    except (ImportError, OSError, TypeError, ValueError, RuntimeError):
+        pass
+    return {
+        "cohort": None,
+        "can_prepare": False,
+        "can_evaluate": False,
+        "candidates": [],
+        "notice": "The sealed evaluator is unavailable in this checkout.",
+    }
+
+
 def _routing_evidence_summary(evidence: dict[str, Any], retro: dict[str, Any]) -> dict[str, Any]:
     from trial_report import routing_execution_summary
 
@@ -297,7 +315,29 @@ class DashboardApp:
             "schedule": self.schedule_summary(),
             "legacy": self.legacy_runs(),
             "trial": _sanitize(_trial_summary(self.root), self.root),
+            "holdout": _sanitize(_holdout_summary(self.root), self.root),
         }
+
+    def prepare_holdout(self, payload: dict[str, Any]) -> dict[str, Any]:
+        _expect_keys(payload, {"candidate_id"})
+        from sealed_holdout import HoldoutError, prepare
+
+        try:
+            return {"holdout": _sanitize(prepare(self.root, payload.get("candidate_id")), self.root)}
+        except HoldoutError as exc:
+            status = (
+                HTTPStatus.BAD_REQUEST if exc.code in {"invalid_candidate", "unsafe_candidate"} else HTTPStatus.CONFLICT
+            )
+            raise ApiError(status, exc.code, str(exc)) from exc
+
+    def evaluate_holdout(self, payload: dict[str, Any]) -> dict[str, Any]:
+        _expect_keys(payload, set())
+        from sealed_holdout import HoldoutError, evaluate
+
+        try:
+            return {"holdout": _sanitize(evaluate(self.root), self.root)}
+        except HoldoutError as exc:
+            raise ApiError(HTTPStatus.CONFLICT, exc.code, str(exc)) from exc
 
     def evidence(self) -> dict[str, Any]:
         items: list[dict[str, Any]] = []
@@ -677,6 +717,12 @@ def _handler(app: DashboardApp):
                     self._json(HTTPStatus.OK, result)
                 elif path == "/api/arc/control":
                     result = app.update_arc_control(payload)
+                    self._json(HTTPStatus.OK, result)
+                elif path == "/api/holdout/prepare":
+                    result = app.prepare_holdout(payload)
+                    self._json(HTTPStatus.CREATED, result)
+                elif path == "/api/holdout/evaluate":
+                    result = app.evaluate_holdout(payload)
                     self._json(HTTPStatus.OK, result)
                 elif path == "/api/approve":
                     status, result = app.approve(payload)

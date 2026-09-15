@@ -1,5 +1,15 @@
 # Errors and lessons
 
+## 2026-09-14: A sealed label needs executable and display-time integrity
+
+The first evaluator draft passed a monotonic-clock deadline into an isolation API that expects epoch time, which made every real worker immediately expired. It also relied on the mutable worker tag even though candidate and baseline comparisons must share one environment. The evaluator now resolves one immutable image ID before consumption, records it, passes it to every call, and uses epoch deadlines end to end. A regression requires every runner deadline to be in the future relative to `time.time()`.
+
+An untrusted solver could also return a million repeated route entries. The trusted verifier's duplicate scan was quadratic, allowing host-side verification to exceed the evaluation deadline after Docker exited. It now rejects route counts and total customer entries above the trusted instance size before distance work and uses a linear counter for duplicates.
+
+Finally, a completed manifest could display edited or missing `result.json` bytes. Dashboard reads now require a regular non-symlink result whose SHA-256, cohort ID, schema and final state match the sealed manifest. Tampered or missing results display as invalid and are never surfaced as completed evidence. The prevention tests cover deadline basis, immutable image reuse, million-entry output, result tamper and missing results.
+
+A disposable real-Docker proof then completed all 24 planned solver runs and all 12 matched pairs with zero failures, using one immutable worker image. Identical frozen seed solvers produced 12 equality outcomes, correctly labeled no improvement, and a second evaluation request was rejected as consumed. This proves the bounded execution and one-use mechanism; it is not scientific evidence for a candidate.
+
 ## 2026-09-14: Nightly allowance exceeded dashboard validation
 
 The matrix-multiplication slot raised the default allowance to 105 units while the dashboard form and API still capped it at 90. Saving the unchanged schedule failed despite the scheduler accepting it. Aligning both dashboard limits with the scheduler's 130-unit ceiling restores settings saves. Schedule changes now receive an unchanged-default save check through the human control surface as well as the runner's dry run.

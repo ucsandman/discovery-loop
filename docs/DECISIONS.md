@@ -1,5 +1,13 @@
 # Research decisions
 
+## 2026-09-14: One-use synthetic CVRP release evidence
+
+Keep release evidence inside the existing local dashboard and Docker isolation path. Preparation accepts only server-issued candidate IDs, freezes the selected candidate and seed baseline bytes first, then creates a fixed six-case synthetic cohort under the ignored `runs/sealed-release/` tree. One OS-locked state transition consumes the cohort before any solver starts. A crash or partial result therefore remains consumed and cannot be adapted or retried; the same candidate hash cannot be resealed.
+
+The cohort covers uniform and clustered EUC_2D instances at 50, 100 and 150 customers with capacity 50 and integer demand 1–10. Candidate and baseline receive two identical private seeds per case with two seconds per solver. Every call uses one immutable Docker image ID with networking disabled, and a trusted verifier reads an explicit sealed instance path. Results are descriptive matched objectives and failures only. They do not establish performance on unseen public benchmarks, a world record, operational benefit, publication approval or secrecy from a malicious host.
+
+The trial report is a coverage report before it is a comparison. Its denominator is the configured 14-night, two-track schedule. Clean rows require terminal research, a completed and eligible retro, the scheduled requested arm, and a successful physical generation call routed as requested. Dated duplicates, operational extras, validation, zero-call work, critique-only work, mismatch and fallback stay visible outside clean summaries. No report ranks models or reallocates work automatically.
+
 ## 2026-09-14: Governed slot for the matmul frontier
 
 Promote `matrix_multiplication` into `night.json` as a fixed-provider research slot outside the counterbalanced trial: it keeps its configured provider, is ordered by the information-gain heuristic after the trial pair, and runs before pglib validation. The nightly allowance rises from 90 to 105 accounting units and the deadline from 480 to 540 minutes to fund it; trial slot allowances are untouched so the 14-night comparison stays clean.

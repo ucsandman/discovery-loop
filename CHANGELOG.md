@@ -1,5 +1,13 @@
 # Changelog
 
+## Sealed synthetic CVRP check and honest trial coverage, 2026-09-14
+
+- Add a dashboard-controlled, one-use CVRP cohort with six fresh synthetic uniform/clustered cases at 50, 100 and 150 customers. Candidate and baseline bytes are frozen before generation; instances and private seeds stay under the ignored sealed-release tree.
+- Run the candidate and seed baseline through the same immutable network-disabled Docker image on two matched seeds per case. Consumption is recorded before the first solver call, so interruption, partial failure and concurrent requests cannot retry the cohort.
+- Verify solutions through an explicit trusted instance path, bound output size and route entries, and preserve only sanitized objectives, outcomes, failures and volumes. Result bytes are hash-bound before the dashboard displays them.
+- Report the full configured 14-night window, canonical scheduled IDs, missing/completed slots, attempted and successful physical calls, and generation/critique volumes. Extras, validation, zero-call work, mismatches and incomplete stages remain descriptive operational rows.
+- Keep every holdout result labeled synthetic and descriptive; it cannot publish, promote, feed prompts or claim unseen public-benchmark performance.
+
 ## Matrix multiplication joins the governed night, 2026-09-14
 
 - `night.json` gains a fixed-provider `matrix_multiplication` research slot (90 min, 12+3 units) that runs after the counterbalanced trial pair in information-gain order; night allowance is now 105 units over 540 minutes.
