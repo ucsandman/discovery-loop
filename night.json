@@ -5,8 +5,8 @@
     "source_checkout": "../arc-agi-n"
   },
   "night": {
-    "deadline_minutes": 480,
-    "budget_usd": 90.0,
+    "deadline_minutes": 540,
+    "budget_usd": 105.0,
     "budget_accounting": "reported_total_cost_usd API-equivalent; monthly subscription CLIs only",
     "provider_caps_usd": {"fable": 40.0, "astra": 40.0, "paired": 40.0},
     "heartbeat_seconds": 15,
@@ -51,6 +51,14 @@
       "slot_budget_usd": 40.0, "per_call_budget_usd": 2.0, "retro_budget_usd": 5.0,
       "iters": 200, "seed_count": 3, "min_effect": 0.0001,
       "time_per_target": 60, "workers": 3
+    },
+    {
+      "id": "matmul-research", "problem": "matrix_multiplication", "kind": "research",
+      "provider": "paired",
+      "minutes": 90, "research_minutes": 70, "retro_minutes": 20,
+      "slot_budget_usd": 12.0, "per_call_budget_usd": 2.0, "retro_budget_usd": 3.0,
+      "iters": 30, "seed_count": 3, "min_effect": 0.0001,
+      "time_per_target": 300, "workers": 3
     },
     {
       "id": "pglib-validation", "problem": "pglib_opf", "kind": "validation",

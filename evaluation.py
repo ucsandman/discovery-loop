@@ -40,10 +40,14 @@ def build_manifest(problem, name=None):
     development = list(getattr(problem, "DEVELOPMENT_TARGETS", getattr(problem, "DEVELOPMENT", ())))
     validation = list(getattr(problem, "VALIDATION_TARGETS", getattr(problem, "VALIDATION", ())))
     holdout = list(getattr(problem, "HOLDOUT", ()))
+    # Stochastic-solver plugins may opt into confirming on the same development
+    # targets under fresh seeds, which measures repeatability rather than
+    # generalization and therefore withholds nothing from prompts.
+    same_target = bool(getattr(problem, "CONFIRMATION_ON_DEVELOPMENT", False))
     # Existing plugins historically exposed every TARGET as development.  When
     # they have no separate holdout, carve a stable validation fold while
     # explicitly retaining its previously-exposed classification.
-    if development == targets and not validation and not holdout and len(targets) >= 2:
+    if not same_target and development == targets and not validation and not holdout and len(targets) >= 2:
         development = []
     if not development and not validation:
         if len(targets) < 2:
@@ -55,17 +59,28 @@ def build_manifest(problem, name=None):
     elif not development:
         validation_set = set(validation)
         development = [target for target in targets if target not in validation_set]
-    elif not validation:
+    elif not validation and not same_target:
         development_set = set(development)
         validation = [target for target in targets if target not in development_set]
 
     release_holdout = list(getattr(problem, "RELEASE_HOLDOUT", ()))
-    confirmation = holdout or validation
-    _require_disjoint("development", development, "confirmation", confirmation)
+    if same_target:
+        confirmation = list(development)
+        concealed = list(validation) + list(release_holdout)
+    else:
+        confirmation = holdout or validation
+        concealed = list(validation) + list(confirmation) + list(release_holdout)
+        _require_disjoint("development", development, "confirmation", confirmation)
     _require_disjoint("development", development, "release_holdout", release_holdout)
     _require_disjoint("confirmation", confirmation, "release_holdout", release_holdout)
 
-    if holdout:
+    if same_target:
+        classification = "same_target_fresh_seed_replication"
+        limitations = [
+            "Confirmation re-runs the same development targets under fresh seeds; it measures solver repeatability, not unseen generalization.",
+            "The independent verifier remains the primary evidence; a same-target confirmation is not a holdout result.",
+        ]
+    elif holdout:
         classification = "reused_holdout_confirmation"
         limitations = [
             "The confirmation targets are excluded from generation prompts.",
@@ -92,6 +107,7 @@ def build_manifest(problem, name=None):
         "validation": validation,
         "confirmation": confirmation,
         "release_holdout": release_holdout,
+        "concealed": concealed,
         "classification": classification,
         "previously_exposed": sorted(set(development + validation)),
         "limitations": limitations,

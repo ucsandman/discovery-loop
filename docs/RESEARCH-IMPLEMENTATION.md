@@ -72,6 +72,8 @@ Auto allocation prioritizes enabled model-role choices with fewer than three att
 
 Nightly slot planning consults `scripts/schedule_night.py`: non-trial research slots are ordered by its information-gain heuristic after the counterbalanced trial pair, and the advisory allocation is recorded in the night's status as `schedule_plan`. The trial pair's order and allowances are unchanged; the heuristic scores governed `runs/research/*/<problem>/run.json` history alongside legacy `loop_report.json` runs and can never alter the fixed trial assignments.
 
+`matrix_multiplication` is such a non-trial research slot in `night.json`: a fixed-provider slot (paired) outside the trial cycle, promoted from the ungoverned `smart_loop.py` path so the frontier problem gets the ledger, routing journal, Docker isolation and dashboard evidence. Its manifest uses `CONFIRMATION_ON_DEVELOPMENT`: the confirmation matrix re-runs the development targets under fresh seeds, is classified `same_target_fresh_seed_replication`, and withholds no targets from prompts. Promotion still requires a strict paired gain over the incumbent, which already emits the best discovered decompositions.
+
 The local evidence scan covered 31 solver candidates across `runs-cvrp`, `runs-miplib_heur`, and `runs`: 0 syntax failures and 0 exact AST duplicates. It found seven structured CVRP development-history records, but none had actual-model, model, or role fields. The immediate rationale is therefore prospective: cheap duplicate prevention and reliable attribution before allocation. It has not demonstrated saved compute or a discovery gain. Consciously deferred: near-similarity suppression, bandit allocation, additional model calls, and any holdout-fed reward.
 
 ## Dashboard contract

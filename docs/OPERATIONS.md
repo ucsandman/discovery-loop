@@ -11,7 +11,7 @@ python night.py --dry-run
 
 The import reads only the sibling checkout's `data/atlas` JSON files and local Git metadata. It never pulls, executes upstream code, or fetches cited pages. A successful result reports `fresh`, the card count, revision and catalogue hash. `stale` means a failed refresh retained the last hash-validated snapshot; `unavailable` means no valid snapshot exists. Then inspect the selected missions, disabled slot IDs, trial modes, routing policy and unchanged limits in the dry run. Real execution performs provider and Docker preflight only for enabled route families. Both CLIs must already be authenticated through their subscriptions when their family is enabled. API-key and unknown authentication are rejected; there is no paid API fallback. Build the worker image after changing worker dependencies.
 
-The default [schedule](../night.json) allows 480 minutes and 90 accounting units: two research slots receive 40 units each, with 5 units each for retrospectives. Power-grid validation uses no model allowance. The JSON retains legacy `_usd` field names; the numbers are accounting estimates, not additional subscription charges. Claude reports API-equivalent estimates; unavailable estimates consume the reserved allowance. Provider rate limits still apply and stop affected work.
+The default [schedule](../night.json) allows 540 minutes and 105 accounting units: two trial research slots receive 40 units each, with 5 units each for retrospectives, plus a matrix-multiplication research slot with 12 units and 3 for its retrospective. Power-grid validation uses no model allowance. The JSON retains legacy `_usd` field names; the numbers are accounting estimates, not additional subscription charges. Claude reports API-equivalent estimates; unavailable estimates consume the reserved allowance. Provider rate limits still apply and stop affected work.
 
 ## Run and review
 
@@ -87,7 +87,7 @@ This runs three test suites in separate interpreters, Ruff and Python compilatio
 
 ## Activation verification, 2026-09-05
 
-All four task registrations were read back after installation. The next research trigger was 22:00 local, followed by meditation at 06:40 and briefing at 06:57 the next morning. The dashboard was restarted through its new task and served the current 90-unit, 480-minute configuration on loopback.
+All four task registrations were read back after installation. The next research trigger was 22:00 local, followed by meditation at 06:40 and briefing at 06:57 the next morning. The dashboard was restarted through its new task and served the current 105-unit, 540-minute configuration on loopback.
 
 Both subscription authentication probes and the immutable Docker worker preflight passed. The actual transformed meditation script passed Bash syntax checking without executing it. The artifact freshness check accepted a fresh fixture and rejected a stale one. The local report correctly reported missing current-night evidence before the first scheduled run; activation is not proof of a completed overnight experiment.
 

@@ -87,7 +87,7 @@ Use the activated virtual environment for the commands below. If PowerShell bloc
 
 Runtime and worker dependencies are pinned. No API key is required. Provider preflight rejects API-key authentication and does not silently fall back to API billing. The registry maps Fable and Opus to the Anthropic subscription CLI, and Astra and Sol to the OpenAI subscription CLI; tools and external integrations are disabled for those calls.
 
-The default nightly **research allowance is 90 accounting units**, shared across generation, reviews and retrospectives. This is not a cash budget. Claude's reported API-equivalent cost is an estimate of usage; Codex calls without a dollar estimate conservatively consume their reservation. Calls and token usage are retained. Subscription rate limits still apply.
+The default nightly **research allowance is 105 accounting units**, shared across generation, reviews and retrospectives. This is not a cash budget. Claude's reported API-equivalent cost is an estimate of usage; Codex calls without a dollar estimate conservatively consume their reservation. Calls and token usage are retained. Subscription rate limits still apply.
 
 ## Running research
 
@@ -172,7 +172,7 @@ flowchart TD
 6. For general MIP heuristics, compare against a freshly executed HiGHS baseline in the same worker environment before making a baseline-superiority claim.
 7. Preserve evidence and confirmed lineage for subsequent nights. Feed only development observations and sanitized lessons into future generation.
 
-Known benchmark targets remain labeled previously exposed. The existing MIP heuristic holdout is reusable confirmation data, not a sealed generalization test. There is currently no sealed release dataset.
+Known benchmark targets remain labeled previously exposed. The existing MIP heuristic holdout is reusable confirmation data, not a sealed generalization test. Matrix multiplication confirms on the same development targets under fresh seeds, which measures solver repeatability rather than unseen generalization. There is currently no sealed release dataset.
 
 ## Problems
 
@@ -183,6 +183,7 @@ Known benchmark targets remain labeled previously exposed. The existing MIP heur
 | miplib_open | Open mixed-integer programs | Original bounds, integrality, row activities and objective |
 | miplib | Legacy open-instance experiments | Original MPS and uncertainty-aware record comparison |
 | pglib_opf | AC power-flow validation | Original-case residuals at 1e-8, baseline rounding uncertainty and reference polishing |
+| matrix_multiplication | Exact bilinear rank search | Exact tensor-identity verification; a verified rank below the best known is a benchmark record |
 | circle_packing | Geometric optimization | Finite values, containment, separation and an explicit improvement margin |
 
 The default nightly trial focuses on routing and general optimization, with a validation-only power-grid stage. See [research portfolio](docs/RESEARCH-PORTFOLIO.md) for intended beneficiaries, success measures, and evidence needed before claiming practical benefit.
@@ -218,17 +219,17 @@ Supporting scripts:
 
 ## Nightly integration
 
-`night.json` controls an eight-hour window, per-slot and per-call limits, a local ARC snapshot refresh, and a 14-night counterbalanced Fable/Astra/paired trial. The runner uses an exclusive lock, checkpoints, heartbeat, pause handling, process-tree timeouts and explicit zero-work/partial/failure statuses. Installed `--scheduled` runs use `<local-evening-date>-scheduled`; this prevents a completed manual date-named run from suppressing the scheduled night while retaining the logical date for trial assignment and morning reporting.
+`night.json` controls a nine-hour window, per-slot and per-call limits, a local ARC snapshot refresh, and a 14-night counterbalanced Fable/Astra/paired trial. The runner uses an exclusive lock, checkpoints, heartbeat, pause handling, process-tree timeouts and explicit zero-work/partial/failure statuses. Installed `--scheduled` runs use `<local-evening-date>-scheduled`; this prevents a completed manual date-named run from suppressing the scheduled night while retaining the logical date for trial assignment and morning reporting.
 
 | Stage | Maximum time | Research allowance | Retrospective allowance |
 | --- | ---: | ---: | ---: |
 | Routing research | 180 min + 30 min retrospective | 40 | 5 |
 | General MIP heuristic research | 180 min + 30 min retrospective | 40 | 5 |
+| Matrix-multiplication rank search | 70 min + 20 min retrospective | 12 | 3 |
 | Power-grid validation only | 30 min | 0 | 0 |
-| Unallocated time buffer | 30 min | 0 | 0 |
-| **Night limit** | **480 min** | **90 units total across all calls** | **Included** |
+| **Night limit** | **540 min** | **105 units total across all calls** | **Included** |
 
-Research order alternates. Each track receives five Fable, five Astra and four paired requested arms per cycle. Equal configured allowances do not imply equal tokens or equivalent subscription consumption; the trial is exploratory. A fallback or routing override is useful operational evidence but is excluded from clean formal-trial comparisons.
+Research order alternates. Each track receives five Fable, five Astra and four paired requested arms per cycle. The matrix-multiplication slot is not part of the counterbalanced trial: it keeps its configured paired provider and runs after the trial pair in information-gain order. Equal configured allowances do not imply equal tokens or equivalent subscription consumption; the trial is exploratory. A fallback or routing override is useful operational evidence but is excluded from clean formal-trial comparisons.
 
 On Windows, preview the scheduled-task changes first:
 

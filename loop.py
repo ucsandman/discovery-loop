@@ -959,7 +959,7 @@ def run_research(
             raise ValueError("--targets must select at least one development target")
         development_targets = requested
     confirmation_targets = manifest["confirmation"]
-    hidden_targets = manifest["validation"] + manifest["confirmation"] + manifest["release_holdout"]
+    hidden_targets = manifest["concealed"]
     if not development_targets:
         raise ValueError("problem manifest has no development targets")
     incumbent_source = loop.champ

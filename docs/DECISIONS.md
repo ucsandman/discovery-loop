@@ -1,5 +1,11 @@
 # Research decisions
 
+## 2026-09-14: Governed slot for the matmul frontier
+
+Promote `matrix_multiplication` into `night.json` as a fixed-provider research slot outside the counterbalanced trial: it keeps its configured provider, is ordered by the information-gain heuristic after the trial pair, and runs before pglib validation. The nightly allowance rises from 90 to 105 accounting units and the deadline from 480 to 540 minutes to fund it; trial slot allowances are untouched so the 14-night comparison stays clean.
+
+Confirmation semantics differ from the benchmark plugins: the solver is stochastic and the incumbent already emits record-level decompositions, so confirmation re-runs the same development targets under fresh seeds (`CONFIRMATION_ON_DEVELOPMENT`, classification `same_target_fresh_seed_replication`). That measures repeatability, not unseen generalization, and nothing is withheld from prompts; the exact tensor-identity verifier and the incumbent gate remain the primary evidence. A promoted candidate must beat the incumbent outright and pass per-target release validation against the best-known rank.
+
 ## 2026-09-07: Route execution separately from trial assignment
 
 Keep the historical Fable/Astra/paired arm as the scheduled experiment identity, while recording the exact configured model and provider family that executed each physical call. The registry is Fable/Opus in Anthropic and Astra/Sol in OpenAI. The default route is Fable, Opus, Astra, Sol, with requested-model then same-family then other-family fallback. Policies may restrict the route or preserve the scheduled arm; disabled families are explicit.

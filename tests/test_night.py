@@ -22,9 +22,12 @@ def _config():
 
 def test_trial_is_balanced_and_pglib_is_validation_only():
     config = _config()
-    assert config["night"]["budget_usd"] == 90
+    assert config["night"]["budget_usd"] == 105
     assert config["night"]["provider_caps_usd"] == {"fable": 40.0, "astra": 40.0, "paired": 40.0}
-    assert sum(slot["slot_budget_usd"] + slot["retro_budget_usd"] for slot in config["slots"]) == 90
+    assert sum(slot["slot_budget_usd"] + slot["retro_budget_usd"] for slot in config["slots"]) == 105
+    matmul = next(slot for slot in config["slots"] if slot["problem"] == "matrix_multiplication")
+    assert matmul["kind"] == "research" and matmul["provider"] == "paired"
+    assert all("matrix_multiplication" not in entry["order"] for entry in config["trial"]["cycle"])
     counts = {
         problem: Counter(entry[problem] for entry in config["trial"]["cycle"]) for problem in ("cvrp", "miplib_heur")
     }
@@ -165,7 +168,7 @@ def test_resume_skips_completed_slots_and_never_publishes(tmp_path, monkeypatch)
     }
     result = night.run_night(config, "2026-09-05", **checks)
     assert result["status"] == "completed"
-    assert len(calls) == 5  # two research + two retro + one validation
+    assert len(calls) == 7  # three research + three retro + one validation
     calls.clear()
     resumed = night.run_night(config, "2026-09-05", resume=True, **checks)
     assert resumed["status"] == "completed"

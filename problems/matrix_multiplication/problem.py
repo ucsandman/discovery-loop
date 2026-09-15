@@ -22,6 +22,7 @@ result (first improvement on 3x3 since 1976).
 
 import json
 import os
+import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -36,6 +37,9 @@ TARGETS = ["2", "3", "4"]
 DEVELOPMENT = TARGETS
 VALIDATION = []
 RELEASE_HOLDOUT = []
+# The solver is stochastic: confirmation re-runs the development targets under
+# fresh seeds (repeatability, not generalization), so nothing is withheld.
+CONFIRMATION_ON_DEVELOPMENT = True
 DEFAULTS = {"time": 300, "workers": 1}
 PATTERN_TAGS = ["block-structure", "disjoint-outputs", "subproblems", "recursive-structure", "multiplicative-cost", "technique-library", "composition-operators", "huge-raw-search-space", "fast-verifier", "generatable-test-cases"]
 MAXIMIZE = False
@@ -181,12 +185,23 @@ anyone since Laderman's 23 in 1976 -- treat a claim of 22 with extreme suspicion
 """
 
 
+_TARGET_EDGE = r"[A-Za-z0-9_]"
+
+
+def _names_target(line, name):
+    return re.search(r"(?<!" + _TARGET_EDGE + ")" + re.escape(str(name)) + r"(?!" + _TARGET_EDGE + ")", line) is not None
+
+
 def prompt_for_targets(targets):
     unknown = sorted(set(targets) - set(TARGETS))
     if unknown:
         raise ValueError(f"unknown target(s): {unknown}")
-    head = PROMPT.split("TARGETS (minimise rank")[0] + "TARGETS (minimise rank"
-    return head + ":\n" + "\n".join(f"  n={name}: {INFO[name]}" for name in targets)
+    hidden = sorted(set(TARGETS) - set(targets))
+    head, _, tail = PROMPT.partition("TARGETS (minimise rank")
+    _, _, rest = tail.partition("\n\n")
+    kept = [line for line in rest.splitlines() if not any(_names_target(line, t) for t in hidden)]
+    listing = ":\n" + "\n".join(f"  n={name}: {INFO[name]}" for name in targets)
+    return head + "TARGETS (minimise rank" + listing + "\n\n" + "\n".join(kept).strip() + "\n"
 
 
 TASK = """TASK: write a complete replacement solver.py that lowers the verified rank on as many targets as possible

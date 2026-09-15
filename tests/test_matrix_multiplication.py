@@ -3,6 +3,7 @@
 import json
 import random
 
+import evaluation
 from problem_loader import load_problem
 
 
@@ -70,8 +71,26 @@ def test_evaluate_score_beats_roundtrip(tmp_path):
     assert problem.score(22, rec["3"]) > 0.0
 
 
+def test_manifest_confirms_on_development_under_fresh_seeds():
+    problem = load_problem("matrix_multiplication")
+    manifest = evaluation.build_manifest(problem, "matrix_multiplication")
+    assert manifest["development"] == problem.TARGETS
+    assert manifest["confirmation"] == problem.TARGETS
+    assert manifest["concealed"] == []
+    assert manifest["classification"] == "same_target_fresh_seed_replication"
+
+
 def test_prompt_for_targets_does_not_leak_other_targets():
     problem = load_problem("matrix_multiplication")
     prompt = problem.prompt_for_targets(["3"])
     assert "n=3" in prompt
     assert "n=2" not in prompt and "n=4" not in prompt
+
+
+def test_prompt_for_targets_keeps_contract_and_strategy_sections():
+    problem = load_problem("matrix_multiplication")
+    prompt = problem.prompt_for_targets(problem.TARGETS)
+    assert "INTERFACE CONTRACT" in prompt
+    assert "SEARCH STRATEGY NOTES" in prompt
+    assert "HONEST FRAMING" in prompt
+    assert "n=4" in prompt
