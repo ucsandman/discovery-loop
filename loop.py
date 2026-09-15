@@ -31,6 +31,7 @@ from pathlib import Path
 import evaluation
 import island_evolution
 import research_context
+import verification_contract
 from model_registry import (
     DEFAULT_CHAIN,
     MODEL_REGISTRY,
@@ -1667,10 +1668,14 @@ def run_research(
                         and ledger.remaining + 1e-9 >= call_budget
                     ):
                         critic = "astra" if record["family"] == "anthropic" else "fable"
-                        critique_prompt = (
-                            "Review this promising solver change for correctness, benchmark-specific tuning, and likely "
-                            "failure modes. Do not write replacement code.\n\n" + code
-                        )
+                        # The reviewer is told, from outside its own judgment,
+                        # which questions this problem's spec does not settle.
+                        # Without those tags it reviews an artifact that does not
+                        # contain the answer and reports a confident pass anyway;
+                        # asking it to notice its own uncertainty does not help,
+                        # because the blind spot is precisely what it cannot feel.
+                        critique_edges = verification_contract.edges_for(plugin)
+                        critique_prompt = verification_contract.critique_prompt(code, critique_edges)
                         try:
                             critique = _call_with_budget(
                                 call_model_fn,
@@ -1697,13 +1702,17 @@ def run_research(
                             append_development_record(record)
                             checkpoint_routing()
                             raise
+                        critique_text = critique.get("text") or critique.get("idea") or ""
+                        disposition = verification_contract.parse_disposition(critique_text)
                         record["critique"] = {
                             "provider": critic,
                             "model": critique.get("model"),
                             "family": critique.get("family"),
-                            "text": critique.get("text") or critique.get("idea") or "",
+                            "text": critique_text,
                             "error": critique.get("error"),
                             "routing_attempts": critique.get("_routing_attempts", []),
+                            "disposition": disposition,
+                            "tagged_edges": len(critique_edges),
                         }
                         if critique.get("family") == record["family"]:
                             record["critique"]["independent"] = False
@@ -1711,6 +1720,17 @@ def run_research(
                             record["critique"]["independent"] = True
                         if critique.get("error"):
                             record["status"] = "promising_unreviewed"
+                        else:
+                            # A flagged defect or an edge the spec cannot settle
+                            # both mean nobody has confirmed this candidate, so
+                            # it must not become the champion. A verdict we could
+                            # not read costs the run its trial eligibility
+                            # (below) but does not demote the candidate — that is
+                            # a formatting miss, and stalling an unattended night
+                            # over one trades a small failure for a larger one.
+                            record["status"] = verification_contract.status_for(
+                                disposition, record.get("status", "promising")
+                            )
                     else:
                         record["critique"] = {"provider": _opposite_provider(name), "error": "budget_exhausted"}
                         record["status"] = "promising_unreviewed"
@@ -1917,6 +1937,17 @@ def run_research(
     extra_reasons = []
     if any((record.get("critique") or {}).get("independent") is False for record in candidate_records):
         extra_reasons.append("critique_not_independent")
+    # A critique that did not come back a clean pass is a reason on its own. A
+    # cross-family reviewer reading the same artifact is independent in model but
+    # not in information; the verdict is what says whether it could actually
+    # judge the change, and "the spec does not settle this" is a real answer.
+    for record in candidate_records:
+        critique = record.get("critique") or {}
+        if not critique or critique.get("error"):
+            continue
+        reason = verification_contract.ineligibility_reason(critique.get("disposition"))
+        if reason:
+            extra_reasons.append(reason)
     if provider == "paired" or routing_policy == "paired":
         if not _paired_iterations_complete(candidate_records):
             extra_reasons.append("paired_iteration_not_independent")

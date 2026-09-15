@@ -9,6 +9,7 @@ import pytest
 import loop
 import night
 import routing
+import verification_contract
 from model_registry import policy_chain, validate_routing_config
 from research_state import BudgetLedger
 
@@ -333,7 +334,7 @@ def _routed_runner(_problem, solver, _target, _budget, _seed, out, **_kwargs):
     return types.SimpleNamespace(returncode=0, stdout="", stderr="")
 
 
-def _run_routed_critique(tmp_path, fail_all_critics=False, captured_prompts=None):
+def _run_routed_critique(tmp_path, fail_all_critics=False, captured_prompts=None, critique_text="reviewed"):
     champion = tmp_path / "best-routed" / "solver.py"
     champion.parent.mkdir(parents=True)
     champion.write_text("VALUE = 1\n", encoding="utf-8")
@@ -351,7 +352,7 @@ def _run_routed_critique(tmp_path, fail_all_critics=False, captured_prompts=None
             return {"error": None, "cost": 0.1, "usage": {}, "code": "VALUE = 2\n", "idea": "change"}
         if model == "claude-fable-5-1" or fail_all_critics:
             return {"error": "usage exhausted", "error_kind": "usage_limit", "cost": 0.1, "usage": {}}
-        return {"error": None, "cost": 0.1, "usage": {}, "text": "reviewed"}
+        return {"error": None, "cost": 0.1, "usage": {}, "text": critique_text}
 
     evidence = loop.run_research(
         "routed",
@@ -412,6 +413,62 @@ def test_production_research_records_critique_fallback_and_independence(tmp_path
     assert evidence["routing"]["formal_trial_eligible"] is False
     assert "capacity_or_infrastructure_fallback" in evidence["routing"]["ineligibility_reasons"]
     assert ledger.snapshot()["calls"] == 3
+
+
+def test_critique_prompt_carries_the_exogenous_non_inferable_tags(tmp_path):
+    # The reviewer is handed the questions this problem's spec does not settle,
+    # from outside its own judgment. Without them it reviews an artifact that
+    # does not contain the answer and passes the change confidently anyway.
+    prompts = []
+    _run_routed_critique(tmp_path, captured_prompts=prompts)
+    critique = next(prompt for purpose, prompt in prompts if purpose == "critique")
+    assert "identified ahead of time, not by you" in critique
+    assert "VERDICT: INSUFFICIENT_SPEC" in critique
+    for edge in verification_contract.NON_INFERABLE_BASELINE:
+        assert edge in critique
+
+
+def test_a_flagged_candidate_cannot_become_the_champion(tmp_path):
+    evidence, _calls, _ledger = _run_routed_critique(
+        tmp_path, critique_text="off-by-one in the capacity check\nVERDICT: FLAG"
+    )
+    candidate = evidence["development"]["candidates"][0]
+    assert candidate["critique"]["disposition"] == "flag"
+    assert candidate["status"] == "promising_unreviewed"
+    assert "critique_flagged_defect" in evidence["routing"]["ineligibility_reasons"]
+    assert evidence["routing"]["formal_trial_eligible"] is False
+
+
+def test_a_candidate_turning_on_an_unjudgeable_edge_is_not_a_confirmed_result(tmp_path):
+    evidence, _calls, _ledger = _run_routed_critique(
+        tmp_path, critique_text="this reorders equal-cost moves\nVERDICT: INSUFFICIENT_SPEC"
+    )
+    candidate = evidence["development"]["candidates"][0]
+    assert candidate["critique"]["disposition"] == "insufficient_spec"
+    assert candidate["status"] == "promising_unreviewed"
+    assert "critique_insufficient_spec" in evidence["routing"]["ineligibility_reasons"]
+
+
+def test_an_unreadable_verdict_costs_eligibility_without_stalling_the_night(tmp_path):
+    # A missing last line is a formatting miss, not a finding. The run is not
+    # called confirmed, but the candidate is not thrown away either.
+    evidence, _calls, _ledger = _run_routed_critique(tmp_path, critique_text="looks fine to me")
+    candidate = evidence["development"]["candidates"][0]
+    assert candidate["critique"]["disposition"] is None
+    assert candidate["status"] == "promising"
+    assert "critique_verdict_unreadable" in evidence["routing"]["ineligibility_reasons"]
+    assert evidence["routing"]["formal_trial_eligible"] is False
+
+
+def test_a_clean_pass_keeps_the_candidate_eligible(tmp_path):
+    evidence, _calls, _ledger = _run_routed_critique(
+        tmp_path, critique_text="no issues against the stated spec\nVERDICT: PASS"
+    )
+    candidate = evidence["development"]["candidates"][0]
+    assert candidate["critique"]["disposition"] == "pass"
+    assert candidate["status"] == "promising"
+    for reason in ("critique_flagged_defect", "critique_insufficient_spec", "critique_verdict_unreadable"):
+        assert reason not in evidence["routing"]["ineligibility_reasons"]
 
 
 def test_pending_candidate_is_checkpointed_when_every_critic_route_stops(tmp_path):
