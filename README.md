@@ -312,3 +312,9 @@ GitHub's "Cite this repository" widget reads [`CITATION.cff`](CITATION.cff).
 ## License
 
 Released under the [MIT License](LICENSE). The paper (arXiv:2609.05093) is separately licensed CC BY 4.0.
+
+## Runtime observations from Claude Code Function Hooks (2026-09-16)
+
+`runtime_ingest.py` screens the harness runtime logs (`~/.claude/mods/state/events/<session>.jsonl`, the classic-vs-Mod shadow rows, `subagents.jsonl`) into OBSERVATION rows only: classic/Mod disagreements, repeated retries, routing prediction errors, subagent estimate errors, context growth, tool thrashing, cache interventions, capability regressions. Pipeline: runtime.emit → observation ingest → screening → hypothesis → investigation → experiment → validation → explicit promotion. It never promotes, never changes policy, never modifies the harness; `--dry-run` writes nothing and every count carries the volume scanned.
+
+    py -3.12 runtime_ingest.py --events <jsonl> [--shadow-dir ~/.claude/mods/state/shadow] [--subagents ~/.claude/mods/state/subagents.jsonl] --dry-run|--write
