@@ -8,6 +8,10 @@ _.DEVELOPMENT_TARGETS
 _.VALIDATION_TARGETS
 # Alternate plugin manifest fields read by evaluation.build_manifest via getattr.
 _.DEVELOPMENT
+# Release validation hook, read by loop.py via getattr(plugin, "validate_release").
+_.validate_release
+_.LARGE_TARGETS
+_.LARGE_DEFAULTS
 _.VALIDATION
 _.RELEASE_HOLDOUT
 _.CONFIRMATION_ON_DEVELOPMENT

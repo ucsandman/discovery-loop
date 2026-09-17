@@ -41,6 +41,19 @@ TARGETS = [
     "pglib_opf_case588_sdet",
     "pglib_opf_case793_goc",
 ]
+# Opt-in large cases (2,000+ buses, TYP). Not in TARGETS: the nightly validation slot runs TARGETS at 60 s per case
+# and one PIPS solve on 2,000 buses takes ~60 s (measured 2026-09-17: 4 restarts in 250 s on case2000_goc). Run them
+# with `loop.py --problem pglib_opf --targets <cases> --time 600`. A verified 1% win here is the bar external credit needs.
+LARGE_TARGETS = [
+    "pglib_opf_case2000_goc",
+    "pglib_opf_case2312_goc",
+    "pglib_opf_case2383wp_k",
+    "pglib_opf_case2736sp_k",
+    "pglib_opf_case2737sop_k",
+    "pglib_opf_case2742_goc",
+    "pglib_opf_case2746wop_k",
+]
+LARGE_DEFAULTS = {"time": 600, "workers": 2}
 DEVELOPMENT = TARGETS
 VALIDATION = []
 RELEASE_HOLDOUT = []
@@ -189,11 +202,18 @@ INTERFACE CONTRACT (keep exactly):
 CASES: 3 to 793 buses. PIPS solves every case in under 6 s from a flat start, so the budget buys many restarts."""
 
 
+LARGE_NOTE = """
+
+LARGE CASES IN THIS RUN: 2,000 to 2,746 buses. One PIPS solve from a flat start takes about 60 s here, so a 600 s
+budget buys under ten restarts; warm starts, cheap perturbations of an existing local optimum, and saving on every
+verified improvement matter far more than on the small cases."""
+
+
 def prompt_for_targets(targets):
-    unknown = sorted(set(targets) - set(TARGETS))
+    unknown = sorted(set(targets) - set(TARGETS) - set(LARGE_TARGETS))
     if unknown:
         raise ValueError(f"unknown target(s): {unknown}")
-    return PROMPT
+    return PROMPT + (LARGE_NOTE if any(t in LARGE_TARGETS for t in targets) else "")
 
 
 TASK = """TASK: write a complete replacement solver.py that lowers the verified cost on as many cases as possible (champion total
