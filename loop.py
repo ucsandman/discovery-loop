@@ -995,9 +995,12 @@ def run_research(
     development_targets = manifest["development"]
     if targets is not None:
         requested = list(dict.fromkeys(targets))
-        invalid = sorted(set(requested) - set(development_targets))
+        # A plugin may publish opt-in targets (pglib_opf.LARGE_TARGETS) that a manual --targets run can select
+        # without them ever entering the nightly development list.
+        selectable = set(development_targets) | set(getattr(plugin, "LARGE_TARGETS", ()) or ())
+        invalid = sorted(set(requested) - selectable)
         if invalid:
-            raise ValueError(f"--targets may select development targets only; rejected {invalid}")
+            raise ValueError(f"--targets may select development or opt-in targets only; rejected {invalid}")
         if not requested:
             raise ValueError("--targets must select at least one development target")
         development_targets = requested

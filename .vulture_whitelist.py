@@ -69,3 +69,5 @@ _.call_model
 # CVRP save/export and unchanged plugin tests use these outside staged scans.
 _.to_sol
 _.parse_sol
+# loop.py entrypoint, called under __main__ (vulture reports it at 60% whenever loop.py is staged).
+_.main
