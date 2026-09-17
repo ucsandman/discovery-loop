@@ -59,3 +59,7 @@ Every Claude call runs on Opus 5 at `--effort xhigh`; Fable stays in the registr
 ## 2026-09-17: Morning brief as a second page, not a rewrite
 
 The morning brief lives at `/morning` on the same loopback dashboard, with its own module (`morning_brief.py`) and its own HTML/JS, so the review page and its approval flow stay untouched. It reads only files the runner already writes. "Awaiting publication" is derived from history (publishable evidence without approval, approvals without a release bundle, stored beats of a public record with no submission logged); local-baseline plugins (miplib_heur, pglib_opf) are listed under incumbents and never queued, because their stored record is not a public table. A daily 07:00 task opens the page; the dashboard task keeps serving it.
+
+## 2026-09-17: Large PGLib cases are opt-in
+
+`problems/pglib_opf.LARGE_TARGETS` holds the seven 2,000–2,746 bus TYP cases with `LARGE_DEFAULTS` of 600 s and 2 workers. They are deliberately outside `TARGETS`: the nightly validation slot runs `TARGETS` at 60 s per case, and one PIPS solve on 2,000 buses takes about 60 s. Manual runs pass them with `--targets`; the prompt gains a large-case note when any is present. A verified 1% win on one of these is the bar for external credit (handoff note 2026-09-04) and the proof artifact for the DOE SBIR pitch in `C:\Projects\solar`.
