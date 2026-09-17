@@ -1,20 +1,27 @@
-"""CVRP solver: Clarke-Wright start, pruned granular local search, string/route ruin & recreate with SA.
+"""CVRP solver: Clarke-Wright start, pruned granular local search, string/route ruin & recreate with SA,
+Guided Local Search escape phases, and Split-based recombination (OX over elite giant tours + exact
+capacity DP) on stagnation.
 
 Phase 1: parallel Clarke-Wright savings -> feasible routes, written to disk immediately.
 Phase 2: granular local search (each customer only paired with its K nearest neighbours, scanned in
          increasing distance and cut off as soon as the candidate edge is longer than the longest edge
          currently incident to the customer) with relocate / Or-opt (1-3 customers, optionally reversed),
          swap 1-1, inter-route segment swaps (2-1, 1-2, 2-2), intra-route 2-opt and inter-route 2-opt*;
-         every move is capacity checked.  All customer-side data (position, incident edges, Or-opt segments
-         and their removal gains/demands, prefix load) is computed once per customer and reused for the whole
-         neighbour scan; positions are kept in an O(1) array that is re-indexed per route after a move.
-         After a move only the endpoints of the changed edges are re-queued.
+         every move is capacity checked.
 Phase 3: until the deadline, SISR-style ruin (adjacent / split strings around a random seed, occasionally a
          whole route plus strings around it so vehicles can be eliminated, occasionally random customers)
-         + neighbour-adjacent cheapest insertion with blinks (full scan only when no neighbour slot fits)
-         + pruned local search on the touched customers, accepted with simulated annealing (restart from the
-         incumbent on stagnation); the best solution is saved atomically on every improvement.  A final
-         unpruned full local search polishes the incumbent.
+         + neighbour-adjacent cheapest insertion with blinks + pruned local search on the touched customers,
+         accepted with simulated annealing.  On stagnation the search alternates between two escapes:
+           (a) Guided Local Search - a *working* copy of the distance matrix is penalised on the
+               maximum-utility edge d(i,j)/(1+p(i,j)) of the incumbent, the granular descent is re-run from
+               the two endpoints only, and the best solution measured on the untouched true matrix is kept;
+               penalties persist across phases so successive escapes explore different regions.  The working
+               matrix is always restored (finally:) so every cost, save and later phase uses true distances.
+           (b) elite-pool recombination - two elite members are turned into giant tours (routes greedily
+               chained, each freely reversible), recombined with order crossover, re-partitioned with an
+               exact capacity-constrained Split DP and descended.
+Phase 4: final unpruned full local search alternating with the monotone Split re-partition of the chained
+         incumbent (splitting a tour that already contains the current route boundaries can never worsen).
 
     python solver.py --target X-n280-k17 --time 120 --seed 1 --out sol.json
 Pure python + numpy.
@@ -95,7 +102,10 @@ class Sol:
 class CVRP:
     def __init__(self, Dn, demand, cap, rng, K=20, Kruin=50):
         self.Dn = Dn
+        # D is the *working* matrix the local search reads (may be temporarily penalised by GLS);
+        # Dt is the immutable true matrix used for every cost that is reported or compared.
         self.D = Dn.tolist()
+        self.Dt = Dn.tolist()
         self.n = len(demand) - 1
         self.dem = [int(x) if float(x).is_integer() else float(x) for x in demand]
         self.cap = int(cap) if float(cap).is_integer() else float(cap)
@@ -110,12 +120,22 @@ class CVRP:
             self.nbr[c] = row[:Kruin]
         self.D0 = self.D[0]
         self.aff = ()
+        self.pool = []
+        self.maxdem = max(self.dem[1:]) if n > 0 else 0
+        self.can_split = self.maxdem <= self.cap
+        self.moves = 0
+        self.turn = 0
+        # persistent GLS penalty counters, flat lower-triangle indexing a*(n+1)+b with a < b
+        self.n1 = n + 1
+        self.pcnt = [0] * (self.n1 * self.n1)
+        self.pkeys = []
+        self.lam = 0.0
 
     # ------------------------------------------------------------------ utilities
     def route_cost(self, R):
         if not R:
             return 0
-        D = self.D
+        D = self.Dt
         s = D[0][R[0]] + D[R[-1]][0]
         for k in range(len(R) - 1):
             s += D[R[k]][R[k + 1]]
@@ -401,6 +421,7 @@ class CVRP:
         self.rng.shuffle(stack)
         inq = set(stack)
         tcheck = 0
+        nmv = 0
         while stack:
             tcheck += 1
             if (tcheck & 63) == 0 and time.time() > deadline:
@@ -410,11 +431,232 @@ class CVRP:
             if rid[c] < 0:
                 continue
             if improve(c, S, prune):
+                nmv += 1
                 # c is re-queued via aff and re-examined with fresh edges
                 for x in self.aff:
                     if x and x not in inq:
                         inq.add(x)
                         stack.append(x)
+        self.moves += nmv
+
+    # ------------------------------------------------------------------ guided local search
+    def _pen_apply(self):
+        """Write the persistent penalties into the working matrix."""
+        D = self.D
+        Dt = self.Dt
+        lam = self.lam
+        pcnt = self.pcnt
+        n1 = self.n1
+        for a, b in self.pkeys:
+            p = pcnt[a * n1 + b]
+            if p:
+                v = Dt[a][b] + lam * p
+                D[a][b] = v
+                D[b][a] = v
+
+    def _pen_clear(self):
+        """Restore the working matrix to the true distances (idempotent)."""
+        D = self.D
+        Dt = self.Dt
+        for a, b in self.pkeys:
+            v = Dt[a][b]
+            D[a][b] = v
+            D[b][a] = v
+
+    def gls(self, routes0, deadline, save, best_cost, best_routes):
+        """Penalise the maximum-utility edge of the incumbent, re-descend locally, repeat.
+
+        Only the *working* matrix self.D is deformed; every cost compared or saved is measured on the
+        untouched true matrix self.Dt.  The working matrix is restored in the finally clause, so any
+        failure inside the phase cannot leak a penalised distance into the rest of the search.
+        """
+        S = self.compact(routes0)
+        Dt = self.Dt
+        D = self.D
+        pcnt = self.pcnt
+        n1 = self.n1
+        loc_best = self.total_cost(S.routes)
+        loc_routes = [R[:] for R in S.routes if R]
+        if self.lam <= 0.0:
+            nedges = self.n + max(1, sum(1 for R in S.routes if R))
+            self.lam = max(1e-6, 0.15 * loc_best / nedges)
+        lam = self.lam
+        try:
+            self._pen_apply()
+            while True:
+                if time.time() >= deadline:
+                    break
+                # ---- maximum utility edge d(i,j) / (1 + p(i,j)) over the current solution
+                bu = -1.0
+                ba = -1
+                bb = -1
+                for R in S.routes:
+                    if not R:
+                        continue
+                    prev = 0
+                    for x in R:
+                        if prev < x:
+                            a = prev
+                            b = x
+                        else:
+                            a = x
+                            b = prev
+                        u = Dt[a][b] / (1.0 + pcnt[a * n1 + b])
+                        if u > bu:
+                            bu = u
+                            ba = a
+                            bb = b
+                        prev = x
+                    u = Dt[0][prev] / (1.0 + pcnt[prev])
+                    if u > bu:
+                        bu = u
+                        ba = 0
+                        bb = prev
+                if ba < 0 or ba == bb:
+                    break
+                k = ba * n1 + bb
+                p = pcnt[k]
+                if p == 0:
+                    self.pkeys.append((ba, bb))
+                p += 1
+                pcnt[k] = p
+                v = Dt[ba][bb] + lam * p
+                D[ba][bb] = v
+                D[bb][ba] = v
+                mv0 = self.moves
+                self.local_search(S, (ba, bb), deadline)
+                if self.moves == mv0:
+                    continue
+                c = self.total_cost(S.routes)
+                if c < loc_best:
+                    loc_best = c
+                    loc_routes = [R[:] for R in S.routes if R]
+                    if c < best_cost:
+                        best_cost = c
+                        best_routes = [R[:] for R in loc_routes]
+                        save(best_routes, best_cost)
+                        self._push_pool(best_cost, best_routes)
+        finally:
+            self._pen_clear()
+        return loc_routes, loc_best, best_cost, best_routes
+
+    # ------------------------------------------------------------------ giant tour / Split / OX
+    def giant_tour(self, routes):
+        """Chain the routes (each freely reversible) greedily from the depot into one customer sequence.
+
+        Route interiors stay contiguous, so splitting this tour at the original boundaries reproduces the
+        original solution exactly; the Split DP below can therefore never return a worse cost.
+        """
+        rts = [R for R in routes if R]
+        if not rts:
+            return []
+        D = self.D
+        remaining = list(range(len(rts)))
+        tour = []
+        last = 0
+        while remaining:
+            bi = -1
+            brev = False
+            bd = INF
+            Dl = D[last]
+            for idx in remaining:
+                R = rts[idx]
+                d1 = Dl[R[0]]
+                if d1 < bd:
+                    bd = d1
+                    bi = idx
+                    brev = False
+                d2 = Dl[R[-1]]
+                if d2 < bd:
+                    bd = d2
+                    bi = idx
+                    brev = True
+            R = rts[bi]
+            if brev:
+                R = R[::-1]
+            tour.extend(R)
+            last = R[-1]
+            remaining.remove(bi)
+        return tour
+
+    def split(self, tour):
+        """Exact capacity-constrained partition of an ordered customer sequence into routes."""
+        if not tour or not self.can_split:
+            return None, INF
+        D = self.D
+        D0 = self.D0
+        dem = self.dem
+        cap = self.cap
+        m = len(tour)
+        dp = [INF] * (m + 1)
+        dp[0] = 0
+        pred = [0] * (m + 1)
+        for i in range(m):
+            base = dp[i]
+            if base == INF:
+                continue
+            load = 0
+            internal = 0
+            prev = -1
+            start = D0[tour[i]]
+            for j in range(i, m):
+                c = tour[j]
+                load += dem[c]
+                if load > cap:
+                    break
+                if prev >= 0:
+                    internal += D[prev][c]
+                cost = base + start + internal + D0[c]
+                if cost < dp[j + 1]:
+                    dp[j + 1] = cost
+                    pred[j + 1] = i
+                prev = c
+        if dp[m] == INF:
+            return None, INF
+        routes = []
+        j = m
+        while j > 0:
+            i = pred[j]
+            routes.append(tour[i:j])
+            j = i
+        routes.reverse()
+        return routes, dp[m]
+
+    def ox(self, A, B):
+        """Order crossover of two complete customer permutations."""
+        m = len(A)
+        rng = self.rng
+        i = rng.randint(0, m - 1)
+        j = rng.randint(0, m - 1)
+        if i > j:
+            i, j = j, i
+        if j - i > m - 2:
+            j = i + max(1, m // 2)
+            if j >= m:
+                j = m - 1
+        child = [0] * m
+        used = bytearray(self.n + 1)
+        for k in range(i, j + 1):
+            c = A[k]
+            child[k] = c
+            used[c] = 1
+        k = (j + 1) % m
+        for idx in range(m):
+            c = B[(j + 1 + idx) % m]
+            if not used[c]:
+                child[k] = c
+                used[c] = 1
+                k = (k + 1) % m
+        return child
+
+    def _push_pool(self, cost, routes):
+        for c, _ in self.pool:
+            if abs(c - cost) < 1e-9:
+                return
+        self.pool.append((cost, [R[:] for R in routes if R]))
+        self.pool.sort(key=lambda z: z[0])
+        if len(self.pool) > 8:
+            self.pool.pop()
 
     # ------------------------------------------------------------------ ruin & recreate
     def _string_ruin(self, S, seed, ks, Lmax, ruined, removed, cuts):
@@ -625,6 +867,7 @@ class CVRP:
         best_cost = cur_cost
         best_routes = [R[:] for R in S.routes]
         save(best_routes, best_cost)
+        self._push_pool(best_cost, best_routes)
         cur = S
 
         avg_edge = cur_cost / max(1, n + len(S.routes))
@@ -638,10 +881,59 @@ class CVRP:
             now = time.time()
             if now >= deadline:
                 break
-            if now - last_best_t > stall and cur_cost > best_cost:
-                cur = self.compact(best_routes)
-                cur_cost = best_cost
+            if now - last_best_t > stall:
                 last_best_t = now
+                done = False
+                self.turn += 1
+                use_gls = (self.turn & 1) == 1 or not (self.can_split and len(self.pool) >= 2)
+                if use_gls and deadline - now > 1.0:
+                    # ---- guided local search escape on a penalised working matrix
+                    try:
+                        sub = min(deadline, time.time() + max(0.8, 0.6 * stall))
+                        lr, lc, best_cost, best_routes = self.gls(best_routes, sub, save, best_cost, best_routes)
+                        W = self.compact(lr)
+                        self.local_search(W, range(1, n + 1), min(deadline, time.time() + max(0.3, 0.15 * stall)))
+                        cc = self.total_cost(W.routes)
+                        if cc < best_cost:
+                            best_cost = cc
+                            best_routes = [R[:] for R in W.routes if R]
+                            save(best_routes, best_cost)
+                            self._push_pool(best_cost, best_routes)
+                        if cc <= cur_cost or cc <= best_cost * 1.01:
+                            cur = self.compact(W.routes)
+                            cur_cost = cc
+                            done = True
+                    except Exception:
+                        self._pen_clear()
+                        done = False
+                elif self.can_split and len(self.pool) >= 2:
+                    try:
+                        ia, ib = rng.sample(range(len(self.pool)), 2)
+                        A = self.giant_tour(self.pool[ia][1])
+                        B = self.giant_tour(self.pool[ib][1])
+                        if len(A) == n and len(B) == n:
+                            child = self.ox(A, B)
+                            rts, c0 = self.split(child)
+                            if rts is not None:
+                                W = self.compact(rts)
+                                sub = min(deadline, time.time() + max(0.5, 0.3 * stall))
+                                self.local_search(W, range(1, n + 1), sub)
+                                cc = self.total_cost(W.routes)
+                                if cc < best_cost:
+                                    best_cost = cc
+                                    best_routes = [R[:] for R in W.routes if R]
+                                    save(best_routes, best_cost)
+                                    self._push_pool(best_cost, best_routes)
+                                if cc <= cur_cost or cc <= best_cost * 1.01:
+                                    cur = self.compact(W.routes)
+                                    cur_cost = cc
+                                    done = True
+                    except Exception:
+                        done = False
+                if not done and cur_cost > best_cost:
+                    cur = self.compact(best_routes)
+                    cur_cost = best_cost
+                continue
             frac = min(1.0, (now - t_start) / span)
             T = T0 * (Tf / T0) ** frac
             work = cur.copy()
@@ -674,7 +966,11 @@ class CVRP:
                     best_routes = [R[:] for R in work.routes if R]
                     last_best_t = time.time()
                     save(best_routes, best_cost)
-        # final polish: full unpruned local search over every customer of the incumbent
+                    self._push_pool(best_cost, best_routes)
+                elif new_cost < best_cost * 1.01 and rng.random() < 0.05:
+                    self._push_pool(new_cost, work.routes)
+        # final polish: unpruned local search alternating with monotone Split re-partition
+        self._pen_clear()  # paranoia: the working matrix must be true distances from here on
         S = self.compact(best_routes)
         self.local_search(S, range(1, n + 1), polish_deadline, prune=False)
         routes = [R for R in S.routes if R]
@@ -683,6 +979,32 @@ class CVRP:
             best_cost = pc
             best_routes = [R[:] for R in routes]
             save(best_routes, best_cost)
+        if self.can_split:
+            for _ in range(3):
+                if time.time() > polish_deadline:
+                    break
+                try:
+                    tour = self.giant_tour(best_routes)
+                    if len(tour) != n:
+                        break
+                    rts, c0 = self.split(tour)
+                except Exception:
+                    break
+                if rts is None or c0 >= best_cost:
+                    break
+                best_cost = c0
+                best_routes = [R[:] for R in rts if R]
+                save(best_routes, best_cost)
+                if time.time() > polish_deadline:
+                    break
+                S = self.compact(best_routes)
+                self.local_search(S, range(1, n + 1), polish_deadline, prune=False)
+                rr = [R for R in S.routes if R]
+                pc = self.total_cost(rr)
+                if pc < best_cost:
+                    best_cost = pc
+                    best_routes = [R[:] for R in rr]
+                    save(best_routes, best_cost)
         return best_routes, best_cost
 
 
@@ -704,26 +1026,59 @@ def main():
     if Dn.dtype.kind == "f" and np.all(Dn == np.rint(Dn)):
         Dn = np.rint(Dn).astype(np.int64)
     demand, cap = inst["demand"], inst["capacity"]
+    n_cust = len(demand) - 1
+
+    Dtrue = Dn.tolist()
+
+    def cost_of(routes):
+        s = 0
+        for R in routes:
+            if not R:
+                continue
+            p = 0
+            for x in R:
+                s += Dtrue[p][x]
+                p = x
+            s += Dtrue[p][0]
+        return s
+
+    state = {"best": None}
 
     def save(routes, obj):
-        d = {
-            "target": a.target,
-            "obj": int(round(obj)),
-            "solution": {"routes": [list(map(int, r)) for r in routes if r]},
-        }
-        tmp = a.out + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(d, f)
-        os.replace(tmp, a.out)
+        # independent feasibility screen: never overwrite a good file with a broken solution
+        try:
+            seen = bytearray(n_cust + 1)
+            clean = []
+            for R in routes:
+                if not R:
+                    continue
+                load = 0.0
+                for x in R:
+                    xi = int(x)
+                    if xi < 1 or xi > n_cust or seen[xi]:
+                        return
+                    seen[xi] = 1
+                    load += float(demand[xi])
+                if load > float(cap) + 1e-9:
+                    return
+                clean.append([int(x) for x in R])
+            for c in range(1, n_cust + 1):
+                if not seen[c]:
+                    return
+            true_obj = cost_of(clean)
+            if state["best"] is not None and true_obj >= state["best"]:
+                return
+            state["best"] = true_obj
+            d = {"target": a.target, "obj": int(true_obj), "solution": {"routes": clean}}
+            tmp = a.out + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(d, f)
+            os.replace(tmp, a.out)
+        except Exception:
+            return
 
     routes = clarke_wright(Dn, demand, cap)
-    D = Dn.tolist()
-
-    def rc(R):
-        path = [0, *R, 0]
-        return sum(D[path[k]][path[k + 1]] for k in range(len(path) - 1))
-
-    save(routes, sum(rc(R) for R in routes))  # feasible on disk before anything else
+    save(routes, cost_of(routes))  # feasible on disk before anything else
     try:
         solver = CVRP(Dn, demand, cap, rng)
         solver.solve(routes, deadline, polish_deadline, save)

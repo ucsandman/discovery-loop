@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "problem": "cvrp",
+  "candidate_hash": "e6d4caea552d58c41535eee555e953b7dd53b1fe5ecfa3197f750c77d57ed612",
+  "evidence_path": "runs/research/2026-09-16-scheduled/cvrp/evidence.json",
+  "evidence_hash": "625fc6eb99c88633f0e00b5a726f14f3cae86a283633f3d125ae2a82e545a3f7",
+  "confirmed_at": "2026-09-17T04:46:16.337552Z",
+  "claim_type": "benchmark_tuning",
+  "publishable": false
+}
