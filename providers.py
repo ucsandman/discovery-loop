@@ -11,12 +11,16 @@ import subprocess
 import tempfile
 import time
 
-from model_registry import MODEL_REGISTRY, alias_for_model, model_spec
+from model_registry import DEFAULT_CHAIN, MODEL_REGISTRY, alias_for_model, model_spec
 
 DEFAULT_MODELS = {
-    provider: next(item["model"] for item in MODEL_REGISTRY.values() if item["transport"] == provider)
+    provider: next(
+        MODEL_REGISTRY[alias]["model"] for alias in DEFAULT_CHAIN if MODEL_REGISTRY[alias]["transport"] == provider
+    )
     for provider in ("fable", "astra")
 }
+# Reasoning depth for every Claude call. xhigh is the best cost/quality point for hard coding work on Opus 5.
+CLAUDE_EFFORT = "xhigh"
 _PROVIDER_TRANSPORT = {"fable": "fable", "anthropic": "fable", "astra": "astra", "openai": "astra"}
 _CLAUDE_SUBSCRIPTIONS = {"max", "pro", "team", "enterprise"}
 _CLAUDE_SYSTEM_PROMPT = (
@@ -581,6 +585,8 @@ def call_model(prompt, provider="fable", model=None, timeout=900, max_cost=2.0, 
                     "-p",
                     "--model",
                     model,
+                    "--effort",
+                    CLAUDE_EFFORT,
                     "--output-format",
                     "json",
                     "--max-turns",

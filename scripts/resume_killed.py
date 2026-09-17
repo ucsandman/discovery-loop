@@ -37,7 +37,6 @@ import os
 import shutil
 import subprocess
 import sys
-import time
 from datetime import datetime, timezone
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -131,8 +130,7 @@ def _candidates(auto: bool, max_age_h: float):
 def _horizon(budget: float) -> dict:
     boot = host_horizon._current_boot()
     if boot is None:
-        return {"decision": "go", "budget_cap_s": int(budget),
-                "reason": "boot time unreadable; proceeding"}
+        return {"decision": "go", "budget_cap_s": int(budget), "reason": "boot time unreadable; proceeding"}
     boots = host_horizon._record_boot(boot)
     return host_horizon.decide(budget, boots, _utcnow())
 
@@ -163,9 +161,11 @@ def resume_run(name: str, st: dict, dry_run: bool) -> dict:
     else:  # matmul: full restart, honoring the cap via --time
         new_cmd = _rewrite_time(command, cap) if cap < budget else command
         result["action"] = "restart"
-        result["detail"] = ("full restart (no checkpoint support); "
-                            f"--time {int(cap)}" if cap < budget
-                            else "full restart (no checkpoint support)")
+        result["detail"] = (
+            f"full restart (no checkpoint support); --time {int(cap)}"
+            if cap < budget
+            else "full restart (no checkpoint support)"
+        )
     result["command"] = new_cmd
     if dry_run:
         return result
@@ -184,12 +184,14 @@ def resume_run(name: str, st: dict, dry_run: bool) -> dict:
         return result
 
     proc = subprocess.run(
-        [sys.executable, os.path.join(_HERE, "detached.py"),
-         "launch", "--name", name, "--", *new_cmd],
-        capture_output=True, text=True, timeout=60, cwd=_REPO_ROOT)
+        [sys.executable, os.path.join(_HERE, "detached.py"), "launch", "--name", name, "--", *new_cmd],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        cwd=_REPO_ROOT,
+    )
     result["launch_rc"] = proc.returncode
-    result["launch_out"] = (proc.stdout.strip() + " " +
-                            proc.stderr.strip()).strip()[:200]
+    result["launch_out"] = (proc.stdout.strip() + " " + proc.stderr.strip()).strip()[:200]
     if proc.returncode != 0:
         result["action"] = "failed"
         return result
@@ -197,10 +199,12 @@ def resume_run(name: str, st: dict, dry_run: bool) -> dict:
     try:
         rec_path = os.path.join(_RUNS_DIR, name, "run.json")
         rec = json.loads(open(rec_path).read())
-        rec["resumed_from"] = {"prev_start": st.get("start_time"),
-                               "prev_command": command,
-                               "resumed_at": _utcnow().isoformat(),
-                               "mode": result["action"]}
+        rec["resumed_from"] = {
+            "prev_start": st.get("start_time"),
+            "prev_command": command,
+            "resumed_at": _utcnow().isoformat(),
+            "mode": result["action"],
+        }
         open(rec_path, "w").write(json.dumps(rec, indent=2))
     except (OSError, json.JSONDecodeError):
         pass
@@ -209,12 +213,9 @@ def resume_run(name: str, st: dict, dry_run: bool) -> dict:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--auto", action="store_true",
-                    help="only consider nightly-* runs")
-    ap.add_argument("--dry-run", action="store_true",
-                    help="report decisions, change nothing")
-    ap.add_argument("--max-age-h", type=float, default=12,
-                    help="ignore runs lost longer ago (default 12h)")
+    ap.add_argument("--auto", action="store_true", help="only consider nightly-* runs")
+    ap.add_argument("--dry-run", action="store_true", help="report decisions, change nothing")
+    ap.add_argument("--max-age-h", type=float, default=12, help="ignore runs lost longer ago (default 12h)")
     a = ap.parse_args(argv)
 
     found = False
@@ -222,8 +223,7 @@ def main(argv=None) -> int:
         found = True
         print(json.dumps(resume_run(name, st, a.dry_run)))
     if not found:
-        print(json.dumps({"action": "none",
-                          "reason": "no reboot-killed nightly runs found"}))
+        print(json.dumps({"action": "none", "reason": "no reboot-killed nightly runs found"}))
     return 0
 
 

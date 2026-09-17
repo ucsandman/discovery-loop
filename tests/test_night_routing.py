@@ -21,7 +21,7 @@ def test_schema_two_schedule_without_routing_uses_the_legacy_paired_default(tmp_
     assert config["schema_version"] == 2
     assert config["night"]["routing"] == {
         "policy": "scheduled",
-        "chain": ["fable", "opus", "astra", "sol"],
+        "chain": ["opus", "astra", "sol"],
         "disabled_families": [],
     }
 
@@ -113,7 +113,9 @@ def test_retro_fallback_is_journaled_and_uses_bounded_development_only_history(t
         return {"text": "### Evidence assessment\nOK", "cost": 0.2, "usage": {}, "error": None}
 
     monkeypatch.setitem(sys.modules, "providers", types.SimpleNamespace(call_model=call_model))
-    result = retro.run_research_retro("cvrp", "2026-09-05", root, ledger, 2.5, provider="fable")
+    result = retro.run_research_retro(
+        "cvrp", "2026-09-05", root, ledger, 2.5, provider="fable", routing_chain=("fable", "opus", "astra", "sol")
+    )
 
     assert models == ["claude-fable-5-1", "claude-opus-5"]
     assert result["routing"]["fallback_used"] is True

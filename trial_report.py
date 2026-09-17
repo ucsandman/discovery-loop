@@ -7,6 +7,8 @@ import json
 import math
 import re
 
+from model_registry import MODEL_REGISTRY
+
 
 def _number(value):
     return (
@@ -144,8 +146,15 @@ def _assignment(schedule, logical_date, problem):
     return arm if isinstance(arm, str) else None
 
 
+def _arm_aliases(arm):
+    """Every registered alias in the arm's family: the arm names the subscription family, not one model."""
+    arms = ("fable", "astra") if arm == "paired" else (arm,)
+    families = {MODEL_REGISTRY[name]["family"] for name in arms if name in MODEL_REGISTRY}
+    return {alias for alias, spec in MODEL_REGISTRY.items() if spec["family"] in families} | set(arms)
+
+
 def _attempt_matches_arm(attempt, arm):
-    aliases = {"fable", "astra"} if arm == "paired" else {arm}
+    aliases = _arm_aliases(arm)
     requested_alias = attempt.get("requested_alias")
     actual_alias = attempt.get("model_alias")
     if isinstance(requested_alias, str) and isinstance(actual_alias, str):

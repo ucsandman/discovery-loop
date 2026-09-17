@@ -197,3 +197,31 @@ code { overflow-wrap: anywhere; }
 }
 @media (pointer: coarse) { button, input, select, summary { min-height: 3rem; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }
+
+/* Morning brief page */
+.crosslink { margin-top: .8rem; font-size: .9rem; }
+.crosslink a { color: var(--green); text-underline-offset: .18em; }
+.brief-section { margin-top: clamp(2.5rem, 6vw, 5rem); }
+.brief-section + .brief-section { border-top: 3px double var(--ink); padding-top: 2rem; }
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr)); gap: 1rem; }
+.card { border-top: 3px solid var(--rust); background: color-mix(in oklch, var(--paper) 90%, white); padding: 1rem 1.1rem 1.2rem; }
+.card h3 { margin: .55rem 0 .65rem; }
+.card-facts { display: grid; gap: .45rem; margin: .5rem 0 0; }
+.card-facts > div { display: grid; grid-template-columns: minmax(7rem, .5fr) 2fr; gap: .8rem; font-size: .88rem; }
+.card-facts dt { color: var(--muted); font-size: .72rem; font-weight: 720; letter-spacing: .08em; text-transform: uppercase; padding-top: .15rem; }
+.card-facts dd { margin: 0; overflow-wrap: anywhere; }
+.next-step { margin-top: .75rem; font-weight: 700; color: var(--green); }
+.slot-list { display: grid; gap: 1.4rem; }
+.slot-card { border-top: 3px solid var(--line); background: color-mix(in oklch, var(--paper) 90%, white); padding: 1.1rem 1.25rem 1.3rem; }
+.slot-head { display: flex; justify-content: space-between; align-items: start; gap: 1rem; flex-wrap: wrap; }
+.slot-head h3 { margin-top: .35rem; }
+.stamp-row { display: flex; gap: .4rem; flex-wrap: wrap; }
+.slot-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 1.5rem; margin-top: 1rem; }
+.slot-grid h4 { font-family: var(--serif); font-size: 1.05rem; margin: 0 0 .35rem; }
+.tried { margin-top: 1.1rem; }
+details summary { cursor: pointer; font-weight: 700; padding: .45rem 0; }
+td.idea { max-width: 42rem; }
+.gain-up { color: var(--green); font-weight: 700; }
+pre.retro { white-space: pre-wrap; font-family: var(--sans); font-size: .85rem; color: var(--muted); border-left: 2px solid var(--line); padding-left: .8rem; margin: .5rem 0 0; }
+.brief .footnote { margin-top: 3rem; }
+@media (max-width: 48rem) { .card-facts > div { grid-template-columns: 1fr; gap: .15rem; } }

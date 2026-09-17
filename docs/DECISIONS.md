@@ -51,3 +51,11 @@ Git publication checks the immutable committed tree against the approved manifes
 ## 2026-09-05: Internal human surface
 
 The dashboard is a localhost-only research control surface. It is deliberately not an indexable public website; external fonts, analytics, SEO pages and account systems would add no value to this workflow.
+
+## 2026-09-17: Opus-first routing and a family-based arm
+
+Every Claude call runs on Opus 5 at `--effort xhigh`; Fable stays in the registry but off the default chain (`opus, astra, sol`). Opus costs half as much per token, and on 2026-09-16 eleven of twenty-four Fable generation calls hit the $2 per-call cap and returned nothing. A trial arm label (`fable`, `astra`, `paired`) names the subscription family, not one model: `arm_alias` resolves it to the first same-family alias on the configured chain, and that alias is the requested model, so a night whose Anthropic arm ran on Opus stays a clean trial row. Restoring the old behaviour is a one-line chain edit, never a code change.
+
+## 2026-09-17: Morning brief as a second page, not a rewrite
+
+The morning brief lives at `/morning` on the same loopback dashboard, with its own module (`morning_brief.py`) and its own HTML/JS, so the review page and its approval flow stay untouched. It reads only files the runner already writes. "Awaiting publication" is derived from history (publishable evidence without approval, approvals without a release bundle, stored beats of a public record with no submission logged); local-baseline plugins (miplib_heur, pglib_opf) are listed under incumbents and never queued, because their stored record is not a public table. A daily 07:00 task opens the page; the dashboard task keeps serving it.

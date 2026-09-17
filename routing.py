@@ -9,7 +9,7 @@ from pathlib import Path
 import time
 import uuid
 
-from model_registry import DEFAULT_CHAIN, model_spec, policy_chain
+from model_registry import DEFAULT_CHAIN, arm_alias, model_spec, policy_chain
 from research_state import FileLock, atomic_json, read_json
 
 
@@ -396,7 +396,11 @@ def routing_summary(
     actual_families = sorted({item.get("family") for item in completed if item.get("family")})
     actual_models = sorted({item.get("model") for item in completed if item.get("model")})
     requested_aliases = ("fable", "astra") if requested_arm == "paired" else (requested_arm,)
-    requested_specs = [model_spec(alias) for alias in requested_aliases if alias in {"fable", "astra"}]
+    requested_specs = [
+        model_spec(arm_alias(alias, configured_chain) if configured_chain else alias)
+        for alias in requested_aliases
+        if alias in {"fable", "astra"}
+    ]
     reasons = []
     if explicit_override:
         reasons.append("routing_override")

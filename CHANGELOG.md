@@ -1,5 +1,11 @@
 # Changelog
 
+## Opus-first routing and the morning brief, 2026-09-17
+
+- The default routing chain is `opus, astra, sol`. Every Claude call runs on Opus 5 with `--effort xhigh`; Fable stays registered but off the chain. On 2026-09-16, 11 of 24 Fable generation calls hit the $2 per-call cap and returned nothing.
+- A trial arm names a subscription family. `model_registry.arm_alias` resolves it to the first same-family alias on the chain, so the Fable arm executes on Opus as its requested model; trial reports treat any same-family alias as matching the arm, and `fable_only`/`astra_only` follow the same rule.
+- `/morning` on the local dashboard is a morning brief: last night's slots with the mission, every idea tried, median gains, confirmation and release-check results, the analyst verdict, the full run history, incumbents per problem and an *awaiting publication* list derived from the history. `scripts/install-morning-task.ps1 -Apply` registers `discovery-loop-morning` to open it at 07:00 daily.
+
 ## Bounded solver-program islands, 2026-09-15
 
 - Matrix-multiplication research now opts into three run-local solver-program islands with at most three development-verified parents per island. Mutation and crossover share the existing governed generation allowance, routing, pause and deadline path; other plugins keep their existing generation behavior.

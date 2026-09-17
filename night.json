@@ -14,7 +14,7 @@
     "evidence_root": "runs/research",
     "routing": {
       "policy": "scheduled",
-      "chain": ["fable", "opus", "astra", "sol"],
+      "chain": ["opus", "astra", "sol"],
       "disabled_families": []
     }
   },

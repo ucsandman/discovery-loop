@@ -38,6 +38,9 @@ STATIC_FILES = {
     "/index.html": ("index.html", "text/html; charset=utf-8"),
     "/styles.css": ("styles.css", "text/css; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
+    "/morning": ("morning.html", "text/html; charset=utf-8"),
+    "/morning.html": ("morning.html", "text/html; charset=utf-8"),
+    "/morning.js": ("morning.js", "text/javascript; charset=utf-8"),
     "/favicon.svg": ("favicon.svg", "image/svg+xml"),
 }
 
@@ -379,6 +382,11 @@ class DashboardApp:
             items.append(_sanitize(normalized, self.root))
         return {"generated_at": _utc_now(), "evidence": items}
 
+    def morning(self) -> dict[str, Any]:
+        from morning_brief import build_brief
+
+        return {"generated_at": _utc_now(), **_sanitize(build_brief(self.root), self.root)}
+
     def arc_catalogue(self) -> dict[str, Any]:
         from arc_catalogue import catalogue_view
 
@@ -684,6 +692,8 @@ def _handler(app: DashboardApp):
                     self._json(HTTPStatus.OK, app.status())
                 elif path == "/api/evidence":
                     self._json(HTTPStatus.OK, app.evidence())
+                elif path == "/api/morning":
+                    self._json(HTTPStatus.OK, app.morning())
                 elif path == "/api/arc/catalogue":
                     self._json(HTTPStatus.OK, app.arc_catalogue())
                 elif path in STATIC_FILES:

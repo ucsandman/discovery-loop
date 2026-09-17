@@ -53,7 +53,8 @@ def test_fable_uses_restricted_subscription_cli_and_settles_reported_cost(monkey
     result = providers.call_model("write it", provider="fable", timeout=17, max_cost=0.5, ledger=ledger)
 
     command = " ".join(seen["command"])
-    assert "claude-fable-5-1" in command
+    assert "claude-opus-5" in command
+    assert seen["command"][seen["command"].index("--effort") + 1] == "xhigh"
     assert "--restricted" in seen["command"]
     assert "--strict-mcp-config" in seen["command"]
     assert "--max-budget-usd" in seen["command"]
@@ -65,14 +66,14 @@ def test_fable_uses_restricted_subscription_cli_and_settles_reported_cost(monkey
         "code": "print('ok')",
         "idea": "small change",
         "provider": "fable",
-        "model": "claude-fable-5-1",
+        "model": "claude-opus-5",
         "cost": 0.03,
         "usage": {"input_tokens": 12, "output_tokens": 7},
         "error": None,
         "billing_mode": "subscription",
         "cost_basis": "reported_api_equivalent",
     }
-    assert ledger.reserved == [(0.5, "generation:fable:claude-fable-5-1")]
+    assert ledger.reserved == [(0.5, "generation:fable:claude-opus-5")]
     assert ledger.settled == [("reservation-1", 0.03, {"input_tokens": 12, "output_tokens": 7})]
 
 

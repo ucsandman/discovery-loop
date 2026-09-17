@@ -23,13 +23,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from loop import Loop, _read_development_memory, load_problem, retro_path, value_of
-from model_registry import DEFAULT_CHAIN
+from model_registry import DEFAULT_CHAIN, arm_alias
 from research_memory import _redact, summarize_development
 from research_state import BudgetLedger, append_event, atomic_json, read_json
 from routing import RoutingJournal, route_call, routing_summary
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-MODEL = "claude-fable-5-1"
+MODEL = "claude-opus-5"
 TIMEOUT = 900
 _RETRO_HEADING = re.compile(r"^###\s+(.+?)\s*$", re.MULTILINE)
 
@@ -314,7 +314,7 @@ def run_research_retro(
         )
         response = route_call(
             build_research_retro_prompt(evidence, history_summary),
-            requested_alias=analyst,
+            requested_alias=arm_alias(analyst, routing_chain),
             policy=routing_policy,
             chain=routing_chain,
             disabled_families=disabled_families,

@@ -184,3 +184,19 @@ def test_trial_track_outside_configured_cycle_is_an_operational_extra(tmp_path):
     assert report["clean_runs"] == 0
     assert report["operational_rows"][0]["provenance"] == "operational_extra"
     assert report["coverage"]["completed_slots"] == 0
+
+
+def test_anthropic_arm_executed_on_opus_stays_a_clean_trial_row(tmp_path):
+    # The arm names the subscription family; the routing chain decides the model. An Anthropic arm
+    # answered by Opus (requested alias opus, no fallback) is the requested arm, not a substitution.
+    attempt = {**_attempt("fable"), "requested_alias": "opus", "model_alias": "opus", "model": "claude-opus-5"}
+    atomic_json(
+        tmp_path / "runs/research/2026-09-05/cvrp/evidence.json",
+        _evidence("cvrp", "fable", _routing("fable", [attempt])),
+    )
+    atomic_json(tmp_path / "runs/research/2026-09-05/cvrp/retro.json", _retro("fable"))
+
+    report = summarize(tmp_path)
+
+    assert report["clean_runs"] == 1
+    assert "successful_call_does_not_match_requested_arm" not in report["ineligible_reasons"]

@@ -9,7 +9,11 @@ MODEL_REGISTRY = {
     "astra": {"family": "openai", "transport": "astra", "model": "gpt-6-astra"},
     "sol": {"family": "openai", "transport": "astra", "model": "gpt-5.6-sol"},
 }
-DEFAULT_CHAIN = ("fable", "opus", "astra", "sol")
+DEFAULT_CHAIN = (
+    "opus",
+    "astra",
+    "sol",
+)  # Fable is registered but off the default chain: half the price per token on Opus
 VALID_FAMILIES = frozenset({"anthropic", "openai"})
 VALID_ROUTING_POLICIES = frozenset(
     {"scheduled", "ordered", "auto", "openai_only", "anthropic_only", "astra_only", "fable_only", "paired"}
@@ -21,6 +25,23 @@ def model_spec(name: str) -> dict:
     if name not in MODEL_REGISTRY:
         raise ValueError(f"unknown model alias {name!r}")
     return {"alias": name, **MODEL_REGISTRY[name]}
+
+
+def arm_alias(arm: str, chain=DEFAULT_CHAIN) -> str:
+    """Resolve a trial arm label (fable, astra, ...) to the first same-family alias in the configured chain.
+
+    The arm names the family whose subscription CLI answers; the chain decides which model it runs on.
+    An arm whose family has no chain entry keeps its own alias so routing reports the gap.
+    """
+    if arm not in MODEL_REGISTRY:
+        raise ValueError(f"unknown model alias {arm!r}")
+    if arm in chain:
+        return arm
+    family = MODEL_REGISTRY[arm]["family"]
+    for alias in chain:
+        if alias in MODEL_REGISTRY and MODEL_REGISTRY[alias]["family"] == family:
+            return alias
+    return arm
 
 
 def alias_for_model(model: str, family: str | None = None) -> str:
@@ -93,10 +114,10 @@ def policy_chain(policy: str, configured_chain, requested_alias: str | None = No
             same_family.insert(0, requested_alias)
         other_family = [name for name in chain if MODEL_REGISTRY[name]["family"] != requested_family]
         return same_family + other_family
-    if policy == "astra_only":
-        return ["astra"] if "astra" in chain else []
-    if policy == "fable_only":
-        return ["fable"] if "fable" in chain else []
+    if policy in {"astra_only", "fable_only"}:
+        # A single-arm route runs the arm's family on whatever model the chain gives that family.
+        alias = arm_alias(policy.removesuffix("_only"), chain)
+        return [alias] if alias in chain else []
     if policy == "openai_only":
         return [name for name in chain if MODEL_REGISTRY[name]["family"] == "openai"]
     if policy == "anthropic_only":

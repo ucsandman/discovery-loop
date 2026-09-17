@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Morning brief for discovery-loop: what ran last night, what was tried, what held up, and what is waiting to be published.">
+  <title>Morning brief</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/morning.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to last night</a>
+  <main class="shell brief" id="main">
+    <header class="masthead">
+      <div>
+        <p class="eyebrow" id="dateline">Morning brief</p>
+        <h1>Overnight, in one read</h1>
+        <p class="lede">What the loop tried while you slept, what survived an independent check, and what the history says is still waiting on you. Nothing here was sent anywhere.</p>
+        <p class="crosslink"><a href="/">Open the review dashboard</a> to inspect evidence, pause the night, or queue a release approval.</p>
+      </div>
+      <div class="night-state" aria-live="polite">
+        <span class="stamp neutral" id="night-stamp"><span class="signal"></span>Reading status</span>
+        <strong id="night-summary">Loading last night</strong>
+        <span class="subtle" id="night-usage">Allowance is reported total_cost_usd API-equivalent, not a bill.</span>
+      </div>
+    </header>
+
+    <section class="brief-section" aria-labelledby="awaiting-title">
+      <div class="section-head">
+        <div><p class="kicker">Needs you</p><h2 id="awaiting-title">Awaiting publication</h2></div>
+        <span class="folio" id="awaiting-count">Reading…</span>
+      </div>
+      <p class="trial-note">Built from every recorded night and every stored incumbent: confirmed results nobody approved, approvals nobody pushed, and stored solutions that beat a public record with no submission logged. Local-baseline wins are listed under incumbents, not here.</p>
+      <div id="awaiting-list" class="card-grid"><p class="empty">Reading the history…</p></div>
+    </section>
+
+    <section class="brief-section" aria-labelledby="night-title">
+      <div class="section-head">
+        <div><p class="kicker">Last night</p><h2 id="night-title">What ran</h2></div>
+        <span class="folio" id="night-folio">Reading…</span>
+      </div>
+      <p class="trial-note" id="night-note"></p>
+      <div id="slot-list" class="slot-list"><p class="empty">Reading last night's record…</p></div>
+    </section>
+
+    <section class="brief-section" aria-labelledby="history-title">
+      <div class="section-head">
+        <div><p class="kicker">Every night on record</p><h2 id="history-title">Run history</h2></div>
+        <span class="folio" id="history-count">Reading…</span>
+      </div>
+      <div class="table-wrap trial-table-wrap">
+        <table>
+          <thead><tr><th>Night</th><th>Status</th><th>Allowance</th><th>Problems</th><th>Tried</th><th>Promising</th><th>Confirmed</th><th>Publishable</th></tr></thead>
+          <tbody id="history-list"><tr><td colspan="8" class="empty">Reading nights…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="brief-section" aria-labelledby="incumbent-title">
+      <div class="section-head">
+        <div><p class="kicker">Where each problem stands</p><h2 id="incumbent-title">Incumbents</h2></div>
+        <span class="folio" id="incumbent-count">Reading…</span>
+      </div>
+      <div class="table-wrap trial-table-wrap">
+        <table>
+          <thead><tr><th>Problem</th><th>Record source</th><th>Incumbent</th><th>Targets</th><th>Beating the stored value</th><th>Unsubmitted</th><th>Legacy loop</th></tr></thead>
+          <tbody id="incumbent-list"><tr><td colspan="7" class="empty">Reading incumbents…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+    <p class="footnote">Confirmed means the candidate beat the frozen incumbent on matched seeds in an isolated worker. Publishable additionally means the plugin's release validation passed against the stored record. Neither is a world record until the live reference table is re-checked.</p>
+  </main>
+</body>
+</html>

@@ -37,6 +37,7 @@ from model_registry import (
     MODEL_REGISTRY,
     VALID_ROUTING_POLICIES,
     alias_for_model,
+    arm_alias,
     model_spec,
     validate_routing_config,
 )
@@ -701,7 +702,8 @@ def _call_with_budget(
         )
         attempts = [{"family": model_spec(provider)["family"], "model": response.get("model"), "status": "completed"}]
     else:
-        requested_alias = provider
+        # The arm label names a family; the chain decides which model that family runs on.
+        requested_alias = arm_alias(provider, routing_chain)
         if model:
             requested_alias = alias_for_model(model)
         response = route_call(
@@ -2050,7 +2052,7 @@ def main():
     ap.add_argument("--workers", type=int)
     ap.add_argument("--iters", type=int, default=40)
     ap.add_argument("--budget", type=float, default=30.0, help="max model spend in USD")
-    ap.add_argument("--model", default="claude-fable-5-1")
+    ap.add_argument("--model", default="claude-opus-5")
     ap.add_argument(
         "--plateau-window",
         type=int,

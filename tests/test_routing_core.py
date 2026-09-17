@@ -14,6 +14,10 @@ from model_registry import policy_chain, validate_routing_config
 from research_state import BudgetLedger
 
 
+# The pre-2026-09-17 default chain; routing mechanics tests pin it explicitly.
+LEGACY_CHAIN = ("fable", "opus", "astra", "sol")
+
+
 def _attempt(**changes):
     value = {
         "status": "completed",
@@ -33,7 +37,8 @@ def test_registry_policies_never_invent_models_and_exact_modes_are_exact():
     assert policy_chain("ordered", ["astra", "sol", "opus"], "fable") == ["astra", "sol", "opus"]
     assert policy_chain("ordered", ["astra", "sol", "opus"], "astra") == ["astra", "sol", "opus"]
     assert policy_chain("astra_only", ["sol", "astra", "fable"], "fable") == ["astra"]
-    assert policy_chain("fable_only", ["opus", "astra"], "fable") == []
+    assert policy_chain("fable_only", ["opus", "astra"], "fable") == ["opus"]  # the arm's family on the chain model
+    assert policy_chain("fable_only", ["astra", "sol"], "fable") == []
     assert policy_chain("scheduled", ["fable", "opus", "astra"], "fable") == ["fable", "opus", "astra"]
     assert validate_routing_config({})["policy"] == "scheduled"
 
@@ -149,6 +154,7 @@ def test_auth_breaker_skips_family_and_preserves_zero_charge(tmp_path):
     response = routing.route_call(
         "prompt",
         requested_alias="fable",
+        chain=LEGACY_CHAIN,
         ledger=ledger,
         max_cost=1.0,
         purpose="generation",
@@ -182,6 +188,7 @@ def test_transient_retry_is_once_and_malformed_response_never_switches(tmp_path)
     response = routing.route_call(
         "prompt",
         requested_alias="fable",
+        chain=LEGACY_CHAIN,
         ledger=ledger,
         max_cost=1.0,
         purpose="generation",
@@ -233,6 +240,7 @@ def test_usage_exhaustion_breaks_only_requested_model_then_falls_back(tmp_path):
     response = routing.route_call(
         "prompt",
         requested_alias="fable",
+        chain=LEGACY_CHAIN,
         ledger=None,
         max_cost=1.0,
         purpose="generation",
@@ -265,6 +273,7 @@ def test_all_model_breakers_resume_as_skips_without_new_charge(tmp_path):
     first = routing.route_call(
         "prompt",
         requested_alias="fable",
+        chain=LEGACY_CHAIN,
         ledger=ledger,
         max_cost=1.0,
         purpose="generation",
@@ -278,6 +287,7 @@ def test_all_model_breakers_resume_as_skips_without_new_charge(tmp_path):
     second = routing.route_call(
         "prompt",
         requested_alias="fable",
+        chain=LEGACY_CHAIN,
         ledger=ledger,
         max_cost=1.0,
         purpose="generation",
@@ -358,6 +368,7 @@ def _run_routed_critique(tmp_path, fail_all_critics=False, captured_prompts=None
         "routed",
         provider="astra",
         run_id="routed",
+        routing_chain=LEGACY_CHAIN,
         evidence_root=tmp_path / "runs" / "research",
         routing_journal_path=journal_path,
         root=tmp_path,
@@ -556,6 +567,7 @@ def test_development_evaluation_failure_is_invalid_without_model_fallback(tmp_pa
         "routed",
         provider="fable",
         run_id="invalid-eval",
+        routing_chain=LEGACY_CHAIN,
         evidence_root=tmp_path / "runs" / "research",
         routing_journal_path=tmp_path / "runs/research/invalid-eval/routing.json",
         root=tmp_path,
@@ -798,3 +810,41 @@ def test_development_prompt_has_bounded_rich_history():
     assert "bounded neighborhood search" in prompt
     assert "holdout" not in prompt
     assert "C:\\private" not in prompt
+
+
+def test_arm_alias_follows_the_chain_when_the_arm_model_is_off_it():
+    from model_registry import DEFAULT_CHAIN, arm_alias
+
+    assert DEFAULT_CHAIN == ("opus", "astra", "sol")
+    assert arm_alias("fable", DEFAULT_CHAIN) == "opus"
+    assert arm_alias("astra", DEFAULT_CHAIN) == "astra"
+    assert arm_alias("fable", LEGACY_CHAIN) == "fable"  # an arm on the chain keeps its own model
+    assert arm_alias("fable", ("astra", "sol")) == "fable"  # no same-family entry: report the gap, invent nothing
+    with pytest.raises(ValueError):
+        arm_alias("nope", DEFAULT_CHAIN)
+
+
+def test_default_chain_routes_the_fable_arm_to_opus_without_a_fallback_mark(tmp_path):
+    journal = routing.RoutingJournal(tmp_path / "routing.json")
+    calls = []
+
+    def call(_prompt, model, **_kwargs):
+        calls.append(model)
+        return {"error": None, "cost": 0.0, "usage": {}, "text": "ok"}
+
+    from model_registry import DEFAULT_CHAIN, arm_alias
+
+    response = routing.route_call(
+        "prompt",
+        requested_alias=arm_alias("fable", DEFAULT_CHAIN),
+        ledger=None,
+        max_cost=1.0,
+        purpose="generation",
+        call_fn=call,
+        journal=journal,
+        retry_delay=0,
+    )
+    assert calls == ["claude-opus-5"]
+    attempt = response["_routing_attempts"][0]
+    assert attempt["selection_reason"] == "requested" and attempt["fallback_depth"] == 0
+    assert attempt["requested_model"] == "claude-opus-5"

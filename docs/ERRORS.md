@@ -79,3 +79,10 @@ Live GitHub rendering loaded the diagram only after it entered the viewport and 
 ## 2026-09-05: Task activation
 
 Preview and live task state were kept separate until operator authorization. Applied the exported plan, read back all four registrations, and restarted the dashboard through the task rather than leaving an old process serving imported code. An overly strict compound process check stopped the initial restart without killing anything; re-read the exact PID and command line before retrying. Future activation checks must include the running listener, effective UI values and both positive and negative freshness cases, not just a successful installer exit.
+
+## 2026-09-17: Opus routing and morning brief
+
+- `DISABLE_PROMPT_CACHING=1` in the `claude -p` environment does nothing on CLI 2.1.274: a warm identical prefix read 11,596 cached tokens with and without it (three-call probe). Removed before shipping; do not re-add without a probe that shows `cache_read_input_tokens` dropping to 0.
+- The long-lived `discovery-loop-dashboard` task kept serving the old code after `dashboard.py` changed; `/api/morning` returned 404 until the old `pythonw` process was killed and the task started again. `schtasks /Run` from Git Bash mangles `/Run` into a path; use PowerShell `Start-ScheduledTask`.
+- Removing `fable` from the default chain made `fable_only` select nothing, which surfaced as `provider_unavailable` in loop tests that use the legacy callback path. Single-arm policies now resolve through `arm_alias` like every other route.
+- `scripts/resume_killed.py` carried an unused import that failed Ruff in `check.py` before this session touched it; fixed in passing.
