@@ -183,10 +183,11 @@ def main():
 
     attempt(ppc)
     # The worker kills the process at --time + 45 s and keeps nothing it wrote, so an attempt that cannot finish
-    # before the budget is never started: on 2,000+ buses one attempt is two to three minutes.
+    # before that kill is never started: on 2,000+ buses one attempt is two to four minutes and, with two workers
+    # sharing the CPU, the next one can run 1.4x longer than the last (case2000_goc timed out at 1.25x, 2026-09-17).
     longest = time.time() - t0
     tries = 0
-    while time.time() - t0 + 1.25 * longest < a.time - 5:
+    while time.time() - t0 < a.time - 5 and time.time() - t0 + 1.6 * longest < a.time + 30:
         tries += 1
         t1 = time.time()
         attempt(perturb(ppc, rng, scale=1.0 if tries % 3 else 2.5))
