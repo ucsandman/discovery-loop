@@ -1,5 +1,11 @@
 # Changelog
 
+## Large PGLib cases, 2026-09-18
+
+- `problems/pglib_opf.LARGE_TARGETS`: the seven 2,000–2,746 bus TYP cases as opt-in targets with `LARGE_DEFAULTS` (600 s, 2 workers). They stay out of the nightly `TARGETS`; `loop.py --targets` may select them, and the prompt gains a large-case note when any is present.
+- PGLib seed solver: verifies at 1e-8 (the loop's release tolerance) before saving; when the Newton polish breaks a limit at scale, a tight warm PIPS re-solve (FEASTOL 1e-9) is tried with and without the polish; never starts an attempt that cannot finish before the worker kill (case2000_goc in the worker: 2.8e-9 max violation, 460 s of 600).
+- First large-case research run (three cases, 12 Opus generations, 10 candidates): every candidate re-found the IPOPT local optimum; no confirmed win. Codex was usage-limited and a headless Claude call needs a per-call budget above $2 for large prompts (`--call-budget 5`).
+
 ## Opus-first routing and the morning brief, 2026-09-17
 
 - The default routing chain is `opus, astra, sol`. Every Claude call runs on Opus 5 with `--effort xhigh`; Fable stays registered but off the chain. On 2026-09-16, 11 of 24 Fable generation calls hit the $2 per-call cap and returned nothing.

@@ -188,7 +188,7 @@ Known benchmark targets remain labeled previously exposed. The existing MIP heur
 | miplib_heur | General primal heuristics, 16 development and 10 reusable holdout instances | Original MPS feasibility, proven-optimum gap, fresh worker baseline comparison |
 | miplib_open | Open mixed-integer programs | Original bounds, integrality, row activities and objective |
 | miplib | Legacy open-instance experiments | Original MPS and uncertainty-aware record comparison |
-| pglib_opf | AC power-flow validation | Original-case residuals at 1e-8, baseline rounding uncertainty and reference polishing |
+| pglib_opf | AC power-flow validation; opt-in 2,000+ bus cases (`LARGE_TARGETS`) for manual `--targets` runs | Original-case residuals at 1e-8, baseline rounding uncertainty and reference polishing |
 | matrix_multiplication | Exact bilinear rank search | Exact tensor-identity verification; a verified rank below the best known is a benchmark record |
 | circle_packing | Geometric optimization | Finite values, containment, separation and an explicit improvement margin |
 
