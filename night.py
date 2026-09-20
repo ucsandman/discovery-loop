@@ -16,6 +16,7 @@ import sys
 import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from loop import DEFAULT_SCREEN_FRACTION
 from model_registry import VALID_ROUTING_POLICIES, model_spec, policy_chain, routing_config
 from research_state import BudgetLedger, FileLock, atomic_json, paused, read_json
 
@@ -430,6 +431,45 @@ def _preflight(config, slots, provider_check=None, sandbox_check=None):
     }
 
 
+PREFLIGHT_RETRY_SECONDS = 300.0
+PREFLIGHT_RETRY_WINDOW_SECONDS = 1800.0
+
+
+def _preflight_with_retry(
+    config,
+    slots,
+    *,
+    provider_check=None,
+    sandbox_check=None,
+    deadline=None,
+    on_wait=None,
+    sleep_fn=time.sleep,
+    clock=time.time,
+):
+    """Re-probe a failed Docker sandbox every 5 minutes for 30 minutes before giving the night up.
+
+    A Docker engine still booting after a host reboot used to end the night on the first probe (2026-09-19:
+    one failed probe at 02:00, no work recorded, eight hours of deadline left). A provider that is unreachable
+    at the start is an authentication problem and needs a person, so that failure is never re-probed; a
+    subscription window that closes mid-night is handled by the routing breakers instead.
+    """
+    window_minutes = config.get("night", {}).get("preflight_retry_minutes", PREFLIGHT_RETRY_WINDOW_SECONDS / 60)
+    window_end = clock() + 60.0 * float(window_minutes)
+    attempts = 0
+    while True:
+        checks = _preflight(config, slots, provider_check=provider_check, sandbox_check=sandbox_check)
+        attempts += 1
+        checks["attempts"] = attempts
+        if checks["ok"] or checks["sandbox"].get("ok") is True:
+            return checks
+        next_probe = clock() + PREFLIGHT_RETRY_SECONDS
+        if next_probe > window_end or (deadline is not None and next_probe > deadline):
+            return checks
+        if on_wait:
+            on_wait(checks)
+        sleep_fn(PREFLIGHT_RETRY_SECONDS)
+
+
 def _routing_command_args(routing, journal_path, *, override=False, deadline=None):
     command = ["--routing", routing["policy"], "--model-chain", *routing["chain"]]
     for family in routing["disabled_families"]:
@@ -487,6 +527,10 @@ def _research_command(
         str(max(0.01, minutes)),
         "--max-generation-failures",
         str(slot.get("max_generation_failures", 2)),
+        "--screen-fraction",
+        str(slot.get("screen_fraction", DEFAULT_SCREEN_FRACTION)),
+        "--generation-mode",
+        str(slot.get("generation_mode", "full")),
         "--no-publish",
     ]
     if routing is not None and journal_path is not None:
@@ -891,7 +935,16 @@ def run_night(
 
                     consume_prize_next(ROOT, prize_summary["prize_id"], run_id)
         status["prizes"] = prize_summary
-        checks = _preflight(config, slots, provider_check=provider_check, sandbox_check=sandbox_check)
+        checks = _preflight_with_retry(
+            config,
+            slots,
+            provider_check=provider_check,
+            sandbox_check=sandbox_check,
+            deadline=deadline,
+            on_wait=lambda check: _write_status(
+                {**status, "preflight": check, "status": "preflight_retry"}, checkpoint
+            ),
+        )
         status["preflight"] = checks
         if not checks["ok"]:
             status["status"] = "failed"

@@ -848,3 +848,180 @@ def test_default_chain_routes_the_fable_arm_to_opus_without_a_fallback_mark(tmp_
     attempt = response["_routing_attempts"][0]
     assert attempt["selection_reason"] == "requested" and attempt["fallback_depth"] == 0
     assert attempt["requested_model"] == "claude-opus-5"
+
+
+def test_usage_limit_breaker_expires_and_charges_nothing(tmp_path):
+    journal = routing.RoutingJournal(tmp_path / "routing.json")
+    now = [1_000_000.0]
+    calls = []
+
+    def call(_prompt, model, **_kwargs):
+        calls.append(model)
+        if len(calls) == 1:
+            return {"error": "usage limit", "error_kind": "usage_limit", "cost": None, "usage": {}}
+        return {"error": None, "cost": 0.5, "usage": {}, "text": "ok"}
+
+    kwargs = dict(
+        requested_alias="opus",
+        chain=("opus",),
+        ledger=None,
+        max_cost=2.0,
+        purpose="generation",
+        call_fn=call,
+        journal=journal,
+        retry_delay=0,
+        clock=lambda: now[0],
+    )
+    first = routing.route_call("prompt", **kwargs)
+    assert first["error_kind"] == "usage_limit"
+    assert first["_routing_attempts"][0]["charged_allowance"] == 0.0
+    assert first["retry_after_seconds"] == routing.BREAKER_TTL_SECONDS["usage_limit"]
+    blocked = routing.route_call("prompt", **kwargs)
+    assert blocked["error_kind"] == "routing_unavailable" and calls == ["claude-opus-5"]
+    now[0] += routing.BREAKER_TTL_SECONDS["usage_limit"]
+    third = routing.route_call("prompt", **kwargs)
+    assert third["error"] is None and calls == ["claude-opus-5", "claude-opus-5"]
+    assert journal.state["model_breakers"] == {}
+
+
+def test_authentication_breaker_never_expires_and_gives_no_retry_hint(tmp_path):
+    journal = routing.RoutingJournal(tmp_path / "routing.json")
+    now = [5_000.0]
+
+    def call(_prompt, **_kwargs):
+        return {"error": "not logged in", "error_kind": "authentication", "cost": None, "usage": {}}
+
+    kwargs = dict(
+        requested_alias="opus",
+        chain=("opus",),
+        ledger=None,
+        max_cost=2.0,
+        purpose="generation",
+        call_fn=call,
+        journal=journal,
+        retry_delay=0,
+        clock=lambda: now[0],
+    )
+    routing.route_call("prompt", **kwargs)
+    now[0] += 10 * 3600
+    again = routing.route_call("prompt", **kwargs)
+    assert again["error_kind"] == "routing_unavailable"
+    assert "retry_after_seconds" not in again  # an authentication breaker never reopens on its own
+    assert "expires_at_epoch" not in journal.state["family_breakers"]["anthropic"]
+
+
+def test_cli_exit_one_is_retried_once_on_the_same_model(tmp_path):
+    journal = routing.RoutingJournal(tmp_path / "routing.json")
+    calls = []
+
+    def call(_prompt, model, **_kwargs):
+        calls.append(model)
+        if len(calls) == 1:
+            return {"error": "fable CLI exited with status 1", "error_kind": "infrastructure_error", "cost": None}
+        return {"error": None, "cost": 0.5, "usage": {}, "text": "ok"}
+
+    response = routing.route_call(
+        "prompt",
+        requested_alias="opus",
+        chain=("opus", "astra"),
+        ledger=None,
+        max_cost=2.0,
+        purpose="generation",
+        call_fn=call,
+        journal=journal,
+        retry_delay=0,
+    )
+    assert response["error"] is None
+    assert calls == ["claude-opus-5", "claude-opus-5"]
+    assert [item["selection_reason"] for item in response["_routing_attempts"]] == ["requested", "transient_retry"]
+
+
+def test_routing_wait_uses_the_retry_hint_and_respects_the_deadline():
+    hinted = {"error": "all routes exhausted", "error_kind": "usage_limit", "retry_after_seconds": 120.0}
+    now = 1_000_000.0
+    roomy = now + 125 + loop._ROUTING_WAIT_MARGIN_SECONDS + 5
+    assert loop._routing_wait_seconds(hinted, roomy, 0, now=now) == 125.0
+    assert loop._routing_wait_seconds(hinted, roomy, loop._ROUTING_WAIT_ROUNDS, now=now) is None
+    assert loop._routing_wait_seconds(hinted, None, 0, now=now) is None  # no deadline bounds the wait
+    assert loop._routing_wait_seconds(hinted, roomy, 0, "critique", now=now) is None
+    assert loop._routing_wait_seconds(hinted, now + 60, 0, now=now) is None
+    assert loop._routing_wait_seconds({"error": "x", "error_kind": "usage_limit"}, roomy, 0, now=now) is None
+    assert loop._routing_wait_seconds({"error": None, "retry_after_seconds": 5}, roomy, 0, now=now) is None
+
+
+def test_routing_sleep_stops_on_a_pause_and_slices_the_wait():
+    clock = [0.0]
+    slept = []
+
+    def sleep(seconds):
+        slept.append(seconds)
+        clock[0] += seconds
+
+    loop._routing_sleep(70.0, None, sleep_fn=sleep, clock=lambda: clock[0])
+    assert slept == [30.0, 30.0, 10.0]
+
+    clock[0] = 0.0
+    calls = []
+
+    def paused():
+        calls.append(1)
+        raise loop._ResearchStop("paused", "operator paused the night")
+
+    with pytest.raises(loop._ResearchStop):
+        loop._routing_sleep(3600.0, None, check=paused, sleep_fn=sleep, clock=lambda: clock[0])
+    assert calls == [1]
+
+
+def test_a_whole_exhausted_chain_reports_when_its_first_route_reopens(tmp_path):
+    """The 2026-09-15 shape: every model in the chain at usage_limit, so the night must learn to wait."""
+    journal = routing.RoutingJournal(tmp_path / "routing.json")
+    now = [2_000_000.0]
+    calls = []
+
+    def exhausted(_prompt, model, **_kwargs):
+        calls.append(model)
+        return {"error": model + " usage limit", "error_kind": "usage_limit", "cost": None, "usage": {}}
+
+    response = routing.route_call(
+        "prompt",
+        requested_alias="opus",
+        chain=("opus", "astra", "sol"),
+        ledger=None,
+        max_cost=2.0,
+        purpose="generation",
+        call_fn=exhausted,
+        journal=journal,
+        retry_delay=0,
+        clock=lambda: now[0],
+    )
+    assert calls == ["claude-opus-5", "gpt-6-astra", "gpt-5.6-sol"]
+    assert response["error_kind"] == "usage_limit"
+    assert response["retry_after_seconds"] == routing.BREAKER_TTL_SECONDS["usage_limit"]
+    assert sum(float(item["charged_allowance"]) for item in response["_routing_attempts"]) == 0.0
+    # The loop waits it out instead of ending the slot, because a deadline still bounds the wait.
+    assert loop._routing_wait_seconds(response, now[0] + 8 * 3600, 0, now=now[0]) == 3605.0
+
+
+def test_a_chain_with_one_open_route_is_never_waited_on(tmp_path):
+    journal = routing.RoutingJournal(tmp_path / "routing.json")
+    now = [3_000_000.0]
+
+    def only_first_is_limited(_prompt, model, **_kwargs):
+        if model == "claude-opus-5":
+            return {"error": "usage limit", "error_kind": "usage_limit", "cost": None, "usage": {}}
+        return {"error": "boom", "error_kind": "invalid_response", "cost": 0.1, "usage": {}}
+
+    response = routing.route_call(
+        "prompt",
+        requested_alias="opus",
+        chain=("opus", "astra"),
+        ledger=None,
+        max_cost=2.0,
+        purpose="generation",
+        call_fn=only_first_is_limited,
+        journal=journal,
+        retry_delay=0,
+        clock=lambda: now[0],
+    )
+    assert "retry_after_seconds" not in response
+    assert loop._routing_wait_seconds(response, now[0] + 8 * 3600, 0, now=now[0]) is None

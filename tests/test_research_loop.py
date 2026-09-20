@@ -524,3 +524,250 @@ def test_consecutive_generation_failures_stop_the_run(tmp_path):
     candidates = evidence["development"]["candidates"]
     assert len(candidates) == 2
     assert candidates[0]["generation_diagnostic"] == "runs/provider-diagnostics/example.txt"
+
+
+class ScreenProblem(FakeProblem):
+    """Eight development targets, so a 25% screen covers the first two."""
+
+    DEV = [f"d{index}" for index in range(8)]
+    TARGETS = DEV + ["validation"]
+    DEVELOPMENT_TARGETS = DEV  # noqa: vulture (read by loop.py via the plugin)
+
+    @staticmethod
+    def records_load():
+        return {name: 0.0 for name in ScreenProblem.TARGETS + ["holdout"]}
+
+
+def _screen_runner(values, seen):
+    """Solver runner writing per-target values for the candidate and 1.0 for the incumbent."""
+
+    def run(_problem, solver, target, _budget, seed, out, **_kwargs):
+        source = open(solver, encoding="utf-8").read()
+        candidate = "candidate" in source
+        if candidate:
+            seen.append(target)
+        value = values.get(target, 1.0) if candidate else 1.0
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        if value is None:
+            return types.SimpleNamespace(returncode=1, stdout="", stderr="solver crashed")
+        with open(out, "w", encoding="utf-8") as stream:
+            json.dump({"value": value}, stream)
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    return run
+
+
+def _screen_run(tmp_path, values, *, screen_fraction=loop.DEFAULT_SCREEN_FRACTION):
+    champion = tmp_path / "best-fake" / "solver.py"
+    champion.parent.mkdir(parents=True, exist_ok=True)
+    champion.write_text("# incumbent\n", encoding="utf-8")
+    seen = []
+
+    def model_call(_prompt, provider, max_cost, ledger, purpose, **_kwargs):
+        reservation = ledger.reserve(max_cost, f"{provider}:{purpose}")
+        ledger.settle(reservation, 0.1)
+        return {
+            "text": "",
+            "code": "# candidate\nprint('candidate')\n",
+            "idea": "[kind: screening] try it",
+            "provider": provider,
+            "model": provider + "-model",
+            "cost": 0.1,
+            "usage": {},
+            "error": None,
+        }
+
+    evidence = loop.run_research(
+        "fake",
+        provider="fable",
+        run_id="screen-test",
+        call_budget=1.0,
+        seed_count=1,
+        min_effect=0.05,
+        evidence_root=tmp_path / "runs" / "research",
+        iters=1,
+        invocation_budget=2.0,
+        root=tmp_path,
+        problem_module=ScreenProblem,
+        call_model_fn=model_call,
+        solver_runner=_screen_runner(values, seen),
+        ledger=BudgetLedger(tmp_path / "ledger.json", 2.0),
+        paused_fn=lambda _root: False,
+        screen_fraction=screen_fraction,
+    )
+    return evidence, seen
+
+
+def test_screen_cells_takes_a_quarter_prefix_and_disables_itself_on_small_matrices():
+    matrix = [{"target": f"d{index}", "seed": 10_000} for index in range(8)]
+    assert [cell["target"] for cell in loop.screen_cells(matrix, 0.25)] == ["d0", "d1"]
+    assert [cell["target"] for cell in loop.screen_cells(matrix, 0.5)] == ["d0", "d1", "d2", "d3"]
+    assert loop.screen_cells(matrix, 0) == []
+    assert loop.screen_cells(matrix[:2], 0.25) == []  # a two-target matrix is entirely its own screen
+    seeded = [{"target": "d0", "seed": 1}, {"target": "d0", "seed": 2}, {"target": "d1", "seed": 1}]
+    seeded += [{"target": f"d{index}", "seed": 1} for index in range(2, 8)]
+    assert len(loop.screen_cells(seeded, 0.25)) == 3  # every seed of the screened targets
+
+
+def test_a_candidate_worse_on_every_screening_target_never_costs_the_rest_of_the_matrix(tmp_path):
+    evidence, seen = _screen_run(tmp_path, {"d0": 0.5, "d1": 0.5})
+    candidate = evidence["development"]["candidates"][0]
+    assert candidate["status"] == "screened_out"
+    assert candidate["promising"] is False
+    assert "worse than the incumbent on every screening target" in candidate["negative_result"]
+    assert sorted(seen) == ["d0", "d1"]
+    assert candidate["screen"]["outcome"] == "screened_out"
+    assert candidate["screen"]["cells"] == 2 and candidate["screen"]["of_cells"] == 8
+    # A prefix median is not a full-matrix gain, so it must never be reported as one.
+    assert candidate["median_gain"] is None
+    assert candidate["screen"]["median_gain"] < 0
+    assert candidate["comparison"]["median_gain"] < 0
+
+
+def test_a_candidate_that_survives_the_screen_is_judged_on_the_whole_matrix_exactly_once(tmp_path):
+    evidence, seen = _screen_run(tmp_path, {name: 2.0 for name in ScreenProblem.DEV})
+    candidate = evidence["development"]["candidates"][0]
+    assert candidate["status"] == "promising"
+    development = [target for target in seen if target in ScreenProblem.DEV]
+    assert sorted(development) == sorted(ScreenProblem.DEV)  # every target evaluated once, none twice
+    assert len(candidate["comparison"]["pairs"]) == 8
+    assert candidate["screen"]["outcome"] == "continued"
+
+
+def test_a_candidate_winning_on_one_screening_target_still_earns_the_full_matrix(tmp_path):
+    evidence, seen = _screen_run(tmp_path, {"d0": 0.5, "d1": 2.0})
+    candidate = evidence["development"]["candidates"][0]
+    assert candidate["status"] == "rejected"  # loses overall, but the screen did not decide that
+    assert sorted(seen) == sorted(ScreenProblem.DEV)
+    assert len(candidate["comparison"]["pairs"]) == 8
+
+
+def test_a_failed_screening_cell_ends_the_candidate_because_it_can_never_pass(tmp_path):
+    evidence, seen = _screen_run(tmp_path, {"d0": 2.0, "d1": None})
+    candidate = evidence["development"]["candidates"][0]
+    assert candidate["status"] == "evaluation_failed"
+    assert "can never pass the gate" in candidate["negative_result"]
+    assert sorted(seen) == ["d0", "d1"]
+
+
+def test_screening_off_evaluates_the_whole_matrix_for_a_losing_candidate(tmp_path):
+    evidence, seen = _screen_run(tmp_path, {"d0": 0.5, "d1": 0.5}, screen_fraction=0)
+    candidate = evidence["development"]["candidates"][0]
+    assert candidate["status"] == "rejected"
+    assert "screen" not in candidate
+    assert sorted(seen) == sorted(ScreenProblem.DEV)
+
+
+def test_development_profile_reports_time_used_and_the_last_candidate_delta():
+    rows = [
+        {"target": "d0", "seed": 1, "value": 100.0, "secs": 119.4, "score": -1.0, "failed": False},
+        {"target": "d1", "seed": 1, "value": 250.0, "secs": 12.0, "score": -2.0, "failed": False},
+        {"target": "d2", "seed": 1, "secs": 60.0, "score": -100.0, "failed": True},
+    ]
+    comparison = {"pairs": [{"target": "d0", "gain": -0.0123}, {"target": "d1", "gain": 0.004}]}
+    table = loop.development_profile(rows, {"d0": 99.0, "d1": 240.0, "d2": None}, 120, comparison)
+    lines = table.splitlines()
+    assert lines[0].startswith("target | reference | incumbent | seconds used")
+    assert lines[1] == "d0 | 99 | 100 | 119 | 120 | -1.230%"
+    assert lines[2] == "d1 | 240 | 250 | 12 | 120 | +0.400%"  # returns early, far under its allowance
+    assert lines[3] == "d2 | - | failed | 60 | 120 | -"
+
+
+def test_the_generation_prompt_carries_the_profile_and_never_a_hidden_target(tmp_path):
+    champion = tmp_path / "best-fake" / "solver.py"
+    champion.parent.mkdir(parents=True)
+    champion.write_text("# incumbent\n", encoding="utf-8")
+    instance = loop.Loop("fake", problem_module=FakeProblem, root=tmp_path)
+    profile = loop.development_profile(
+        [{"target": "dev", "seed": 1, "value": 1.0, "secs": 3.0, "score": 1.0, "failed": False}],
+        {"dev": 0.0},
+        5,
+        None,
+    )
+    prompt = instance.build_research_prompt(
+        "# incumbent\n", ["dev"], {"dev": 0.0}, [], hidden_targets=("holdout",), profile=profile
+    )
+    assert "DEVELOPMENT PROFILE" in prompt and "seconds used" in prompt
+    assert "dev | 0 | 1 | 3 | 5 | -" in prompt
+    assert "holdout" not in prompt
+
+    without = instance.build_research_prompt("# incumbent\n", ["dev"], {"dev": 0.0}, [], hidden_targets=("holdout",))
+    assert "DEVELOPMENT PROFILE" not in without
+
+
+def _diff_run(tmp_path, responses, *, iters=1):
+    champion = tmp_path / "best-fake" / "solver.py"
+    champion.parent.mkdir(parents=True, exist_ok=True)
+    champion.write_text("# incumbent\nvalue = 1\n", encoding="utf-8")
+    prompts = []
+    queue = list(responses)
+
+    def model_call(prompt, provider, max_cost, ledger, purpose, **_kwargs):
+        reservation = ledger.reserve(max_cost, f"{provider}:{purpose}")
+        ledger.settle(reservation, 0.1)
+        prompts.append(prompt)
+        body = queue.pop(0)
+        return {
+            "text": body,
+            "code": body,
+            "idea": "[kind: editing] change one line",
+            "provider": provider,
+            "model": provider + "-model",
+            "cost": 0.1,
+            "usage": {},
+            "error": None,
+        }
+
+    evidence = loop.run_research(
+        "fake",
+        provider="fable",
+        run_id="diff-test",
+        call_budget=1.0,
+        seed_count=1,
+        min_effect=0.05,
+        evidence_root=tmp_path / "runs" / "research",
+        iters=iters,
+        invocation_budget=4.0,
+        root=tmp_path,
+        problem_module=FakeProblem,
+        call_model_fn=model_call,
+        solver_runner=_runner,
+        ledger=BudgetLedger(tmp_path / "ledger.json", 4.0),
+        paused_fn=lambda _root: False,
+        generation_mode="diff",
+    )
+    return evidence, prompts
+
+
+_GOOD_EDIT = "<<<<<<< SEARCH\n# incumbent\n=======\n# fable candidate\n>>>>>>> REPLACE"
+_BAD_EDIT = "<<<<<<< SEARCH\n# this line is not in the file\n=======\n# fable candidate\n>>>>>>> REPLACE"
+
+
+def test_diff_mode_asks_for_edit_blocks_and_evaluates_the_patched_file(tmp_path):
+    evidence, prompts = _diff_run(tmp_path, [_GOOD_EDIT])
+    assert "<<<<<<< SEARCH" in prompts[0] and "```python block with the full file" not in prompts[0]
+    candidate = evidence["development"]["candidates"][0]
+    assert candidate["generation_mode"] == "diff"
+    assert candidate["status"] in {"promising", "rejected"}  # it was evaluated, not refused
+    patched = (tmp_path / candidate["candidate_path"]).read_text(encoding="utf-8")
+    assert patched == "# fable candidate\nvalue = 1\n"
+
+
+def test_an_edit_that_does_not_fit_the_file_is_a_failed_proposal_not_a_provider_failure(tmp_path):
+    evidence, _ = _diff_run(tmp_path, [_BAD_EDIT, _GOOD_EDIT], iters=2)
+    first, second = evidence["development"]["candidates"][:2]
+    assert first["status"] == "patch_failed"
+    assert "did not match the file" in first["negative_result"]
+    assert first["candidate_path"] is None if "candidate_path" in first else True
+    # The run continued to the next iteration instead of tripping the consecutive-failure stop.
+    assert second["status"] in {"promising", "rejected"}
+    assert evidence["usage"]["calls"] == 2
+
+
+def test_full_mode_is_the_default_and_still_asks_for_the_whole_file(tmp_path):
+    champion = tmp_path / "best-fake" / "solver.py"
+    champion.parent.mkdir(parents=True)
+    champion.write_text("# incumbent\n", encoding="utf-8")
+    instance = loop.Loop("fake", problem_module=FakeProblem, root=tmp_path)
+    prompt = instance.build_research_prompt("# incumbent\n", ["dev"], {"dev": 0.0}, [])
+    assert "```python block with the full file" in prompt and "<<<<<<< SEARCH" not in prompt

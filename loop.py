@@ -19,6 +19,7 @@ import math
 import os
 import re
 import shutil
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -30,6 +31,7 @@ from pathlib import Path
 
 import evaluation
 import island_evolution
+import patching
 import research_context
 import verification_contract
 from model_registry import (
@@ -347,6 +349,8 @@ th{{background:#eee}}.win{{background:#c8f7c5}}h1{{margin:0}}</style>
         history_total=None,
         mission=None,
         context_blocks=None,
+        profile=None,
+        generation_mode="full",
     ):
         """Build a prompt from development data only."""
         if context_blocks is None:
@@ -364,6 +368,17 @@ th{{background:#eee}}.win{{background:#c8f7c5}}h1{{margin:0}}</style>
                 line for line in self.P.PROMPT.splitlines() if not any(target in line for target in hidden)
             )
         board = "\n".join(f"{target}: reference={records.get(target)}" for target in targets)
+        output_format = (
+            patching.DIFF_OUTPUT_FORMAT
+            if generation_mode == "diff"
+            else "OUTPUT FORMAT: the tagged IDEA line, then exactly one ```python block with the full file."
+            " Nothing else."
+        )
+        profile_block = (
+            f"\nDEVELOPMENT PROFILE (this run's matrix; seconds used is what the incumbent actually spent):\n{profile}\n"
+            if profile
+            else ""
+        )
         memory = summarize_development(
             history,
             hidden_targets=hidden_targets,
@@ -419,6 +434,7 @@ CURRENT INCUMBENT solver.py:
 
 DEVELOPMENT REFERENCES ONLY:
 {board}
+{profile_block}
 
 DEVELOPMENT HISTORY ONLY:
 {prior}
@@ -436,7 +452,7 @@ difference addresses the observed failure. A changed mechanism within a previous
 that explanation is specific. Treat every expected effect as a hypothesis; do not claim guaranteed gains or
 correctness.
 
-OUTPUT FORMAT: the tagged IDEA line, then exactly one ```python block with the full file. Nothing else."""
+{output_format}"""
         leaked = [str(target) for target in hidden_targets if mentions_target(prompt, target)]
         if leaked:
             raise ValueError(f"generation prompt exposes withheld targets: {leaked}")
@@ -666,6 +682,42 @@ def _auto_route_chain(problem, history, chain, disabled_families=()):
     return (primary, *(alias for alias in chain if alias != primary)), allocation
 
 
+_ROUTING_WAIT_ROUNDS = 4
+_ROUTING_WAIT_MARGIN_SECONDS = 600.0
+
+
+def _routing_wait_seconds(response, deadline, wait_round, purpose="generation", now=None):
+    """Seconds to wait before re-routing, or None when the call is done or waiting cannot help.
+
+    Waiting is only ever worth it for a generation that still has a deadline to spend: a critique that cannot
+    route degrades to promising_unreviewed, and with no deadline there is nothing bounding the wait.
+    """
+    if purpose != "generation" or deadline is None or wait_round >= _ROUTING_WAIT_ROUNDS:
+        return None
+    if not response.get("error"):
+        return None
+    retry_after = response.get("retry_after_seconds")
+    if not isinstance(retry_after, (int, float)) or isinstance(retry_after, bool) or not math.isfinite(retry_after):
+        return None
+    wait = max(30.0, float(retry_after) + 5.0)
+    now = time.time() if now is None else float(now)
+    if now + wait + _ROUTING_WAIT_MARGIN_SECONDS > deadline:
+        return None
+    return wait
+
+
+def _routing_sleep(seconds, deadline, check=None, sleep_fn=time.sleep, clock=time.time, slice_seconds=30.0):
+    """Sleep in slices so a pause or the deadline still interrupts a long breaker wait."""
+    end = clock() + seconds
+    while True:
+        remaining = end - clock()
+        if remaining <= 0 or (deadline is not None and clock() >= deadline):
+            return
+        if check:
+            check()
+        sleep_fn(min(slice_seconds, remaining))
+
+
 def _call_with_budget(
     call_model_fn,
     prompt,
@@ -685,6 +737,7 @@ def _call_with_budget(
     routing_scope=None,
     legacy_provider_callback=False,
     allowance_remaining=None,
+    wait_check=None,
 ):
     before = ledger.snapshot()
     timeout = 900.0 if deadline is None else min(900.0, deadline - time.time())
@@ -706,24 +759,34 @@ def _call_with_budget(
         requested_alias = arm_alias(provider, routing_chain)
         if model:
             requested_alias = alias_for_model(model)
-        response = route_call(
-            prompt,
-            requested_alias=requested_alias,
-            policy=routing_policy,
-            chain=routing_chain,
-            disabled_families=disabled_families,
-            ledger=ledger,
-            max_cost=call_budget,
-            purpose=purpose,
-            call_fn=call_model_fn,
-            journal=routing_journal,
-            deadline=deadline,
-            checkpoint=routing_checkpoint,
-            scope=routing_scope,
-            legacy_provider_callback=legacy_provider_callback,
-            allowance_remaining=allowance_remaining,
-        )
-        attempts = response.get("_routing_attempts", [])
+        attempts = []
+        for wait_round in range(_ROUTING_WAIT_ROUNDS + 1):
+            response = route_call(
+                prompt,
+                requested_alias=requested_alias,
+                policy=routing_policy,
+                chain=routing_chain,
+                disabled_families=disabled_families,
+                ledger=ledger,
+                max_cost=call_budget,
+                purpose=purpose,
+                call_fn=call_model_fn,
+                journal=routing_journal,
+                deadline=deadline,
+                checkpoint=routing_checkpoint,
+                scope=routing_scope,
+                legacy_provider_callback=legacy_provider_callback,
+                allowance_remaining=allowance_remaining,
+            )
+            attempts.extend(response.get("_routing_attempts", []))
+            wait = _routing_wait_seconds(response, deadline, wait_round, purpose)
+            if wait is None:
+                break
+            # Every route sits behind a breaker that clears on its own (usage window, hung CLI): wait it out
+            # instead of ending the slot with hours of deadline left (2026-09-15, 2026-09-18).
+            print(f"[routing] all routes breaker-blocked; waiting {wait:.0f}s before retry {wait_round + 1}")
+            sys.stdout.flush()
+            _routing_sleep(wait, deadline, check=wait_check)
     after = ledger.snapshot()
     physical = [item for item in attempts if item.get("physical", item.get("status") != "skipped")]
     usage["calls"] += len(physical)
@@ -757,6 +820,87 @@ def _call_with_budget(
     ):
         raise _ResearchStop("provider_unavailable", response.get("error") or "subscription provider unavailable")
     return response
+
+
+DEFAULT_SCREEN_FRACTION = 0.25
+
+
+def _profile_number(value, digits=4):
+    if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(float(value)):
+        return "-"
+    return f"{float(value):.{digits}g}"
+
+
+def development_profile(incumbent_rows, records, time_budget, last_comparison=None):
+    """Per-target incumbent numbers for the prompt: value, gap to reference, and time actually used.
+
+    The scoreboard alone says which targets are behind; it does not say whether the solver is spending its
+    time budget or returning early, which is the difference between "search harder" and "search better".
+    """
+    deltas = {}
+    if isinstance(last_comparison, dict):
+        for pair in last_comparison.get("pairs") or []:
+            deltas.setdefault(pair["target"], []).append(pair["gain"])
+    ordered = []
+    by_target = {}
+    for row in incumbent_rows:
+        target = row["target"]
+        if target not in by_target:
+            by_target[target] = {"values": [], "secs": [], "failed": 0}
+            ordered.append(target)
+        entry = by_target[target]
+        if isinstance(row.get("value"), (int, float)) and not isinstance(row.get("value"), bool):
+            entry["values"].append(float(row["value"]))
+        if isinstance(row.get("secs"), (int, float)) and not isinstance(row.get("secs"), bool):
+            entry["secs"].append(float(row["secs"]))
+        entry["failed"] += bool(row.get("failed"))
+    lines = ["target | reference | incumbent | seconds used | seconds allowed | last candidate delta"]
+    for target in ordered:
+        entry = by_target[target]
+        value = statistics.median(entry["values"]) if entry["values"] else None
+        seconds = max(entry["secs"]) if entry["secs"] else None
+        delta = statistics.median(deltas[target]) if deltas.get(target) else None
+        incumbent = "failed" if entry["failed"] and not entry["values"] else _profile_number(value, 8)
+        lines.append(
+            f"{target} | {_profile_number(records.get(target), 8)} | {incumbent} | "
+            f"{_profile_number(seconds, 3)} | {_profile_number(time_budget, 3)} | "
+            + (f"{delta * 100:+.3f}%" if delta is not None else "-")
+        )
+    return "\n".join(lines)
+
+
+def screen_cells(matrix, fraction):
+    """The leading cells a candidate must survive before the rest of the matrix is spent on it.
+
+    Measured on 2026-09-14/16/17 (77 candidates with full pairs): a quarter-matrix prefix screened 6 of 44
+    rejected candidates and none of the 33 promising ones, recovering 5.8% of development solver seconds.
+    A half-matrix screen saved 1.3%; a two-target screen saved more but discarded a candidate that went on
+    to pass, so the fraction is deliberately conservative.
+    """
+    if not fraction or float(fraction) <= 0:
+        return []
+    targets = []
+    for cell in matrix:
+        if cell["target"] not in targets:
+            targets.append(cell["target"])
+    count = max(2, math.ceil(len(targets) * float(fraction)))
+    if count >= len(targets):
+        return []
+    leading = set(targets[:count])
+    return [cell for cell in matrix if cell["target"] in leading]
+
+
+def screen_verdict(comparison):
+    """Why a screened candidate cannot earn the rest of the matrix, or None to keep evaluating it."""
+    if comparison["candidate_failures"]:
+        # compare_paired requires candidate_failures == 0, so a failed cell is already disqualifying:
+        # finishing the matrix cannot change the verdict (2026-09-14: 15 further cells, ~15 minutes).
+        failed = next(pair["target"] for pair in comparison["pairs"] if pair["candidate_failed"])
+        return ("evaluation_failed", f"failed on {failed} during the screen; a failed cell can never pass the gate")
+    if comparison["pairs"] and all(pair["gain"] < 0 for pair in comparison["pairs"]):
+        targets = sorted({pair["target"] for pair in comparison["pairs"]})
+        return ("screened_out", f"worse than the incumbent on every screening target ({', '.join(targets)})")
+    return None
 
 
 def _check_research_control(root, deadline, paused_fn):
@@ -830,6 +974,8 @@ def run_research(
     targets=None,
     refresh_records=False,
     max_generation_failures=2,
+    screen_fraction=DEFAULT_SCREEN_FRACTION,
+    generation_mode="full",
     routing_policy="scheduled",
     routing_chain=DEFAULT_CHAIN,
     disabled_families=(),
@@ -1131,6 +1277,7 @@ def run_research(
     population = None
     development_matrix = []
     incumbent_rows = []
+    last_comparison = None
     generation_stop = None
     consecutive_generation_failures = 0
     started_at = _utc_now()
@@ -1404,6 +1551,13 @@ def run_research(
                     open(Path(root, path), encoding="utf-8").read() for path in generation_plan["parent_paths"]
                 ]
                 prompt_parent = parent_sources[-1]
+            # Edit blocks are written against one parent file, so a crossover prompt keeps the full-file
+            # format; every other generation can edit the incumbent in place.
+            iteration_generation_mode = (
+                generation_mode
+                if (not generation_plan or generation_plan["operator"] == "mutation") and prompt_parent
+                else "full"
+            )
             if evolution_enabled and iteration_pending:
                 prompt_path = iteration_pending[0]["_prompt_file"]
                 prompt = open(iteration_pending[0]["_prompt_file"], encoding="utf-8").read()
@@ -1420,6 +1574,8 @@ def run_research(
                     development_memory["total_observations"],
                     mission,
                     prompt_context,
+                    profile=development_profile(incumbent_rows, records, budget, last_comparison),
+                    generation_mode=iteration_generation_mode,
                 )
                 if generation_plan and generation_plan["operator"] == "crossover":
                     from problems.matrix_multiplication.crossover import build_crossover_prompt
@@ -1576,6 +1732,33 @@ def run_research(
                         prompt_hash=generation_plan["prompt_hash"],
                     )
                 code = response.get("code")
+                patch_error = None
+                if iteration_generation_mode == "diff" and not response.get("error"):
+                    body = code if patching.parse_blocks(code) else (response.get("text") or "")
+                    code, patch_error = patching.apply_blocks(prompt_parent, body)
+                if patch_error:
+                    # The model answered but its edits do not fit the file. That is a failed proposal, not a
+                    # provider failure, so it must not count toward the consecutive-failure stop.
+                    record.update(
+                        status="patch_failed",
+                        median_gain=None,
+                        valid=False,
+                        novel=False,
+                        promising=False,
+                        negative_result=patch_error,
+                        generation_mode="diff",
+                    )
+                    append_development_record(record)
+                    candidate_records.append(record)
+                    pending_generations[:] = [
+                        item
+                        for item in pending_generations
+                        if not (item.get("iteration") == iteration and item.get("provider") == name)
+                    ]
+                    checkpoint_development()
+                    continue
+                if iteration_generation_mode == "diff":
+                    record["generation_mode"] = "diff"
                 if response.get("error") or not code:
                     consecutive_generation_failures += 1
                     record.update(
@@ -1624,23 +1807,97 @@ def run_research(
                 candidate_path = os.path.join(candidate_dir, "solver.py")
                 with open(candidate_path, "w", encoding="utf-8", newline="\n") as stream:
                     stream.write(code)
-                candidate_rows = loop.evaluate_matrix(
-                    candidate_path,
-                    development_matrix,
-                    budget,
-                    os.path.join(candidate_dir, "development"),
-                    workers,
-                    solver_runner,
-                    deadline,
-                )
-                candidate_rows = evaluation.score_rows(plugin, records, candidate_rows)
-                comparison = evaluation.compare_paired(
-                    incumbent_rows,
-                    candidate_rows,
-                    min_effect,
-                    min_seeds=1,
-                    policy=comparison_policy,
-                )
+                candidate_development_dir = os.path.join(candidate_dir, "development")
+                screening_cells = screen_cells(development_matrix, screen_fraction)
+                screening_keys = {(cell["target"], cell["seed"]) for cell in screening_cells}
+                screened = None
+                candidate_rows = []
+                if screening_cells:
+                    screen_rows = evaluation.score_rows(
+                        plugin,
+                        records,
+                        loop.evaluate_matrix(
+                            candidate_path,
+                            screening_cells,
+                            budget,
+                            candidate_development_dir,
+                            workers,
+                            solver_runner,
+                            deadline,
+                        ),
+                    )
+                    screen_comparison = evaluation.compare_paired(
+                        [row for row in incumbent_rows if (row["target"], row["seed"]) in screening_keys],
+                        screen_rows,
+                        min_effect,
+                        min_seeds=1,
+                        policy="median",
+                    )
+                    screened = screen_verdict(screen_comparison)
+                    last_comparison = screen_comparison
+                    candidate_rows = screen_rows
+                    record["screen"] = {
+                        "fraction": float(screen_fraction),
+                        "targets": sorted({cell["target"] for cell in screening_cells}),
+                        "cells": len(screening_cells),
+                        "of_cells": len(development_matrix),
+                        "median_gain": screen_comparison["median_gain"],
+                        "outcome": screened[0] if screened else "continued",
+                    }
+                if screened is None:
+                    remaining = [
+                        cell for cell in development_matrix if (cell["target"], cell["seed"]) not in screening_keys
+                    ]
+                    if remaining:
+                        candidate_rows = candidate_rows + evaluation.score_rows(
+                            plugin,
+                            records,
+                            loop.evaluate_matrix(
+                                candidate_path,
+                                remaining,
+                                budget,
+                                candidate_development_dir,
+                                workers,
+                                solver_runner,
+                                deadline,
+                            ),
+                        )
+                    by_cell = {(row["target"], row["seed"]): row for row in candidate_rows}
+                    candidate_rows = [by_cell[(cell["target"], cell["seed"])] for cell in development_matrix]
+                    comparison = evaluation.compare_paired(
+                        incumbent_rows,
+                        candidate_rows,
+                        min_effect,
+                        min_seeds=1,
+                        policy=comparison_policy,
+                    )
+                    last_comparison = comparison
+                else:
+                    status, reason = screened
+                    record.update(
+                        status=status,
+                        candidate_path=_repo_relative(candidate_path, root),
+                        _candidate_file=candidate_path,
+                        candidate_hash=_sha256(candidate_path),
+                        # The screen measured a prefix of the matrix, so this candidate has no full-matrix
+                        # gain. Reporting the prefix median here would let a partial number be compared with
+                        # full-matrix gains and be picked as a night's best result.
+                        median_gain=None,
+                        comparison=screen_comparison,
+                        negative_result=reason,
+                        valid=status != "evaluation_failed",
+                        development_verified=False,
+                        promising=False,
+                    )
+                    append_development_record(record)
+                    candidate_records.append(record)
+                    pending_generations[:] = [
+                        item
+                        for item in pending_generations
+                        if not (item.get("iteration") == iteration and item.get("provider") == name)
+                    ]
+                    checkpoint_development()
+                    continue
                 record.update(
                     status="promising" if comparison["passes"] else "rejected",
                     candidate_path=_repo_relative(candidate_path, root),
@@ -1974,6 +2231,9 @@ def run_research(
         solver_seconds=round(loop.solver_seconds, 3),
     )
     evidence["solver_evaluations"] = loop.solver_evaluations
+    # An --eval-only slot re-verifies the incumbent and makes no model call; label it so the ledger and the
+    # morning brief do not read its zero generations as a slot that did nothing (2026-09-14..18: pglib_opf).
+    evidence["kind"] = "validation" if iters == 0 else "research"
     evidence["solver_seconds"] = round(loop.solver_seconds, 3)
     evidence.update(usage=usage, finished_at=finished)
     state.update(status=evidence["status"], usage=usage, updated_at=finished, finished_at=finished)
@@ -2226,6 +2486,19 @@ def cli_main(argv=None):
         help="stop generating after this many consecutive provider failures; 0 disables",
     )
     parser.add_argument(
+        "--generation-mode",
+        choices=("full", "diff"),
+        default="full",
+        help="full rewrites the whole solver file each iteration; diff asks for SEARCH/REPLACE edit blocks",
+    )
+    parser.add_argument(
+        "--screen-fraction",
+        type=float,
+        default=DEFAULT_SCREEN_FRACTION,
+        help="evaluate this leading fraction of development targets first and drop a candidate that loses on"
+        " every one of them or fails any of them; 0 disables the screen",
+    )
+    parser.add_argument(
         "--no-publish",
         action="store_true",
         help="compatibility flag; research runs always stop at local evidence",
@@ -2263,6 +2536,8 @@ def cli_main(argv=None):
         targets=args.targets.split(",") if args.targets else None,
         refresh_records=args.refresh_records,
         max_generation_failures=args.max_generation_failures,
+        screen_fraction=args.screen_fraction,
+        generation_mode=args.generation_mode,
         routing_policy=args.routing,
         routing_chain=args.model_chain,
         disabled_families=args.disable_family,

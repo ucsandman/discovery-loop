@@ -16,9 +16,11 @@ _NEGATIVE_STATUSES = {
     "rejected",
     "evaluation_failed",
     "promising_unreviewed",
+    "screened_out",
+    "patch_failed",
 }
 _DEVELOPMENT_STATUSES = _NEGATIVE_STATUSES | {"evaluated", "promising"}
-_VALID_DEVELOPMENT_STATUSES = {"rejected", "promising", "promising_unreviewed", "evaluated"}
+_VALID_DEVELOPMENT_STATUSES = {"rejected", "promising", "promising_unreviewed", "evaluated", "screened_out"}
 _ABSOLUTE_PATH = re.compile(r"(?<![:\w])(?:[A-Za-z]:[\\/]|/(?!/))[A-Za-z0-9_.~\\/-]+")
 _FINGERPRINT = re.compile(r"[0-9a-f]{64}")
 _PROVIDER_FAMILIES = {"anthropic", "openai", "fable", "astra", "paired"}

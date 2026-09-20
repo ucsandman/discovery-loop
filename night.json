@@ -10,6 +10,7 @@
     "budget_accounting": "reported_total_cost_usd API-equivalent; monthly subscription CLIs only",
     "provider_caps_usd": {"fable": 40.0, "astra": 40.0, "paired": 40.0},
     "heartbeat_seconds": 15,
+    "preflight_retry_minutes": 30,
     "cpu_fraction": 0.5,
     "evidence_root": "runs/research",
     "routing": {
@@ -55,6 +56,7 @@
   "slots": [
     {
       "id": "cvrp-research", "problem": "cvrp", "kind": "research",
+      "generation_mode": "diff",
       "minutes": 210, "research_minutes": 180, "retro_minutes": 30,
       "slot_budget_usd": 40.0, "per_call_budget_usd": 2.0, "retro_budget_usd": 5.0,
       "iters": 200, "seed_count": 3, "min_effect": 0.0001,

@@ -58,19 +58,37 @@ def run_rows(root, problem=None) -> list[dict]:
         memory = read_json(research / "development-history" / f"{name}-retro.json", None)
         gains = [_finite(c.get("median_gain")) for c in candidates if isinstance(c, dict)]
         gains = [g for g in gains if g is not None]
+        evaluations = int(evidence.get("solver_evaluations") or 0)
+        kind = evidence.get("kind")
+        if kind not in ("research", "validation"):
+            # Evidence written before the kind label. An eval-only run finished with evaluations and no model
+            # call at all; a research run that died on its first call also has no candidates, so the status has
+            # to be part of the test or every failed night is mislabelled as validation.
+            kind = (
+                "validation"
+                if evidence.get("status") == "completed"
+                and not candidates
+                and evaluations
+                and not int(usage.get("calls") or 0)
+                else "research"
+            )
         rows.append(
             {
                 "run_id": evidence.get("run_id") if isinstance(evidence.get("run_id"), str) else run_dir.parent.name,
                 "problem": name,
+                "kind": kind,
                 "provider": evidence.get("provider"),
                 "status": evidence.get("status"),
                 "iterations": usage.get("iterations"),
                 "candidates": len(candidates),
+                "evaluations": evaluations,
                 "best_gain": max(gains) if gains else None,
                 "confirmed": evidence.get("confirmed") is True,
                 "publishable": evidence.get("publishable") is True,
                 "charged_usd": _finite(usage.get("charged")),
-                "retro": "completed" if retro_ok else ("failed" if isinstance(retro, dict) else "missing"),
+                "retro": "n/a"
+                if kind == "validation"
+                else ("completed" if retro_ok else ("failed" if isinstance(retro, dict) else "missing")),
                 "next_experiment": (
                     (memory.get("next_experiment") or "")[:120]
                     if isinstance(memory, dict) and memory.get("source_run_id") == evidence.get("run_id")
@@ -120,9 +138,12 @@ def list_runs(root, stream, problem=None) -> int:
     )
     for row in rows:
         gain = f"{row['best_gain'] * 100:+.2f}%" if row["best_gain"] is not None else "-"
+        if row["kind"] == "validation":
+            gain = f"{row['evaluations']} evals"
         charged = f"${row['charged_usd']:.2f}" if row["charged_usd"] is not None else "-"
+        status = str(row["status"]) if row["kind"] == "research" else f"validation:{row['status']}"
         print(
-            f"{row['run_id']:<28} {row['problem']:<22} {str(row['status']):<20} {row['candidates']:>4} {gain:>10} "
+            f"{row['run_id']:<28} {row['problem']:<22} {status:<20} {row['candidates']:>4} {gain:>10} "
             f"{str(row['confirmed']):<5} {charged:>8} {row['retro']:<9} {row['next_experiment']}",
             file=stream,
         )

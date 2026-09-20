@@ -1,0 +1,63 @@
+IDEA: [kind: LNS / relaxation-guided neighbourhood selection (RINS)] Compute the root LP relaxation once in an isolated HiGHS instance and, on alternating LNS rounds, fix preferentially the integer variables where the incumbent agrees with the LP relaxation (RINS neighbourhood) instead of a purely random subset, alternating with the existing random fixing for diversification.
+
+<<<<<<< SEARCH
+Phase 2: fix a random subset of the integer variables at the incumbent, re-solve the sub-MIP with a short time
+limit, keep improvements; the fixed fraction adapts (widen when a sub-MIP is solved to optimality, tighten when
+it times out).
+=======
+Phase 2: fix a subset of the integer variables at the incumbent, re-solve the sub-MIP with a short time
+limit, keep improvements; the fixed fraction adapts (widen when a sub-MIP is solved to optimality, tighten when
+it times out). The subset alternates between a RINS neighbourhood (fix variables where the incumbent agrees
+with the root LP relaxation, freeing the disagreeing ones) and a purely random subset for diversification.
+>>>>>>> REPLACE
+
+<<<<<<< SEARCH
+    # phase 2: adaptive LNS around the incumbent
+    fix = 0.8
+    while time.time() < deadline - 2:
+        k = int(fix * len(int_idx))
+        chosen = rng.choice(int_idx, size=k, replace=False).astype(np.int32)
+        vals = np.round(best["x"][chosen])
+=======
+    # root LP relaxation reference for RINS-style neighbourhood selection (best effort, isolated instance)
+    lp_ref = None
+    if deadline - time.time() > 8 and len(int_idx) <= 300000:
+        try:
+            g = highspy.Highs()
+            g.silent()
+            g.readModel(instance_path(a.target))
+            g.setOptionValue("threads", 2)
+            g.setOptionValue("random_seed", int(a.seed) % (2**31 - 1))
+            g.setOptionValue("time_limit", float(max(1.0, min(0.15 * a.time, deadline - time.time() - 5))))
+            for j in int_idx:
+                g.changeColIntegrality(int(j), highspy.HighsVarType.kContinuous)
+            g.run()
+            if g.getInfo().primal_solution_status == highspy.SolutionStatus.kSolutionStatusFeasible:
+                v = np.array(g.getSolution().col_value, float)
+                if v.size == n and np.all(np.isfinite(v)):
+                    lp_ref = v
+            try:
+                g.clear()
+            except Exception:
+                pass
+        except Exception:
+            lp_ref = None
+
+    # phase 2: adaptive LNS around the incumbent
+    fix = 0.8
+    use_rins = lp_ref is not None
+    while time.time() < deadline - 2:
+        k = int(fix * len(int_idx))
+        if use_rins and k > 0:
+            agree = int_idx[np.abs(lp_ref[int_idx] - np.round(best["x"][int_idx])) <= 1e-6]
+            if len(agree) >= k:
+                chosen = rng.choice(agree, size=k, replace=False).astype(np.int32)
+            else:
+                rest = np.setdiff1d(int_idx, agree, assume_unique=True)
+                extra = rng.choice(rest, size=int(k - len(agree)), replace=False)
+                chosen = np.concatenate([agree, extra]).astype(np.int32)
+        else:
+            chosen = rng.choice(int_idx, size=k, replace=False).astype(np.int32)
+        use_rins = (lp_ref is not None) and not use_rins  # alternate RINS / random neighbourhoods
+        vals = np.round(best["x"][chosen])
+>>>>>>> REPLACE

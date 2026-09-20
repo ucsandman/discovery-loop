@@ -19,6 +19,21 @@ MODEL_BREAKERS = frozenset({"usage_limit", "quota_exhausted", "model_unavailable
 FAMILY_BREAKERS = frozenset({"authentication", "unavailable"})
 FALLBACK_ERRORS = RETRYABLE | MODEL_BREAKERS | FAMILY_BREAKERS
 FALLBACK_ERRORS = FALLBACK_ERRORS | {"infrastructure_error"}
+# A CLI that exits 1 once (2026-09-17: four such exits, each a lost generation) is retried once on the same model.
+SAME_MODEL_RETRY = RETRYABLE | {"infrastructure_error"}
+# Breakers that clear on their own: subscription windows reset mid-night (2026-09-15: every model at usage_limit
+# at 02:06, night written off) and a hung CLI is not a dead model (2026-09-18: two 900 s Opus timeouts ended the
+# night after one logical call). Authentication and model_unavailable stay open for the night.
+BREAKER_TTL_SECONDS = {
+    "usage_limit": 3600.0,
+    "quota_exhausted": 3600.0,
+    "timeout": 1200.0,
+    "capacity": 1200.0,
+    "rate_limited_unclassified": 1200.0,
+}
+# Refused before any generation: the CLI reports the limit without spending tokens, so the reservation must not
+# be consumed (2026-09-15: four refusals charged $4 of the night's allowance and produced nothing).
+ZERO_CHARGE_ERRORS = frozenset({"usage_limit", "quota_exhausted"})
 
 
 def _iso() -> str:
@@ -124,8 +139,12 @@ class RoutingJournal:
 
         return self._mutate(update)
 
-    def open_breaker(self, spec, error_kind):
+    def open_breaker(self, spec, error_kind, now=None):
+        now = time.time() if now is None else float(now)
         record = {"reason": error_kind, "opened_at": _iso()}
+        ttl = BREAKER_TTL_SECONDS.get(error_kind)
+        if ttl is not None:
+            record["expires_at_epoch"] = now + ttl
 
         def update(state):
             if error_kind in FAMILY_BREAKERS:
@@ -134,6 +153,36 @@ class RoutingJournal:
                 state["model_breakers"][spec["alias"]] = record
 
         self._mutate(update)
+
+    def expire_breakers(self, now=None):
+        """Drop breakers whose window has passed; returns the aliases and families released.
+
+        The journal is shared by the research, critique and retro processes, so it is only rewritten when a
+        breaker has actually expired.
+        """
+        now = time.time() if now is None else float(now)
+
+        def expired(state):
+            return [
+                (kind, key)
+                for kind in ("model_breakers", "family_breakers")
+                for key, record in state[kind].items()
+                if isinstance(record.get("expires_at_epoch"), (int, float))
+                and not isinstance(record.get("expires_at_epoch"), bool)
+                and float(record["expires_at_epoch"]) <= now
+            ]
+
+        if not expired(self.state):
+            return []
+
+        def update(state):
+            released = []
+            for kind, key in expired(state):
+                del state[kind][key]
+                released.append(key)
+            return released
+
+        return self._mutate(update)
 
     def recover_interrupted(self, scope=None):
         """Fail closed only for orphaned attempts; live processes retain ownership."""
@@ -157,6 +206,30 @@ class RoutingJournal:
 
         self._mutate(update)
         return recovered
+
+
+def chain_retry_after(journal, candidates, disabled, now):
+    """Seconds until the first route in this chain reopens, or None if waiting cannot help.
+
+    Every candidate must be behind a breaker that expires on its own. A disabled family, an authentication
+    breaker or any route still open means there is nothing to wait for.
+    """
+    state = journal.state
+    expiries = []
+    for alias in candidates:
+        spec = model_spec(alias)
+        if spec["family"] in disabled:
+            return None
+        record = state["family_breakers"].get(spec["family"]) or state["model_breakers"].get(alias)
+        if not record:
+            return None
+        expiry = record.get("expires_at_epoch")
+        if not isinstance(expiry, (int, float)) or isinstance(expiry, bool):
+            return None
+        expiries.append(float(expiry))
+    if not expiries:
+        return None
+    return max(0.0, min(expiries) - now)
 
 
 def _error_response(requested, error_kind, message, attempts, logical_call_id):
@@ -197,6 +270,7 @@ def route_call(
     allowance_remaining=None,
     retry_delay=1.0,
     sleep_fn=time.sleep,
+    clock=time.time,
 ):
     """Execute one logical call and journal every started/finished physical attempt."""
     requested = model_spec(requested_alias)
@@ -213,6 +287,7 @@ def route_call(
     charged_this_call = 0.0
     for fallback_depth, alias in enumerate(candidates):
         spec = model_spec(alias)
+        journal.expire_breakers(clock())
         state = journal.state
         blocked = None
         if spec["family"] in disabled:
@@ -326,10 +401,12 @@ def route_call(
                 raise
             error_kind = response.get("error_kind") if response.get("error") else None
             status = "failed" if response.get("error") else "completed"
-            retryable = error_kind in RETRYABLE and same_model_try == 0
+            retryable = error_kind in SAME_MODEL_RETRY and same_model_try == 0
             if response.get("_accounting_charged") is not None:
                 charged = float(response["_accounting_charged"])
             elif error_kind == "authentication":
+                charged = 0.0
+            elif error_kind in ZERO_CHARGE_ERRORS and response.get("cost") is None:
                 charged = 0.0
             else:
                 charged = response.get("cost") if response.get("cost") is not None else float(max_cost)
@@ -370,14 +447,21 @@ def route_call(
                 if delay:
                     sleep_fn(delay)
                 continue
-            journal.open_breaker(spec, error_kind)
+            journal.open_breaker(spec, error_kind, now=clock())
             break
     if last is not None:
-        last["_routing_attempts"] = attempts
-        return last
-    return _error_response(
-        requested, "routing_unavailable", "all configured routes are unavailable", attempts, logical_call_id
-    )
+        response = dict(last)
+        response["_routing_attempts"] = attempts
+    else:
+        response = _error_response(
+            requested, "routing_unavailable", "all configured routes are unavailable", attempts, logical_call_id
+        )
+    if response.get("error"):
+        # Every route is behind a breaker that clears on its own: tell the caller when to try again.
+        retry_after = chain_retry_after(journal, candidates, disabled, clock())
+        if retry_after is not None:
+            response["retry_after_seconds"] = retry_after
+    return response
 
 
 def routing_summary(

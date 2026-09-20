@@ -126,3 +126,34 @@ def test_list_prints_every_run(tmp_path):
     assert research_ledger.list_runs(_tree(tmp_path), stream) == 0
     assert "5 runs on record" in stream.getvalue()
     assert "try a granular neighbourhood" in stream.getvalue()
+
+
+def test_validation_runs_are_labelled_with_their_evaluations_and_need_no_retro(tmp_path, capsys):
+    research = tmp_path / "runs" / "research"
+    evidence = _evidence("2026-09-17", "pglib_opf", candidates=0)
+    evidence["usage"] = {"iterations": 0, "charged": 0.0}
+    evidence["solver_evaluations"] = 17
+    _write_json(research / "2026-09-17" / "pglib_opf" / "evidence.json", evidence)
+    labelled = _evidence("2026-09-18", "pglib_opf", candidates=0)
+    labelled["kind"] = "validation"
+    labelled["solver_evaluations"] = 17
+    _write_json(research / "2026-09-18" / "pglib_opf" / "evidence.json", labelled)
+    failed_research = _evidence("2026-09-19", "cvrp", candidates=0, status="provider_unavailable")
+    failed_research["usage"] = {"iterations": 0, "charged": 0.0, "calls": 0}
+    failed_research["solver_evaluations"] = 8  # the incumbent baseline ran before the first call failed
+    _write_json(research / "2026-09-19" / "cvrp" / "evidence.json", failed_research)
+    rows = research_ledger.run_rows(tmp_path)
+    by_run = {row["run_id"]: row for row in rows}
+    assert by_run["2026-09-19"]["kind"] == "research"  # a night that died on its first call is not validation
+    assert by_run["2026-09-19"]["retro"] == "missing"
+    rows = [row for row in rows if row["problem"] == "pglib_opf"]
+    assert [row["kind"] for row in rows] == ["validation", "validation"]
+    assert all(row["retro"] == "n/a" and row["evaluations"] == 17 for row in rows)
+    assert research_ledger.missing_retros(tmp_path) == []
+    research_ledger.list_runs(tmp_path, __import__("sys").stdout)
+    out = capsys.readouterr().out
+    validation_lines = [line for line in out.splitlines() if "pglib_opf" in line]
+    assert len(validation_lines) == 2
+    assert all("validation:completed" in line and "17 evals" in line for line in validation_lines)
+    assert all("missing" not in line for line in validation_lines)
+    assert "missing" in next(line for line in out.splitlines() if "cvrp" in line)

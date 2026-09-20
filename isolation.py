@@ -388,11 +388,11 @@ def _worker_result(completed):
     return subprocess.CompletedProcess(completed.args, returncode, stdout, stderr), data
 
 
-def preflight(root=None, image=None):
-    """Check that Docker is reachable and the configured worker image exists."""
-    del root
-    image = image or DEFAULT_IMAGE
-    details = {"image": image}
+DOCKER_DESKTOP_EXE = r"C:\Program Files\Docker\Docker\Docker Desktop.exe"
+DOCKER_START_WAIT_SECONDS = 180.0
+
+
+def _docker_server_version():
     try:
         version = subprocess.run(
             ["docker", "version", "--format", "{{.Server.Version}}"],
@@ -404,12 +404,55 @@ def preflight(root=None, image=None):
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
-        details["docker"] = "unavailable"
-        return {"ok": False, "details": details}
+        return None
     if version.returncode != 0 or not version.stdout.strip():
+        return None
+    return version.stdout.strip()
+
+
+def start_docker_desktop(
+    wait_seconds=DOCKER_START_WAIT_SECONDS, *, launch=None, probe=None, sleep_fn=time.sleep, clock=time.monotonic
+):
+    """Launch Docker Desktop when the engine is down and poll until it answers or the wait runs out.
+
+    2026-09-19: the engine was down at 02:00, preflight failed once and the night recorded no work.
+    """
+    probe = probe or _docker_server_version
+    if launch is None:
+        if os.name != "nt" or not os.path.exists(DOCKER_DESKTOP_EXE):
+            return None
+
+        def launch():
+            subprocess.Popen(
+                [DOCKER_DESKTOP_EXE], creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+            )
+
+    try:
+        launch()
+    except OSError:
+        return None
+    end = clock() + float(wait_seconds)
+    while clock() < end:
+        sleep_fn(10.0)
+        version = probe()
+        if version:
+            return version
+    return None
+
+
+def preflight(root=None, image=None, *, start_docker=True):
+    """Check that Docker is reachable and the configured worker image exists."""
+    del root
+    image = image or DEFAULT_IMAGE
+    details = {"image": image}
+    version = _docker_server_version()
+    if version is None and start_docker:
+        version = start_docker_desktop()
+        details["docker_started"] = version is not None
+    if version is None:
         details["docker"] = "unavailable"
         return {"ok": False, "details": details}
-    details["docker"] = version.stdout.strip()
+    details["docker"] = version
     inspect = subprocess.run(
         ["docker", "image", "inspect", image, "--format", "{{.Id}}"],
         capture_output=True,

@@ -344,6 +344,10 @@ def _error_envelope_fragments(value):
 def _failure_kind(provider, completed, error):
     """Classify a failed CLI call without retaining provider text or inventing reset data."""
     raw = _structured_failure_text(provider, completed)
+    if re.search(r"error_max_budget_usd|reached maximum budget", raw, re.I):
+        # The CLI stopped itself at --max-budget-usd. Retrying the same prompt under the same cap fails the
+        # same way, so this is neither a transient infrastructure error nor a reason to switch models.
+        return "call_budget_exceeded", f"{provider} call stopped at its per-call budget"
     if re.search(
         r"usage[_ -]?limit|out of usage credits|quota[_ -]?(?:exceeded|exhausted)|insufficient_quota|(?:you have|you've) hit your[^\n]{0,40}limit|(?:usage|limit|quota|credits?|window)[^\n]{0,48}reset(?:s|ting)?\s+(?:at|on|in)|reset(?:s|ting)?\s+(?:at|on|in)[^\n]{0,48}(?:usage|limit|quota|credits?|window)",
         raw,

@@ -1,5 +1,26 @@
 # Research decisions
 
+## 2026-09-20: Screen candidates on a quarter of the matrix, and keep edit-block generation opt-in
+
+Two ways to buy more candidates per night were measured against the recorded development comparisons of 09-14,
+09-16 and 09-17 (77 candidates with complete pairs) rather than chosen by argument.
+
+Early screening: evaluate a leading prefix of the development targets and abandon a candidate that loses on all
+of them. At two targets the rule screened 27% of the rejected candidates but discarded one candidate that went
+on to pass the full gate, so its own measurement rejected it. At a quarter of the matrix, minimum two targets,
+it screened 6 of 44 rejects, kept all 33 promising candidates, and recovers 5.8% of development solver seconds.
+That is the default. The separate abort on the first failed cell is lossless by construction, because the gate
+already requires zero candidate failures, and is always on.
+
+Edit-block generation: a generation may return SEARCH/REPLACE blocks instead of a whole file, which is where
+the cvrp slot's allowance goes (the incumbent is 48 KB and each generation rewrites all of it). The mechanism is
+proven on two real calls, one against a 4 KB incumbent and one against the 49,821 character cvrp incumbent
+($0.20 and $0.88, three blocks, still compiles), but a block that no longer matches the file costs an iteration,
+and that risk grows with file size. It therefore ships off by default and is enabled per slot in `night.json`.
+The cvrp slot is the first to use it, because it is the slot the cost actually binds; the other research slots
+stay on full-file generation so the next nights can be compared against the ones before them. A failed patch is recorded as `patch_failed`
+with the text it could not find, never applied by approximate match.
+
 ## 2026-09-15: Keep solver-program evolution inside the governed run
 
 Enable solver-program islands only through the `matrix_multiplication` plugin's explicit policy. The canonical research loop keeps three run-local islands with at most three distinct, development-verified programs each. It selects one parent for mutation and, on alternating iterations where two are available, two distinct parents for crossover. Admission and ranking use only the frozen development comparison; confirmation, release checks, promotion and publication outcomes are excluded. Other plugins retain the ordinary frozen-incumbent generation path.

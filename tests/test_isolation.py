@@ -378,3 +378,32 @@ time.sleep(60)
         check=False,
     )
     assert inspect.returncode != 0
+
+
+def test_docker_desktop_start_polls_until_the_engine_answers():
+    launched = []
+    probes = iter([None, None, "29.5.2"])
+    slept = []
+    version = isolation.start_docker_desktop(
+        wait_seconds=60, launch=lambda: launched.append(True), probe=lambda: next(probes), sleep_fn=slept.append
+    )
+    assert version == "29.5.2" and launched == [True] and slept == [10.0, 10.0, 10.0]
+
+
+def test_docker_desktop_start_gives_up_at_the_wait_limit():
+    clock = [0.0]
+
+    def sleep(seconds):
+        clock[0] += seconds
+
+    version = isolation.start_docker_desktop(
+        wait_seconds=30, launch=lambda: None, probe=lambda: None, sleep_fn=sleep, clock=lambda: clock[0]
+    )
+    assert version is None and clock[0] == 30.0
+
+
+def test_preflight_reports_docker_unavailable_without_a_start(monkeypatch):
+    monkeypatch.setattr(isolation, "_docker_server_version", lambda: None)
+    monkeypatch.setattr(isolation, "start_docker_desktop", lambda: (_ for _ in ()).throw(AssertionError("started")))
+    result = isolation.preflight(start_docker=False)
+    assert result == {"ok": False, "details": {"image": isolation.DEFAULT_IMAGE, "docker": "unavailable"}}

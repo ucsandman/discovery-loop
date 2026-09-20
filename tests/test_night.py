@@ -270,3 +270,93 @@ def test_meditation_context_transforms_in_memory_only(tmp_path, monkeypatch):
     assert "DISCOVERY_LOOP_RESEARCH_REPORT_JSON" in observed["env"]
     assert "MEDITATION_PROMPT" in observed["input"]
     assert runner.read_text(encoding="utf-8") == source
+
+
+def _fake_clock():
+    now = [1_000_000.0]
+
+    def sleep(seconds):
+        now[0] += seconds
+
+    return now, sleep
+
+
+def test_preflight_retries_until_docker_answers():
+    config = _config()
+    config["night"]["preflight_retry_minutes"] = 30
+    probes = iter(
+        [{"ok": False, "details": {"docker": "unavailable"}}, {"ok": True, "details": {"worker_image": "ready"}}]
+    )
+    now, sleep = _fake_clock()
+    waited = []
+    checks = night._preflight_with_retry(
+        config,
+        night.planned_slots(config, "2026-09-05"),
+        provider_check=lambda **_: {"ok": True, "details": {}},
+        sandbox_check=lambda **_: next(probes),
+        on_wait=waited.append,
+        sleep_fn=sleep,
+        clock=lambda: now[0],
+    )
+    assert checks["ok"] is True and checks["attempts"] == 2
+    assert now[0] == 1_000_000.0 + night.PREFLIGHT_RETRY_SECONDS
+    assert len(waited) == 1 and waited[0]["ok"] is False
+
+
+def test_preflight_stops_retrying_at_the_window():
+    config = _config()
+    config["night"]["preflight_retry_minutes"] = 12
+    now, sleep = _fake_clock()
+    checks = night._preflight_with_retry(
+        config,
+        night.planned_slots(config, "2026-09-05"),
+        provider_check=lambda **_: {"ok": True, "details": {}},
+        sandbox_check=lambda **_: {"ok": False, "details": {"docker": "unavailable"}},
+        sleep_fn=sleep,
+        clock=lambda: now[0],
+    )
+    # A 12-minute window with 5-minute probes: probes at 0, 5 and 10 minutes, then the next falls outside.
+    assert checks["ok"] is False and checks["attempts"] == 3
+
+
+def test_preflight_retry_stops_at_the_night_deadline():
+    config = _config()
+    config["night"]["preflight_retry_minutes"] = 30
+    now, sleep = _fake_clock()
+    checks = night._preflight_with_retry(
+        config,
+        night.planned_slots(config, "2026-09-05"),
+        provider_check=lambda **_: {"ok": True, "details": {}},
+        sandbox_check=lambda **_: {"ok": False, "details": {"docker": "unavailable"}},
+        deadline=1_000_000.0 + 120,
+        sleep_fn=sleep,
+        clock=lambda: now[0],
+    )
+    assert checks["ok"] is False and checks["attempts"] == 1 and now[0] == 1_000_000.0
+
+
+def test_an_unreachable_provider_is_never_re_probed():
+    config = _config()
+    config["night"]["preflight_retry_minutes"] = 30
+    now, sleep = _fake_clock()
+    checks = night._preflight_with_retry(
+        config,
+        night.planned_slots(config, "2026-09-05"),
+        provider_check=lambda **_: {"ok": False, "details": {"fable": {"ok": False}, "astra": {"ok": False}}},
+        sandbox_check=lambda **_: {"ok": True, "details": {"worker_image": "ready"}},
+        sleep_fn=sleep,
+        clock=lambda: now[0],
+    )
+    assert checks["ok"] is False and checks["attempts"] == 1 and now[0] == 1_000_000.0
+
+
+def test_only_the_cvrp_slot_generates_edit_blocks_for_now():
+    config = _config()
+    modes = {}
+    for slot in night.planned_slots(config, "2026-09-05"):
+        if slot["kind"] != "research":
+            continue
+        command = night._research_command(slot, "2026-09-05", Path("ledger"), Path("evidence"), 1)
+        modes[slot["id"]] = command[command.index("--generation-mode") + 1]
+        assert command[command.index("--screen-fraction") + 1] == "0.25"
+    assert modes == {"cvrp-research": "diff", "miplib-heur-research": "full", "matmul-research": "full"}

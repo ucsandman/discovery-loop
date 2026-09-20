@@ -4,6 +4,7 @@ import subprocess
 import pytest
 
 import providers
+import routing
 
 
 ORIGINAL_AUTH_STATUS = providers.auth_status
@@ -291,3 +292,49 @@ def test_usage_limit_is_sanitized_and_stops_retries(monkeypatch):
     result = providers.call_model("prompt", provider="astra")
     assert result["error_kind"] == "usage_limit"
     assert result["error"] == "astra subscription usage limit reached"
+
+
+def test_a_cli_budget_stop_is_not_reported_as_infrastructure_flakiness(monkeypatch):
+    """Captured 2026-09-20: a 50 KB cvrp prompt at --max-budget-usd 0.75 exits 1 with this envelope."""
+    envelope = json.dumps(
+        {
+            "is_error": True,
+            "subtype": "error_max_budget_usd",
+            "result": "Reached maximum budget ($0.75)",
+            "total_cost_usd": 0.780995,
+        }
+    )
+    monkeypatch.setattr(
+        providers,
+        "_run_cli",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 1, envelope, ""),
+    )
+    result = providers.call_model("prompt", provider="anthropic", max_cost=0.75)
+    assert result["error_kind"] == "call_budget_exceeded"
+    assert result["error"] == "fable call stopped at its per-call budget"
+    assert "0.75" not in result["error"]  # the cap is configuration, not provider prose
+
+
+def test_a_budget_stop_never_falls_back_or_opens_a_breaker(tmp_path):
+    journal = routing.RoutingJournal(tmp_path / "routing.json")
+    calls = []
+
+    def capped(_prompt, model, **_kwargs):
+        calls.append(model)
+        return {"error": "fable call stopped at its per-call budget", "error_kind": "call_budget_exceeded", "cost": 0.8}
+
+    response = routing.route_call(
+        "prompt",
+        requested_alias="opus",
+        chain=("opus", "astra", "sol"),
+        ledger=None,
+        max_cost=0.75,
+        purpose="generation",
+        call_fn=capped,
+        journal=journal,
+        retry_delay=0,
+    )
+    assert calls == ["claude-opus-5"]  # another model would hit the same cap on the same prompt
+    assert response["error_kind"] == "call_budget_exceeded"
+    assert journal.state["model_breakers"] == {} and journal.state["family_breakers"] == {}
+    assert "retry_after_seconds" not in response

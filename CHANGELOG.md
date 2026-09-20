@@ -1,5 +1,48 @@
 # Changelog
 
+## Night reliability and cheaper iterations, 2026-09-20
+
+Audit of the six nights 09-14 to 09-19: three produced no research at all. 09-15 ended with every model at
+`usage_limit` within six minutes of the start and $4 charged; 09-18 ended after two 900 s Opus timeouts and a
+usage-limited Codex, $8 charged, no candidates; 09-19 failed a single Docker probe at 02:00 with eight hours of
+deadline left. Of the three nights that did run, 09-17 lost four generations to `fable CLI exited with status 1`.
+
+- `routing.py`: breakers now carry an expiry. `usage_limit` and `quota_exhausted` reopen after 60 minutes,
+  `timeout`, `capacity` and `rate_limited_unclassified` after 20; `authentication` and `model_unavailable` still
+  hold for the night. A refused call with no reported cost charges $0 instead of its whole reservation.
+  `chain_retry_after` reports when the first route in the chain reopens, and a CLI that exits non-zero with a
+  genuine infrastructure error is retried once on the same model.
+- `loop.py`: a generation whose whole chain is breaker-blocked waits for the earliest reopen instead of ending
+  the slot, at most four times, only while a deadline still leaves ten minutes of margin, in 30 second slices so
+  a pause still interrupts it. A critique never waits: it degrades to `promising_unreviewed` as before.
+- `providers.py`: a CLI that stops itself at `--max-budget-usd` is classified `call_budget_exceeded`, not
+  `infrastructure_error`. The 09-17 losses were this: the same prompt under the same cap fails identically, so
+  it must not be retried or routed to another model. Reproduced on 2026-09-20 with a 50 KB cvrp prompt at a
+  $0.75 cap (`error_max_budget_usd`, "Reached maximum budget ($0.75)", $0.78 charged).
+- `isolation.py`, `night.py`: a missing Docker engine starts Docker Desktop and polls for three minutes, and the
+  night re-probes a failed sandbox every five minutes for thirty (`night.preflight_retry_minutes`). A provider
+  that is unreachable at the start is an authentication problem and is never re-probed.
+- `loop.py --screen-fraction` (default 0.25): the leading quarter of the development targets is evaluated first.
+  A candidate that fails any screening cell stops there, because `compare_paired` requires zero candidate
+  failures and finishing the matrix cannot change that verdict. A candidate worse than the incumbent on every
+  screening target stops as `screened_out`. Replayed over the 77 candidates of 09-14, 09-16 and 09-17, the
+  quarter-matrix rule screened 6 of 44 rejected candidates, kept all 33 promising ones, and would have saved
+  5.8% of development solver seconds; the lossless failure abort accounts for another 1.2%. A two-target screen
+  saved more but discarded a candidate that went on to pass, so the fraction is deliberately conservative.
+- Generation prompt: a `DEVELOPMENT PROFILE` block gives each development target its reference, the incumbent's
+  value, the seconds it actually used against the seconds it was allowed, and the last candidate's delta. The
+  scoreboard said which targets were behind; it never said whether the solver was spending its time budget.
+- `patching.py` and `loop.py --generation-mode diff`: a generation may answer with SEARCH/REPLACE edit blocks
+  instead of a rewritten file. Every block must match the current file exactly once; a block that matches
+  nothing or matches twice fails the proposal as `patch_failed` rather than being applied by guess. Proven on
+  2026-09-20 with two real `claude-opus-5` calls: two blocks against a 4,188 character incumbent for $0.20, and
+  three blocks against the 49,821 character cvrp incumbent for $0.88, both applying cleanly to a file that still
+  compiles. Off by default; `night.json` sets it per slot, and the cvrp slot is the first to use it, because its
+  full-file generations average about $1.93 and exhaust the $40 slot cap after roughly ten candidates.
+- `scripts/research_ledger.py`: a validation run is labelled `validation:<status>` and reports its evaluation
+  count instead of a blank gain and a missing retrospective. The pglib slot has run 17 evaluations a night since
+  09-14 while the ledger showed it as a run that did nothing.
+
 ## Run ledger, 2026-09-20
 
 - `scripts/research_ledger.py`: `list` every recorded research run (status, candidates, best measured gain, charge, retrospective state, recorded next experiment), `audit` the finished runs whose retrospective never ran (exit 1, exact `retro.py` command per gap), and `retro` to run them one at a time or all at once. The `/prize` page shows the same gap as a notice. Closes the hole where a hand-launched run recorded evidence but never taught the next prompt anything. Audit on 2026-09-20: 40 runs, 15 finished with candidates, 3 without a retrospective, backfilled.

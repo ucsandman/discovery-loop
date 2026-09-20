@@ -11,7 +11,24 @@ python night.py --dry-run
 
 The import reads only the sibling checkout's `data/atlas` JSON files and local Git metadata. It never pulls, executes upstream code, or fetches cited pages. A successful result reports `fresh`, the card count, revision and catalogue hash. `stale` means a failed refresh retained the last hash-validated snapshot; `unavailable` means no valid snapshot exists. Then inspect the selected missions, disabled slot IDs, trial modes, routing policy and unchanged limits in the dry run. Real execution performs provider and Docker preflight only for enabled route families. Both CLIs must already be authenticated through their subscriptions when their family is enabled. API-key and unknown authentication are rejected; there is no paid API fallback. Build the worker image after changing worker dependencies.
 
+A missing Docker engine no longer ends the night on one probe (since 2026-09-20). Preflight starts Docker Desktop and polls it for three minutes, and the night re-probes a failed sandbox every five minutes for `night.preflight_retry_minutes` (default 30), writing `preflight_retry` status while it waits. A provider that is unreachable at the start is treated as an authentication problem and is never re-probed, so a logged-out CLI still fails immediately.
+
 The default [schedule](../night.json) allows 540 minutes and 105 accounting units: two trial research slots receive 40 units each, with 5 units each for retrospectives, plus a matrix-multiplication research slot with 12 units and 3 for its retrospective. Power-grid validation uses no model allowance. The JSON retains legacy `_usd` field names; the numbers are accounting estimates, not additional subscription charges. Claude reports API-equivalent estimates; unavailable estimates consume the reserved allowance. Provider rate limits still apply and stop affected work.
+
+## Iteration cost and screening
+
+Each research slot passes `--screen-fraction` (default 0.25) to `loop.py`. The leading quarter of the
+development targets, minimum two, is evaluated before the rest of the matrix. A candidate that fails any
+screening cell stops there, because the comparison gate already requires zero candidate failures. A candidate
+worse than the incumbent on every screening target is recorded `screened_out` with the targets it lost on.
+Set `screen_fraction` on a slot, or `--screen-fraction 0` by hand, to evaluate every matrix cell as before.
+`evidence.json` records a `screen` block per candidate: the fraction, the targets, cells run of cells in the
+matrix, the median screening gain and the outcome.
+
+`--generation-mode diff` asks a generation for SEARCH/REPLACE edit blocks against the current incumbent instead
+of a rewritten file, which is where a large incumbent's allowance goes. Every block must match the file exactly
+once; anything else is recorded `patch_failed` with the text it could not find, and the iteration continues.
+Set `generation_mode` on a slot in `night.json` to enable it. The default is `full`.
 
 ## Run and review
 
@@ -52,7 +69,11 @@ on the cross-model provider, charged against the run's ledger); nothing runs it 
 
 The assigned 14-night trial arm remains Fable, Astra, or paired. Routing chooses the actual execution identity. A single scheduled arm follows requested model, same-family fallback, then other-family fallback; a paired request retains independent Fable/Astra proposal roles. `ordered` follows the configured chain without role-based or history-based reordering and is operational rather than formal-trial eligible. `astra_only` and `fable_only` are intentionally single-model routes. Use `--routing ordered --model-chain astra sol opus` when every generation, critique, and retro call must try Astra, then Sol, then Opus, with no Fable route.
 
-`runs/research/<run-id>/routing.json` is a process-safe journal shared by research, review and retro. It records every started, failed, completed, and breaker-skipped attempt with requested and actual model/family, reason, and charged allowance. Family breakers cover authentication and unavailable CLI errors. Model breakers cover quota, usage-limit, and model-unavailable errors. They survive resume; changing the configured route or disabled families on an existing checkpoint is rejected. A malformed candidate is evaluated as a candidate failure and does not trigger model switching. If all enabled routes are unavailable, work stops cleanly.
+`runs/research/<run-id>/routing.json` is a process-safe journal shared by research, review and retro. It records every started, failed, completed, and breaker-skipped attempt with requested and actual model/family, reason, and charged allowance. Family breakers cover authentication and unavailable CLI errors. Model breakers cover quota, usage-limit, and model-unavailable errors. They survive resume; changing the configured route or disabled families on an existing checkpoint is rejected. A malformed candidate is evaluated as a candidate failure and does not trigger model switching.
+
+Breakers expire by kind (since 2026-09-20). `usage_limit` and `quota_exhausted` reopen 60 minutes after they open, `timeout`, `capacity` and `rate_limited_unclassified` after 20 minutes; `authentication` and `model_unavailable` hold until the night ends, because they need a person. A refused call that reports no cost charges nothing. When every route in the chain sits behind an expiring breaker, a generation waits for the earliest reopen rather than ending the slot: at most four waits, only while the deadline still leaves ten minutes of margin, in 30 second slices so `night.py --pause` still interrupts it. The wait is printed as `[routing] all routes breaker-blocked; waiting Ns`. A critique never waits; it degrades to `promising_unreviewed`.
+
+A CLI that stops itself at its per-call cap is classified `call_budget_exceeded`, not `infrastructure_error`, and is neither retried nor routed to another model: the same prompt under the same cap fails the same way. Raise `per_call_budget_usd` for that slot instead. Large prompts need real headroom; a 50 KB cvrp prompt exceeded a $0.75 cap at $0.78.
 
 The dashboard and `trial_report.py` show historical rows without routing provenance separately from clean formal-trial rows and recorded-but-ineligible operational rows. A fallback, a routing/model override, a paired degradation, or an incomplete retro makes a run ineligible for formal trial comparison. Actual model counts, failed attempts, fallback reasons, and routing allowance remain visible for operations.
 
