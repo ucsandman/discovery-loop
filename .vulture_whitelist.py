@@ -72,3 +72,4 @@ _.to_sol
 _.parse_sol
 # loop.py entrypoint, called under __main__ (vulture reports it at 60% whenever loop.py is staged).
 _.main
+_.build_prize  # imported lazily inside dashboard.DashboardApp.prize

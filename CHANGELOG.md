@@ -1,5 +1,9 @@
 # Changelog
 
+## Run ledger, 2026-09-20
+
+- `scripts/research_ledger.py`: `list` every recorded research run (status, candidates, best measured gain, charge, retrospective state, recorded next experiment), `audit` the finished runs whose retrospective never ran (exit 1, exact `retro.py` command per gap), and `retro` to run them one at a time or all at once. The `/prize` page shows the same gap as a notice. Closes the hole where a hand-launched run recorded evidence but never taught the next prompt anything. Audit on 2026-09-20: 40 runs, 15 finished with candidates, 3 without a retrospective, backfilled.
+
 ## Prize Hunt, 2026-09-20
 
 - `data/prizes.json`: an operator-curated registry of 17 public challenges, bounties, record tables and benchmarks, every entry quoted from a page read on 2026-09-20 with a dated evidence file beside it. Amounts and availability are unverified quoted wording; nothing is described as won. `prize_registry.py` validates it and exposes `refresh`, `list`, `show`, `set-status` and the network-touching `check-sources`; the reviewed bindings that make a prize executable live in `PRIZE_BINDINGS`, in code, and `validate_snapshot` re-derives every admission from that dict.

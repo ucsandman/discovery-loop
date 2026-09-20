@@ -136,6 +136,22 @@ python scripts/prize_hunt.py economics --problem ecc_prize          # per-direct
 python scripts/prize_hunt.py next                                   # the exact loop.py command for the top-ranked ready prize
 ```
 
+### Run ledger and retrospectives
+
+A manual `loop.py` run records its evidence and its candidates like a nightly one, but the retrospective
+that feeds "PRIOR RETROSPECTIVE NOTES" into the next prompt is launched only by `night.py`. After a hand
+launched experiment, close the chain:
+
+```powershell
+python scripts/research_ledger.py audit              # finished runs with no retrospective, with the exact command each needs
+python scripts/research_ledger.py retro --run-id prize-ecc-2026-09-20 --problem ecc_prize
+python scripts/research_ledger.py retro --all-missing
+```
+
+`list` shows every run on record with its best measured gain, charge and the next experiment its
+retrospective proposed. The `/prize` page repeats the audit as a notice whenever a finished run has no
+retrospective.
+
 ### Intake
 
 ```powershell

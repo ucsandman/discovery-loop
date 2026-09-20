@@ -28,6 +28,24 @@ A confirmed candidate advances the incumbent with confirmation evidence. Develop
 
 Development memory is append-only under `runs/research/development-history/`. Proposal context includes the most recent 20 candidate observations plus family rollups over at most 80 candidate observations. Run evidence records both counts. Exact AST duplicate detection scans all recorded candidate fingerprints, including candidates older than those prompt windows. Retrospective rows are provenance records and do not count as candidate attempts or algorithm families. Historical rows without a run ID remain readable; every new candidate observation records its source run ID. Confirmation and release-holdout data remain excluded from proposal memory.
 
+## Run ledger
+
+```powershell
+python scripts/research_ledger.py list
+python scripts/research_ledger.py audit
+python scripts/research_ledger.py retro --all-missing
+```
+
+Every research run leaves `runs/research/<run_id>/<problem>/evidence.json`, every candidate lands in the
+append-only development history, and the retrospective distilled into `<problem>-retro.json` is what the
+next generation prompt reads as prior notes. The nightly runner launches that retrospective itself; a run
+started by hand does not get one. `list` prints every run with its status, candidate count, best measured
+gain, charge, whether a retrospective exists and the next experiment it recorded. `audit` exits 1 and
+prints the exact `retro.py` command for each finished run with candidates and no completed retrospective;
+the `/prize` page shows the same gap as a notice. `retro` runs those commands (each is one analyst call
+on the cross-model provider, charged against the run's ledger); nothing runs it automatically. Run
+`audit` after any manual `loop.py` invocation.
+
 ## Routing and recovery
 
 `night.json` stores `night.routing`: `policy`, `chain`, and `disabled_families`. The default is the `scheduled` policy with `opus, astra, sol`; Fable/Opus are Anthropic-family execution identities and Astra/Sol are OpenAI-family identities. Fable is registered but off the default chain (since 2026-09-17): Opus 5 costs half as much per token and Fable calls kept dying on the $2 per-call cap. Every Claude call passes `--effort xhigh`. An arm label (`fable`, `astra`, `paired`) names the subscription family; `arm_alias` picks the first same-family alias on the chain, so the Fable arm runs on Opus as its requested model, not as a fallback. Put `fable` back at the front of the chain to restore the old behaviour. Valid policies are `scheduled`, `ordered`, `auto`, `openai_only`, `anthropic_only`, `astra_only`, `fable_only`, and `paired`. `--routing`, `--model-chain`, and `--disable-family` provide a per-run override.

@@ -447,6 +447,26 @@ def _stub(notice: str) -> dict:
     }
 
 
+def _retro_gap_notices(root: Path) -> list[str]:
+    """Finished research runs (any problem) whose lessons never reached the next prompt."""
+    try:
+        from scripts.research_ledger import missing_retros
+    except ImportError:
+        return []
+    try:
+        missing = missing_retros(root)
+    except Exception as error:  # noqa: BLE001 - an unreadable run tree is a notice, not a crash
+        return [f"The run ledger could not be audited: {str(error)[:200]}"]
+    if not missing:
+        return []
+    named = ", ".join(f"{row['run_id']}/{row['problem']}" for row in missing[:6])
+    more = f" and {len(missing) - 6} more" if len(missing) > 6 else ""
+    return [
+        f"{len(missing)} finished research run(s) have no retrospective, so the next prompt never sees "
+        f"their lessons: {named}{more}. Run: python scripts/research_ledger.py retro --all-missing"
+    ]
+
+
 def _contract_notices(root: Path, modules: dict) -> list[str]:
     """One notice per installed prize plugin whose PRIZE descriptor fails the contract."""
     try:
@@ -618,6 +638,7 @@ def _build(root: Path) -> dict:
 
     if not any(row["attempts"] for row in board):
         notices.append("No research run has been recorded for any bound prize plugin yet.")
+    notices.extend(_retro_gap_notices(root))
 
     return {
         "registry": registry,

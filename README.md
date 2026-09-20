@@ -208,11 +208,12 @@ Nothing here submits, claims, emails or spends anything. Prize amounts are quote
 ```powershell
 python prize_registry.py refresh
 python prize_registry.py list
+python scripts/research_ledger.py audit
 ```
 
 The prize board, the allocation queue and the per-direction economics are at **http://localhost:8766/prize** when the dashboard is running. The nightly `prizes` block in `night.json` ships disabled, so a default night schedules exactly what it scheduled before; `python night.py --dry-run` prints the prize summary either way.
 
-`refresh` re-validates the registry and writes the snapshot under `runs/prizes/`; `list` and `show <id>` read that snapshot. `check-sources` is the only registry command that uses the network, and it only re-checks URLs already in the file. `prize_intake.py add <url>` fetches one operator-typed page into a candidate file that an operator must approve by hand. See [Prize Hunt](docs/PRIZE-HUNT.md) for the schema, the scoring maps, the safety rules and the first-experiment command.
+`research_ledger.py audit` lists every finished run whose retrospective never ran and the command that closes the gap, so a hand-launched experiment still teaches the next one (`docs/OPERATIONS.md`, Run ledger). `refresh` re-validates the registry and writes the snapshot under `runs/prizes/`; `list` and `show <id>` read that snapshot. `check-sources` is the only registry command that uses the network, and it only re-checks URLs already in the file. `prize_intake.py add <url>` fetches one operator-typed page into a candidate file that an operator must approve by hand. See [Prize Hunt](docs/PRIZE-HUNT.md) for the schema, the scoring maps, the safety rules and the first-experiment command.
 
 ## Post-loop dashboard
 
