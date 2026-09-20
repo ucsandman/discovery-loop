@@ -193,6 +193,7 @@ def test_governed_run_uses_policy_for_development_confirmation_selection_and_res
         solver_runner=_synthetic_runner,
         ledger=BudgetLedger(tmp_path / "budget.json", 10.0),
         paused_fn=lambda _root: False,
+        development_seeds=1,
     )
 
     candidates = evidence["development"]["candidates"]
@@ -217,6 +218,7 @@ def test_governed_run_uses_policy_for_development_confirmation_selection_and_res
         solver_runner=_synthetic_runner,
         ledger=BudgetLedger(tmp_path / "budget.json", 10.0),
         paused_fn=lambda _root: False,
+        development_seeds=1,
     )
     assert resumed == evidence
     assert generated == calls_before_resume

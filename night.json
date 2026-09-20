@@ -59,14 +59,14 @@
       "generation_mode": "diff",
       "minutes": 210, "research_minutes": 180, "retro_minutes": 30,
       "slot_budget_usd": 40.0, "per_call_budget_usd": 2.0, "retro_budget_usd": 5.0,
-      "iters": 200, "seed_count": 3, "min_effect": 0.0001,
+      "iters": 200, "seed_count": 3, "development_seeds": 3, "min_effect": 0.0001,
       "time_per_target": 120, "workers": 3
     },
     {
       "id": "miplib-heur-research", "problem": "miplib_heur", "kind": "research",
       "minutes": 210, "research_minutes": 180, "retro_minutes": 30,
       "slot_budget_usd": 40.0, "per_call_budget_usd": 2.0, "retro_budget_usd": 5.0,
-      "iters": 200, "seed_count": 3, "min_effect": 0.0001,
+      "iters": 200, "seed_count": 3, "development_seeds": 3, "min_effect": 0.0001,
       "time_per_target": 60, "workers": 3
     },
     {
@@ -74,13 +74,13 @@
       "provider": "paired",
       "minutes": 90, "research_minutes": 70, "retro_minutes": 20,
       "slot_budget_usd": 12.0, "per_call_budget_usd": 2.0, "retro_budget_usd": 3.0,
-      "iters": 30, "seed_count": 3, "min_effect": 0.0001,
+      "iters": 30, "seed_count": 3, "development_seeds": 3, "min_effect": 0.0001,
       "time_per_target": 300, "workers": 3
     },
     {
       "id": "pglib-validation", "problem": "pglib_opf", "kind": "validation",
       "minutes": 30, "slot_budget_usd": 0.0, "per_call_budget_usd": 0.0, "retro_budget_usd": 0.0,
-      "iters": 1, "seed_count": 1, "min_effect": 0.0001,
+      "iters": 1, "seed_count": 1, "development_seeds": 1, "min_effect": 0.0001,
       "time_per_target": 60, "workers": 2
     }
   ]

@@ -170,6 +170,7 @@ def test_reviewed_mission_reaches_prompt_and_evidence_without_card_commands(tmp_
         call_model_fn=lambda *_args, **_kwargs: None,
         solver_runner=runner,
         mission_path=mission_path,
+        development_seeds=1,
     )
     assert evidence["mission"] == mission
     stored = json.loads((tmp_path / "runs" / "research" / "mission-smoke" / "cvrp" / "evidence.json").read_text())

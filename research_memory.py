@@ -4,6 +4,7 @@ import ast
 import hashlib
 import math
 import re
+import statistics
 from collections import Counter
 
 
@@ -119,6 +120,77 @@ def _iteration(value):
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
 
 
+def _restore_cells(value, hidden_targets, limit):
+    """Re-read an already-projected ``cells`` block.
+
+    History is stored projected, so a stored entry carries ``cells`` and no paired rows. Recomputing from
+    ``comparison`` alone would silently empty the per-target outcomes of every prior night's memory.
+    """
+    if not isinstance(value, dict):
+        return None
+    hidden = {str(target) for target in hidden_targets}
+    targets = value.get("targets")
+    restored = {}
+    if isinstance(targets, dict):
+        for target, gain in targets.items():
+            gain = _finite_number(gain)
+            if gain is None or str(target) in hidden:
+                continue
+            restored[str(target)[:80]] = gain
+    counts = {key: _iteration(value.get(key)) or 0 for key in ("won", "lost", "tied", "failed")}
+    if not restored and not any(counts.values()):
+        return None
+    return {**counts, "targets": dict(sorted(restored.items())[:limit])}
+
+
+def _cell_outcomes(record, hidden_targets, limit=12):
+    """Per-target outcomes for one candidate, compact enough for a prompt.
+
+    ``median_gain`` alone cannot say whether a candidate won everywhere by a little or traded a large win on
+    one instance for losses on the rest, so the next proposal cannot be made conditional on instance
+    structure. The paired rows already carry that; this keeps a bounded projection of them, in percent.
+    """
+    comparison = record.get("comparison")
+    pairs = comparison.get("pairs") if isinstance(comparison, dict) else None
+    if not isinstance(pairs, list) or not pairs:
+        return _restore_cells(record.get("cells"), hidden_targets, limit)
+    hidden = {str(target) for target in hidden_targets}
+    by_target = {}
+    won = lost = tied = failed = 0
+    for pair in pairs:
+        if not isinstance(pair, dict):
+            continue
+        target = str(pair.get("target", ""))
+        gain = _finite_number(pair.get("gain"))
+        if not target or target in hidden or gain is None:
+            continue
+        by_target.setdefault(target[:80], []).append(gain)
+        if pair.get("candidate_failed"):
+            failed += 1
+        elif gain > 0:
+            won += 1
+        elif gain < 0:
+            lost += 1
+        else:
+            tied += 1
+    if not by_target:
+        return None
+    medians = {target: round(statistics.median(gains) * 100, 3) for target, gains in by_target.items()}
+    return {
+        "won": won,
+        "lost": lost,
+        "tied": tied,
+        "failed": failed,
+        "targets": dict(sorted(medians.items())[:limit]),
+    }
+
+
+def cells_text(cells, limit=12):
+    """The per-target block as one prompt line: ``target +0.950% | target -0.620%``."""
+    targets = (cells or {}).get("targets") or {}
+    return " | ".join(f"{target} {gain:+.3f}%" for target, gain in list(sorted(targets.items()))[:limit])
+
+
 def _development_entry(record, hidden_targets):
     idea = _redact(record.get("idea"), hidden_targets, 500)
     critique = record.get("critique") if isinstance(record.get("critique"), dict) else {}
@@ -151,6 +223,7 @@ def _development_entry(record, hidden_targets):
         "fingerprint": fingerprint,
         "cost_usd": _finite_number(record.get("cost_usd", record.get("cost")), positive=True),
         "elapsed_seconds": _finite_number(record.get("elapsed_seconds", record.get("secs")), positive=True),
+        "cells": _cell_outcomes(record, hidden_targets),
         "critique": {
             "provider": _redact(critique.get("provider"), hidden_targets, 80),
             "text": _redact(critique.get("text"), hidden_targets, 400),
@@ -188,10 +261,13 @@ def summarize_development(
                 "novel": 0,
                 "promising": 0,
                 "negative_results": Counter(),
+                "target_gains": {},
                 "last_iteration": None,
             },
         )
         item["attempts"] += 1
+        for target, gain in ((entry["cells"] or {}).get("targets") or {}).items():
+            item["target_gains"].setdefault(target, []).append(gain)
         item["valid"] += int(entry["valid"])
         item["novel"] += int(entry["novel"])
         item["promising"] += int(entry["promising"])
@@ -203,6 +279,11 @@ def summarize_development(
         key=lambda item: (-sum(item["negative_results"].values()), -item["attempts"], str(item["family"])),
     )[:family_limit]
     for item in ordered_families:
+        # A family that wins on one instance class and loses on another is the
+        # signal a scalar rollup destroys; keep its per-target medians.
+        item["target_gains"] = {
+            target: round(statistics.median(gains), 3) for target, gains in sorted(item["target_gains"].items())[:12]
+        }
         total = sum(item["negative_results"].values())
         item["negative_results"] = dict(
             sorted(item["negative_results"].items(), key=lambda pair: (-pair[1], pair[0]))[:5]

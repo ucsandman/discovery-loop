@@ -200,6 +200,8 @@ def _run(tmp_path, run_id, call_model, *, iters=2, problem_module=IslandProblem,
         solver_runner=_runner,
         ledger=BudgetLedger(tmp_path / f"{run_id}-budget.json", 4.0),
         paused_fn=lambda _root: False,
+        development_seeds=1,
+        postmortem_limit=0,  # these assertions count model calls, not reviews
     )
 
 
@@ -262,6 +264,8 @@ def test_started_call_is_not_reissued_and_resume_uses_frozen_prompt_and_incumben
         solver_runner=counting_runner,
         ledger=BudgetLedger(tmp_path / "resume-budget.json", 4.0),
         paused_fn=lambda _root: False,
+        development_seeds=1,
+        postmortem_limit=0,  # these assertions count model calls, not reviews
     )
     assert len(calls) == 2
     assert all("legacy_incumbent.py" not in solver for solver, _target in runner_calls)
@@ -322,6 +326,8 @@ def test_resume_accepts_mature_population_after_incumbent_is_evicted(tmp_path):
         solver_runner=forbidden_runner,
         ledger=BudgetLedger(tmp_path / "mature-resume-budget.json", 4.0),
         paused_fn=lambda _root: False,
+        development_seeds=1,
+        postmortem_limit=0,  # these assertions count model calls, not reviews
     )
     assert resumed["status"] == "completed"
     assert runner_calls == []
@@ -349,6 +355,8 @@ def test_island_budget_stop_creates_no_generation_calls(tmp_path):
         solver_runner=_runner,
         ledger=BudgetLedger(tmp_path / "budget-stop.json", 1.0),
         paused_fn=lambda _root: False,
+        development_seeds=1,
+        postmortem_limit=0,  # these assertions count model calls, not reviews
     )
     assert calls == []
     assert result["generation_stop"]["reason"] == "budget_exhausted"

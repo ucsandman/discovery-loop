@@ -5,6 +5,7 @@ import types
 
 import pytest
 
+import evaluation
 import loop
 from research_state import BudgetLedger
 
@@ -203,8 +204,16 @@ def test_paired_research_uses_one_snapshot_critiques_only_promising_and_writes_b
     assert all(not os.path.isabs(path) for path in evidence["artifacts"])
     assert evidence["usage"]["calls"] == 3
     assert evidence["usage"]["iterations"] == 1
-    assert evidence["solver_evaluations"] == 9
-    assert evidence["usage"]["solver_evaluations"] == 9
+    # 3 development seeds: the winner is replicated on all three (3 candidate + 3 incumbent cells), the
+    # loser stops after the first seed (1 cell), and confirmation runs both solvers on 3 holdout seeds.
+    assert evidence["solver_evaluations"] == 13
+    assert evidence["usage"]["solver_evaluations"] == 13
+    candidates = {item["provider"]: item for item in evidence["development"]["candidates"]}
+    assert candidates["fable"]["status"] == "promising"
+    assert candidates["fable"]["comparison"]["distinct_seeds"] == 3
+    assert candidates["astra"]["status"] == "screened_out"
+    assert len(candidates["astra"]["race"]) == 1
+    assert "replication seeds are not spent" in candidates["astra"]["negative_result"]
     assert evidence["solver_seconds"] >= 0
     assert evidence["legacy_incumbent"]["sha256"] == original_hash
     assert champion.read_text(encoding="utf-8") == "# fable candidate\n"
@@ -379,6 +388,7 @@ def test_pause_serializes_completed_development_work(tmp_path):
         solver_runner=_runner,
         ledger=BudgetLedger(tmp_path / "ledger.json", 2.0),
         paused_fn=pause_after_first_candidate,
+        development_seeds=1,
     )
     assert evidence["status"] == "paused"
     assert len(evidence["development"]["candidates"]) == 1
@@ -557,7 +567,7 @@ def _screen_runner(values, seen):
     return run
 
 
-def _screen_run(tmp_path, values, *, screen_fraction=loop.DEFAULT_SCREEN_FRACTION):
+def _screen_run(tmp_path, values, *, screen_fraction=loop.DEFAULT_SCREEN_FRACTION, development_seeds=1):
     champion = tmp_path / "best-fake" / "solver.py"
     champion.parent.mkdir(parents=True, exist_ok=True)
     champion.write_text("# incumbent\n", encoding="utf-8")
@@ -594,6 +604,7 @@ def _screen_run(tmp_path, values, *, screen_fraction=loop.DEFAULT_SCREEN_FRACTIO
         ledger=BudgetLedger(tmp_path / "ledger.json", 2.0),
         paused_fn=lambda _root: False,
         screen_fraction=screen_fraction,
+        development_seeds=development_seeds,
     )
     return evidence, seen
 
@@ -660,17 +671,34 @@ def test_screening_off_evaluates_the_whole_matrix_for_a_losing_candidate(tmp_pat
 
 def test_development_profile_reports_time_used_and_the_last_candidate_delta():
     rows = [
-        {"target": "d0", "seed": 1, "value": 100.0, "secs": 119.4, "score": -1.0, "failed": False},
-        {"target": "d1", "seed": 1, "value": 250.0, "secs": 12.0, "score": -2.0, "failed": False},
+        {
+            "target": "d0",
+            "seed": 1,
+            "value": 100.0,
+            "secs": 119.4,
+            "score": -1.0,
+            "failed": False,
+            "search": {"points": 9, "improvements": 8, "time_to_best": 118.2},
+        },
+        {
+            "target": "d1",
+            "seed": 1,
+            "value": 250.0,
+            "secs": 12.0,
+            "score": -2.0,
+            "failed": False,
+            "search": {"points": 3, "improvements": 2, "time_to_best": 4.0},
+        },
         {"target": "d2", "seed": 1, "secs": 60.0, "score": -100.0, "failed": True},
     ]
     comparison = {"pairs": [{"target": "d0", "gain": -0.0123}, {"target": "d1", "gain": 0.004}]}
     table = loop.development_profile(rows, {"d0": 99.0, "d1": 240.0, "d2": None}, 120, comparison)
     lines = table.splitlines()
     assert lines[0].startswith("target | reference | incumbent | seconds used")
-    assert lines[1] == "d0 | 99 | 100 | 119 | 120 | -1.230%"
-    assert lines[2] == "d1 | 240 | 250 | 12 | 120 | +0.400%"  # returns early, far under its allowance
-    assert lines[3] == "d2 | - | failed | 60 | 120 | -"
+    # d0 was still improving at its deadline; d1 stopped improving at 4s of its 120s and returned early.
+    assert lines[1] == "d0 | 99 | 100 | 119 | 120 | 118 | 8 | -1.230%"
+    assert lines[2] == "d1 | 240 | 250 | 12 | 120 | 4 | 2 | +0.400%"
+    assert lines[3] == "d2 | - | failed | 60 | 120 | - | - | -"
 
 
 def test_the_generation_prompt_carries_the_profile_and_never_a_hidden_target(tmp_path):
@@ -688,7 +716,7 @@ def test_the_generation_prompt_carries_the_profile_and_never_a_hidden_target(tmp
         "# incumbent\n", ["dev"], {"dev": 0.0}, [], hidden_targets=("holdout",), profile=profile
     )
     assert "DEVELOPMENT PROFILE" in prompt and "seconds used" in prompt
-    assert "dev | 0 | 1 | 3 | 5 | -" in prompt
+    assert "dev | 0 | 1 | 3 | 5 | - | - | -" in prompt
     assert "holdout" not in prompt
 
     without = instance.build_research_prompt("# incumbent\n", ["dev"], {"dev": 0.0}, [], hidden_targets=("holdout",))
@@ -771,3 +799,296 @@ def test_full_mode_is_the_default_and_still_asks_for_the_whole_file(tmp_path):
     instance = loop.Loop("fake", problem_module=FakeProblem, root=tmp_path)
     prompt = instance.build_research_prompt("# incumbent\n", ["dev"], {"dev": 0.0}, [])
     assert "```python block with the full file" in prompt and "<<<<<<< SEARCH" not in prompt
+
+
+def _race_runner(value_for, seen):
+    """Solver runner whose candidate value depends on target and seed; the incumbent always scores 1.0."""
+
+    def run(_problem, solver, target, _budget, seed, out, **_kwargs):
+        source = open(solver, encoding="utf-8").read()
+        candidate = "candidate" in source
+        seen.append(("candidate" if candidate else "incumbent", target, seed))
+        value = value_for(target, seed) if candidate else 1.0
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        with open(out, "w", encoding="utf-8") as stream:
+            json.dump({"value": value}, stream)
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    return run
+
+
+def _race_run(tmp_path, value_for, *, development_seeds=3, screen_fraction=0.0, iters=1, calls=None, **kwargs):
+    champion = tmp_path / "best-fake" / "solver.py"
+    champion.parent.mkdir(parents=True, exist_ok=True)
+    champion.write_text("# incumbent\n", encoding="utf-8")
+    seen = []
+
+    def model_call(prompt, provider, max_cost, ledger, purpose, **_kwargs):
+        reservation = ledger.reserve(max_cost, f"{provider}:{purpose}")
+        ledger.settle(reservation, 0.1)
+        if calls is not None:
+            calls.append({"purpose": purpose, "provider": provider, "max_cost": max_cost, "prompt": prompt})
+        text = ""
+        if purpose == "postmortem":
+            text = "MECHANISM: the neighbour list was rebuilt on every move\nRETRY: cache it per route"
+        return {
+            "text": text,
+            "code": None if purpose in ("critique", "postmortem") else "# candidate\n",
+            "idea": "[kind: racing] try it",
+            "provider": provider,
+            "model": provider + "-model",
+            "cost": 0.1,
+            "usage": {},
+            "error": None,
+        }
+
+    evidence = loop.run_research(
+        "fake",
+        provider="fable",
+        run_id="race-test",
+        call_budget=0.5,
+        min_effect=1e-4,
+        evidence_root=tmp_path / "runs" / "research",
+        iters=iters,
+        invocation_budget=20.0,
+        root=tmp_path,
+        problem_module=ScreenProblem,
+        call_model_fn=model_call,
+        solver_runner=_race_runner(value_for, seen),
+        ledger=BudgetLedger(tmp_path / "ledger.json", 20.0),
+        paused_fn=lambda _root: False,
+        screen_fraction=screen_fraction,
+        development_seeds=development_seeds,
+        **kwargs,
+    )
+    return evidence, seen
+
+
+def test_race_stages_screen_first_then_one_stage_per_replication_seed():
+    matrix = evaluation.build_matrix([f"d{index}" for index in range(8)], 3, base_seed=10_000)
+    stages = loop.race_stages(matrix, 0.25)
+    assert [stage["kind"] for stage in stages] == ["screen", "first_seed", "replication", "replication"]
+    assert [len(stage["cells"]) for stage in stages] == [2, 6, 8, 8]
+    assert {cell["seed"] for cell in stages[0]["cells"]} == {10_000}
+    assert [stage["seed"] for stage in stages[2:]] == [10_001, 10_002]
+    assert [stage["kind"] for stage in loop.race_stages(matrix, 0)] == ["first_seed", "replication", "replication"]
+
+
+def test_a_promising_candidate_is_replicated_on_every_development_seed(tmp_path):
+    evidence, seen = _race_run(tmp_path, lambda _target, _seed: 2.0)
+    candidate = evidence["development"]["candidates"][0]
+    assert candidate["status"] == "promising"
+    assert candidate["comparison"]["distinct_seeds"] == 3
+    assert candidate["comparison"]["median_lower_bound"] > 0
+    assert len(candidate["comparison"]["pairs"]) == 24
+    assert [stage["stage"] for stage in candidate["race"]] == ["first_seed", "replication", "replication"]
+    development = {seed for who, _target, seed in seen if who == "incumbent" and seed < 100_000}
+    assert development == {10_000, 10_001, 10_002}
+
+
+def test_a_candidate_that_wins_one_seed_and_loses_the_next_never_reaches_the_third(tmp_path):
+    evidence, seen = _race_run(tmp_path, lambda _target, seed: 2.0 if seed == 10_000 else 0.5)
+    candidate = evidence["development"]["candidates"][0]
+    assert candidate["status"] == "screened_out"
+    assert candidate["median_gain"] is None
+    assert "seed 10001 did not reproduce the advantage" in candidate["negative_result"]
+    assert {seed for who, _target, seed in seen if who == "candidate"} == {10_000, 10_001}
+    assert 10_002 not in {seed for _who, _target, seed in seen}  # neither solver paid for the third seed
+
+
+def test_a_candidate_behind_on_the_first_seed_costs_no_replication_at_all(tmp_path):
+    evidence, seen = _race_run(tmp_path, lambda _target, _seed: 0.5)
+    candidate = evidence["development"]["candidates"][0]
+    assert candidate["status"] == "screened_out"
+    assert len(candidate["race"]) == 1
+    assert {seed for _who, _target, seed in seen} == {10_000}
+
+
+def test_the_screen_still_runs_ahead_of_the_replication_stages(tmp_path):
+    evidence, seen = _race_run(tmp_path, lambda _target, _seed: 0.5, screen_fraction=0.25)
+    candidate = evidence["development"]["candidates"][0]
+    assert candidate["screen"]["outcome"] == "screened_out"
+    assert candidate["screen"]["cells"] == 2 and candidate["screen"]["of_cells"] == 24
+    assert sorted({target for _who, target, _seed in seen if _who == "candidate"}) == ["d0", "d1"]
+
+
+def _near_miss(target, _seed):
+    """Five of eight targets win by a hair, three lose badly: median above the threshold, cells disagree."""
+    return 1.0002 if target in ScreenProblem.DEV[:5] else 0.95
+
+
+def test_a_near_miss_rejection_is_reviewed_and_the_mechanism_reaches_memory(tmp_path):
+    calls = []
+    evidence, _seen = _race_run(tmp_path, _near_miss, calls=calls)
+    candidate = evidence["development"]["candidates"][0]
+    assert candidate["status"] == "rejected"
+    assert candidate["comparison"]["median_gain"] >= 1e-4
+    assert candidate["comparison"]["median_lower_bound"] <= 0
+    assert candidate["postmortem"]["mechanism"] == "the neighbour list was rebuilt on every move"
+    assert candidate["postmortem"]["retry"] == "cache it per route"
+    assert "reviewed: the neighbour list was rebuilt on every move" in candidate["negative_result"]
+    review = next(call for call in calls if call["purpose"] == "postmortem")
+    assert review["max_cost"] == loop.DEFAULT_POSTMORTEM_BUDGET
+    assert "unified diff" in review["prompt"] and "+# candidate" in review["prompt"]
+    assert "per-target median gain: d0 +0.020%" in review["prompt"]
+    history = (tmp_path / "runs/research/development-history/fake.jsonl").read_text(encoding="utf-8")
+    assert "the neighbour list was rebuilt on every move" in history
+
+
+def test_a_candidate_behind_everywhere_is_not_worth_a_review(tmp_path):
+    calls = []
+    _race_run(tmp_path, lambda _target, _seed: 0.5, calls=calls)
+    assert [call["purpose"] for call in calls] == ["generation"]
+
+
+def test_the_review_limit_caps_what_a_run_spends_on_post_mortems(tmp_path):
+    calls = []
+    _race_run(tmp_path, _near_miss, iters=3, calls=calls, postmortem_limit=1)
+    assert [call["purpose"] for call in calls].count("postmortem") == 1
+
+
+def test_reviews_can_be_disabled_entirely(tmp_path):
+    calls = []
+    _race_run(tmp_path, _near_miss, calls=calls, postmortem_limit=0)
+    assert [call["purpose"] for call in calls] == ["generation"]
+
+
+def test_a_crashing_candidate_reports_the_solver_message_not_a_count(tmp_path):
+    def crashing_runner(_problem, solver, target, _budget, seed, out, **_kwargs):
+        source = open(solver, encoding="utf-8").read()
+        if "candidate" in source and target == "d3":
+            return types.SimpleNamespace(returncode=1, stdout="", stderr="RecursionError: depth exceeded in split")
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        with open(out, "w", encoding="utf-8") as stream:
+            json.dump({"value": 2.0 if "candidate" in source else 1.0}, stream)
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    champion = tmp_path / "best-fake" / "solver.py"
+    champion.parent.mkdir(parents=True, exist_ok=True)
+    champion.write_text("# incumbent\n", encoding="utf-8")
+
+    def model_call(_prompt, provider, max_cost, ledger, purpose, **_kwargs):
+        reservation = ledger.reserve(max_cost, f"{provider}:{purpose}")
+        ledger.settle(reservation, 0.1)
+        return {
+            "text": "MECHANISM: the recursive split had no depth guard\nRETRY: bound the recursion",
+            "code": None if purpose in ("critique", "postmortem") else "# candidate\n",
+            "idea": "[kind: racing] try it",
+            "provider": provider,
+            "model": provider + "-model",
+            "cost": 0.1,
+            "usage": {},
+            "error": None,
+        }
+
+    evidence = loop.run_research(
+        "fake",
+        provider="fable",
+        run_id="crash-test",
+        call_budget=0.5,
+        min_effect=1e-4,
+        evidence_root=tmp_path / "runs" / "research",
+        iters=1,
+        invocation_budget=20.0,
+        root=tmp_path,
+        problem_module=ScreenProblem,
+        call_model_fn=model_call,
+        solver_runner=crashing_runner,
+        ledger=BudgetLedger(tmp_path / "ledger.json", 20.0),
+        paused_fn=lambda _root: False,
+        screen_fraction=0.0,
+        development_seeds=3,
+    )
+    candidate = evidence["development"]["candidates"][0]
+    assert candidate["status"] == "evaluation_failed"
+    assert "RecursionError: depth exceeded in split" in candidate["negative_result"]
+    assert "reviewed: the recursive split had no depth guard" in candidate["negative_result"]
+
+
+def test_near_miss_records_rank_measured_losers_and_ignore_the_rest():
+    records = [
+        {"status": "promising", "median_gain": 0.02, "_candidate_file": "a.py", "iteration": 0},
+        {"status": "rejected", "median_gain": 0.001, "_candidate_file": "b.py", "iteration": 1},
+        {"status": "rejected", "median_gain": -0.03, "_candidate_file": "c.py", "iteration": 2},
+        {"status": "evaluation_failed", "median_gain": None, "_candidate_file": "d.py", "iteration": 3},
+        {"status": "screened_out", "median_gain": None, "_candidate_file": "e.py", "iteration": 4},
+        {"status": "rejected", "median_gain": 0.005, "iteration": 5},  # no file kept
+    ]
+    chosen = loop.near_miss_records(records)
+    assert [item["_candidate_file"] for item in chosen] == ["b.py", "c.py"]
+    assert [item["_candidate_file"] for item in loop.near_miss_records(records, limit=3)] == ["b.py", "c.py", "d.py"]
+
+
+def test_the_next_generation_prompt_carries_the_previous_near_miss_diff(tmp_path):
+    calls = []
+    _race_run(tmp_path, _near_miss, iters=2, calls=calls)
+    generations = [call for call in calls if call["purpose"] == "generation"]
+    assert len(generations) == 2
+    assert "MEASURED NEAR MISSES" not in generations[0]["prompt"]
+    second = generations[1]["prompt"]
+    assert "MEASURED NEAR MISSES FROM THIS RUN" in second
+    assert "iteration 0 (rejected, median gain +0.020%)" in second
+    assert "PER-TARGET MEDIAN GAIN: d0 +0.020%" in second
+    assert "+# candidate" in second and "-# incumbent" in second
+    assert "WHY IT DID NOT PASS:" in second
+
+
+def test_a_promising_candidate_is_never_offered_as_a_near_miss(tmp_path):
+    calls = []
+    _race_run(tmp_path, lambda _target, _seed: 2.0, iters=2, calls=calls)
+    generations = [call for call in calls if call["purpose"] == "generation"]
+    assert all("MEASURED NEAR MISSES" not in call["prompt"] for call in generations)
+
+
+def _write(tmp_path, payload):
+    path = tmp_path / "result.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return str(path)
+
+
+def test_search_summary_reads_a_minimising_solver_curve(tmp_path):
+    path = _write(tmp_path, {"obj": 100, "solution": {}, "trace": [[0.5, 140], [3.0, 120], [9.5, 100]]})
+    assert loop.search_summary(path, maximize=False) == {"points": 3, "improvements": 2, "time_to_best": 9.5}
+
+
+def test_search_summary_respects_the_plugin_direction(tmp_path):
+    path = _write(tmp_path, {"trace": [[1.0, 10], [2.0, 4], [3.0, 7]]})
+    assert loop.search_summary(path, maximize=True)["improvements"] == 0  # 10 is already the best
+    assert loop.search_summary(path, maximize=True)["time_to_best"] == 1.0
+    assert loop.search_summary(path, maximize=False) == {"points": 3, "improvements": 1, "time_to_best": 2.0}
+
+
+def test_search_summary_ignores_a_missing_or_malformed_trace(tmp_path):
+    assert loop.search_summary(_write(tmp_path, {"obj": 1, "solution": {}}), maximize=False) is None
+    assert loop.search_summary(_write(tmp_path, {"trace": []}), maximize=False) is None
+    assert loop.search_summary(_write(tmp_path, {"trace": "1,2"}), maximize=False) is None
+    assert loop.search_summary(_write(tmp_path, {"trace": [[1.0]]}), maximize=False) is None
+    assert loop.search_summary(_write(tmp_path, {"trace": [[-1.0, 5.0]]}), maximize=False) is None
+    assert loop.search_summary(_write(tmp_path, {"trace": [[1.0, float("inf")]]}), maximize=False) is None
+    assert loop.search_summary(_write(tmp_path, {"trace": [[1.0, True]]}), maximize=False) is None
+    assert loop.search_summary(str(tmp_path / "absent.json"), maximize=False) is None
+
+
+def test_search_summary_caps_the_points_it_reads(tmp_path):
+    trace = [[float(index), 1000.0 - index] for index in range(200)]
+    summary = loop.search_summary(_write(tmp_path, {"trace": trace}), maximize=False)
+    assert summary["points"] == loop.MAX_TRACE_POINTS
+    assert summary["improvements"] == loop.MAX_TRACE_POINTS - 1
+
+
+def test_an_evaluated_row_carries_the_solver_curve(tmp_path):
+    champion = tmp_path / "best-fake" / "solver.py"
+    champion.parent.mkdir(parents=True)
+    champion.write_text("# incumbent\n", encoding="utf-8")
+
+    def tracing_runner(_problem, _solver, target, _budget, seed, out, **_kwargs):
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        with open(out, "w", encoding="utf-8") as stream:
+            json.dump({"value": 1.0, "trace": [[0.2, 5.0], [1.5, 2.0]]}, stream)
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    instance = loop.Loop("fake", problem_module=FakeProblem, root=tmp_path)
+    rows = instance.evaluate_matrix(
+        str(champion), [{"target": "dev", "seed": 1}], 5, str(tmp_path / "work"), 1, tracing_runner
+    )
+    assert rows[0]["search"] == {"points": 2, "improvements": 1, "time_to_best": 1.5}

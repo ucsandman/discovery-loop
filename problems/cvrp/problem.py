@@ -24,7 +24,14 @@ DEVELOPMENT = TARGETS
 VALIDATION = []
 RELEASE_HOLDOUT = []
 DEFAULTS = {"time": 120, "workers": 3}
-PATTERN_TAGS = ["local-search", "fast-verifier", "combinatorial", "route-structure", "generatable-test-cases", "huge-raw-search-space"]
+PATTERN_TAGS = [
+    "local-search",
+    "fast-verifier",
+    "combinatorial",
+    "route-structure",
+    "generatable-test-cases",
+    "huge-raw-search-space",
+]
 MAXIMIZE = False
 FAIL_SCORE = -1.0  # a crash / timeout / infeasible output; strictly worse than any feasible run (gap clipped at 0.5)
 GAP_CLIP = 0.5
@@ -135,6 +142,8 @@ INTERFACE CONTRACT (keep exactly):
     NODE_COORD_SECTION, the depot is node 1
   must finish within SECONDS (hard kill at SECONDS+45; returning early is fine); print nothing important to stdout
   save atomically (write tmp, os.replace) on EVERY improvement so a timeout still leaves the best solution on disk
+  optional, never scored: also write "trace": [[seconds, objective], ...] -- at most 64 points, one per
+    improvement to your best-so-far -- so the loop can report when your search stopped improving
   allowed imports: python stdlib and numpy only (NO external solver packages, no scipy required)
   helpers on PYTHONPATH (problems/cvrp is on sys.path when the loop runs you; keep the champion's import block):
     from verify import load_instance, dist_matrix

@@ -96,7 +96,7 @@
     const table = node("table");
     const head = node("thead");
     const headRow = node("tr");
-    ["Iter", "Model", "Idea", "Median gain", "Outcome"].forEach((label) => headRow.append(node("th", "", label)));
+    ["Iter", "Model", "Idea", "Median gain", "Bound (10%)", "Seeds", "Outcome"].forEach((label) => headRow.append(node("th", "", label)));
     head.append(headRow);
     const body = node("tbody");
     const rows = [...slot.candidates].sort((a, b) => (b.median_gain ?? -Infinity) - (a.median_gain ?? -Infinity));
@@ -107,6 +107,9 @@
       tr.append(node("td", "idea", row.idea || "(no idea recorded)"));
       const gain = node("td", finite(row.median_gain) && row.median_gain > 0 ? "gain-up" : "", pct(row.median_gain));
       tr.append(gain);
+      // A median without its bound and its seed count reads as a result; the gate needs all three.
+      tr.append(node("td", finite(row.median_lower_bound) && row.median_lower_bound > 0 ? "gain-up" : "", pct(row.median_lower_bound)));
+      tr.append(node("td", "", finite(row.seeds) ? String(row.seeds) : "-"));
       tr.append(node("td", "", titleCase(row.status)));
       body.append(tr);
     });

@@ -381,6 +381,7 @@ def _run_routed_critique(tmp_path, fail_all_critics=False, captured_prompts=None
         min_effect=0.1,
         iters=1,
         paused_fn=lambda _root: False,
+        postmortem_limit=0,  # these assertions count model calls, not reviews
     )
     return evidence, calls, ledger
 
@@ -532,6 +533,7 @@ def test_paired_first_proposal_survives_second_generation_exhaustion(tmp_path):
         min_effect=0.1,
         iters=1,
         paused_fn=lambda _root: False,
+        postmortem_limit=0,  # these assertions count model calls, not reviews
     )
 
     assert evidence["status"] == "provider_unavailable"
@@ -580,6 +582,7 @@ def test_development_evaluation_failure_is_invalid_without_model_fallback(tmp_pa
         min_effect=0.1,
         iters=1,
         paused_fn=lambda _root: False,
+        postmortem_limit=0,  # these assertions count model calls, not reviews
     )
 
     candidate = evidence["development"]["candidates"][0]
@@ -765,6 +768,7 @@ def test_resume_keeps_frozen_incumbent_when_current_champion_changed(tmp_path):
         solver_runner=runner,
         call_model_fn=lambda *_args, **_kwargs: pytest.fail("no model call expected"),
         iters=0,
+        postmortem_limit=0,  # these assertions count model calls, not reviews
     )
 
     assert snapshot.read_text(encoding="utf-8") == "value = 1\n"

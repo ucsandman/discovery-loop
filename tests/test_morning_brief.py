@@ -77,6 +77,7 @@ def _evidence(problem, *, confirmed, publishable, reason=None):
                     "actual_model": "claude-opus-5",
                     "idea": "gated SWAP* with split",
                     "median_gain": 0.0021,
+                    "comparison": {"median_lower_bound": 0.0008, "distinct_seeds": 3},
                     "status": "promising",
                     "valid": True,
                 },
@@ -200,6 +201,10 @@ def test_last_night_reads_ideas_outcomes_and_verdict(research_root):
         cvrp["candidates"][0]["idea"].endswith("…") and len(cvrp["candidates"][0]["idea"]) <= morning_brief.IDEA_CHARS
     )
     assert cvrp["candidates"][2]["idea"] == "astra CLI reported an error"
+    # A median alone is not what the gate accepts, so the review page carries the bound and the replication.
+    promoted = cvrp["candidates"][1]
+    assert promoted["median_lower_bound"] == 0.0008 and promoted["seeds"] == 3
+    assert cvrp["candidates"][0]["median_lower_bound"] is None and cvrp["candidates"][0]["seeds"] is None
     assert cvrp["confirmation"] == {
         "pairs": 3,
         "wins": 2,

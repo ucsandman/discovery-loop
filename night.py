@@ -16,7 +16,12 @@ import sys
 import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from loop import DEFAULT_SCREEN_FRACTION
+from loop import (
+    DEFAULT_DEVELOPMENT_SEEDS,
+    DEFAULT_POSTMORTEM_BUDGET,
+    DEFAULT_POSTMORTEM_LIMIT,
+    DEFAULT_SCREEN_FRACTION,
+)
 from model_registry import VALID_ROUTING_POLICIES, model_spec, policy_chain, routing_config
 from research_state import BudgetLedger, FileLock, atomic_json, paused, read_json
 
@@ -513,6 +518,12 @@ def _research_command(
         str(slot.get("effective_slot_budget_usd", slot.get("slot_budget_usd", 0))),
         "--seed-count",
         str(slot.get("seed_count", 1)),
+        "--development-seeds",
+        str(slot.get("development_seeds", DEFAULT_DEVELOPMENT_SEEDS)),
+        "--postmortem-limit",
+        str(slot.get("postmortem_limit", DEFAULT_POSTMORTEM_LIMIT)),
+        "--postmortem-budget",
+        str(slot.get("postmortem_budget", DEFAULT_POSTMORTEM_BUDGET)),
         "--min-effect",
         str(slot.get("min_effect", 0.01)),
         "--evidence-root",
@@ -682,6 +693,7 @@ def _prize_slot(config, block, allocation, binding, prize_id):
         # The plugin's promotion threshold is a floor, never a ceiling: a prize claim has to clear
         # the plugin's own paired bar before anything downstream calls it progress.
         "seed_count": max(int(block.get("seed_count", 1)), int(threshold.get("seed_count", 1) or 1)),
+        "development_seeds": int(block.get("development_seeds", DEFAULT_DEVELOPMENT_SEEDS)),
         "min_effect": max(float(block.get("min_effect", 0.0)), float(threshold.get("min_effect", 0.0) or 0.0)),
         "time_per_target": float(block.get("time_per_target", 60)),
         "workers": int(block.get("workers", 2)),

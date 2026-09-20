@@ -88,6 +88,7 @@ def _run(tmp_path, run_id, code, idea, prompts, *, iters=1):
         ledger=BudgetLedger(tmp_path / f"{run_id}-ledger.json", allowance),
         paused_fn=lambda _root: False,
         routing_journal_path=tmp_path / "runs" / "research" / run_id / "routing.json",
+        development_seeds=1,
     )
 
 

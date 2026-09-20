@@ -4,6 +4,21 @@ Status: Implementation verified, 2026-09-05. Windows tasks activated and the das
 
 This extends loop.py, night.py, the problem plugins, and their existing status pages. No separate research engine.
 
+## Development evaluation (updated 2026-09-20)
+
+A candidate is raced rather than measured once. `race_stages` splits the development matrix into the screening
+prefix (a quarter of the targets on the first seed), the rest of the first seed, then one stage per further
+development seed; `race_verdict` ends a candidate that fails any cell, is worse than the incumbent on every
+screening target, is not ahead overall, or whose newest seed did not reproduce its advantage. Only the final
+stage compares with `min_seeds=development_seeds`, so a promotion always carries replication. The incumbent is
+evaluated lazily per stage, so replication seconds are spent only when some candidate reaches them.
+
+`evaluation.compare_paired` reports `median_lower_bound`, the 10th percentile of a bootstrap over the paired
+cells, and requires it above zero. `--development-seeds` (default 3) is the replication setting; `--seed-count`
+remains the confirmation setting. `--postmortem-limit` and `--postmortem-budget` bound the review of losing
+candidates in `postmortem.py`, whose named mechanism is written into the candidate's negative result and reaches
+the next generation prompt together with that run's near-miss diffs and each candidate's per-target outcome.
+
 ## Acceptance criteria
 
 1. Per-invocation budgets and iteration counts, including generation, review and retrospective usage. Unknown charges reserve the full configured call allowance.

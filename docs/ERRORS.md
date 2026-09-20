@@ -1,5 +1,23 @@
 # Errors and lessons
 
+## 2026-09-20: The development gate was deciding inside its own noise
+
+For 40 runs the loop judged every candidate on one seed per target and accepted a median gain of 0.01%. The
+three-seed confirmation runs say what one seed is worth: the same solver, on the same target, moved 0.06%-0.57%
+between seeds on cvrp, and far more on miplib_heur. So "promising" and "rejected" -- the labels that pick the
+night's best candidate, become dead ends, seed the family rollups and get written into every later prompt -- were
+substantially coin flips, and the loop then trained its own memory on them. The symptom was visible from the
+outside and was read as ordinary difficulty: 191 scored candidates whose 90th-percentile gain was +0.18%, 3 of 40
+runs confirmed, none publishable, and the same idea proposed four nights running.
+
+The lesson is that a gate's threshold has to be stated against a measured noise floor, not chosen as a small
+number. A threshold nobody compared with the instrument's own repeatability is not a threshold. Development now
+replicates on three seeds, a candidate must reproduce its advantage on each one, and the pass needs a bootstrap
+lower bound above zero as well as the median; the same bound applied to the historical candidates would have kept
+16 of 44 cvrp promotions. The second lesson is cheaper: the loop had the paired per-cell rows all along and threw
+them away at the memory boundary, keeping one scalar per candidate, so nothing downstream could see that a
+candidate won on five targets and lost on three.
+
 ## 2026-09-20: Half the nights were lost to failures that clear on their own
 
 Six nights, three with no research: two subscription exhaustions and one Docker engine that was not up at 02:00.

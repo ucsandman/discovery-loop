@@ -1,4 +1,5 @@
 import math
+import statistics
 import types
 
 import pytest
@@ -102,3 +103,43 @@ def test_manifest_labels_legacy_validation_as_previously_exposed():
     assert set(manifest["previously_exposed"]) == set(targets)
     assert manifest["classification"] == "previously_exposed_benchmark_validation"
     assert any("not unseen generalization" in line for line in manifest["limitations"])
+
+
+def _rows(values, seeds=(1, 2, 3)):
+    return [
+        {"target": target, "seed": seed, "value": value, "score": value, "failed": False}
+        for target, per_seed in values.items()
+        for seed, value in zip(seeds, per_seed)
+    ]
+
+
+def test_median_lower_bound_is_deterministic_and_discounts_noisy_cells():
+    noisy = [0.05, -0.04, 0.06, -0.05, 0.05, -0.03]
+    steady = [0.05, 0.05, 0.05, 0.05, 0.05, 0.05]
+    assert evaluation.median_lower_bound(noisy) == evaluation.median_lower_bound(noisy)
+    assert evaluation.median_lower_bound(noisy) < statistics.median(noisy)
+    assert evaluation.median_lower_bound(steady) == 0.05
+    assert evaluation.median_lower_bound([0.02]) == 0.02
+
+
+def test_a_median_above_the_threshold_does_not_pass_when_the_cells_disagree():
+    incumbent = _rows({name: [1.0, 1.0] for name in "abcd"}, seeds=(1, 2))
+    # Five cells win by a hair and three lose badly: the median clears the threshold, so the median-only
+    # gate passed this candidate, but the cells do not agree that it is ahead.
+    candidate = _rows(
+        {"a": [1.0002, 1.0002], "b": [1.0002, 1.0002], "c": [1.0002, 0.95], "d": [0.95, 0.95]},
+        seeds=(1, 2),
+    )
+    comparison = evaluation.compare_paired(incumbent, candidate, 1e-4)
+    assert comparison["median_gain"] >= 1e-4
+    assert comparison["median_lower_bound"] <= 0
+    assert comparison["passes"] is False
+
+
+def test_a_consistent_winner_still_passes_with_its_lower_bound_reported():
+    incumbent = _rows({"a": [1.0, 1.0, 1.0], "b": [1.0, 1.0, 1.0]})
+    candidate = _rows({"a": [1.02, 1.03, 1.02], "b": [1.01, 1.02, 1.03]})
+    comparison = evaluation.compare_paired(incumbent, candidate, 1e-4)
+    assert comparison["passes"] is True
+    assert comparison["median_lower_bound"] > 0
+    assert comparison["distinct_seeds"] == 3

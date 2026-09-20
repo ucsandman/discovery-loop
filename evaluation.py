@@ -7,7 +7,9 @@ be independently checked against the plugin verifier.
 
 from __future__ import annotations
 
+import hashlib
 import math
+import random
 import statistics
 from collections import defaultdict
 
@@ -129,6 +131,35 @@ def score_rows(problem, records, rows):
     return scored
 
 
+BOOTSTRAP_REPS = 2000
+BOOTSTRAP_QUANTILE = 0.10
+
+
+def median_lower_bound(gains, *, reps=BOOTSTRAP_REPS, quantile=BOOTSTRAP_QUANTILE):
+    """A distribution-free lower bound on the paired median gain.
+
+    The acceptance threshold (1e-4) sits far below what a stochastic solver moves between seeds: on cvrp
+    confirmation runs the same solver on the same target spread 0.06%-0.57% (2026-09-08 to 09-17).  A median
+    above the threshold is therefore not by itself evidence that a candidate is ahead.  Resampling the paired
+    cells says how much of that median survives the spread in the cells themselves.
+
+    Replayed over the 179 candidates of 09-08..09-20 that carry paired rows, this bound keeps 16 of 44 cvrp
+    and 7 of 23 miplib_heur promotions and rescues no rejection: it costs recall on the development gate and
+    buys precision, which is the trade a night with 0 publishable results in 40 runs needs.
+
+    The resampling is seeded from the gains themselves, so the same comparison always returns the same bound.
+    """
+    values = [float(gain) for gain in gains]
+    if not values:
+        raise ValueError("median_lower_bound needs at least one gain")
+    if len(values) == 1:
+        return values[0]
+    digest = hashlib.sha256(repr([round(value, 12) for value in values]).encode("utf-8")).digest()
+    rng = random.Random(int.from_bytes(digest[:8], "big"))
+    medians = sorted(statistics.median(rng.choices(values, k=len(values))) for _ in range(reps))
+    return medians[int(quantile * reps)]
+
+
 def compare_paired(incumbent_rows, candidate_rows, min_effect, min_seeds=3, *, policy="median"):
     """Compare exact target/seed pairs using a robust replicated gate."""
     if isinstance(min_effect, bool) or not isinstance(min_effect, (int, float)) or not math.isfinite(min_effect):
@@ -188,6 +219,7 @@ def compare_paired(incumbent_rows, candidate_rows, min_effect, min_seeds=3, *, p
         for seed, seed_gains in sorted(by_seed.items())
     ]
     median_gain = statistics.median(gains)
+    lower_bound = median_lower_bound(gains)
     failure_rate_ok = candidate_failures <= incumbent_failures
     replication_ok = len(seed_sets[0]) >= min_seeds
     result = {
@@ -195,6 +227,8 @@ def compare_paired(incumbent_rows, candidate_rows, min_effect, min_seeds=3, *, p
         "gains": gains,
         "per_seed": per_seed,
         "median_gain": median_gain,
+        "median_lower_bound": lower_bound,
+        "bootstrap_quantile": BOOTSTRAP_QUANTILE,
         "min_effect": float(min_effect),
         "incumbent_failure_rate": incumbent_failures / len(pairs),
         "candidate_failure_rate": candidate_failures / len(pairs),
@@ -203,7 +237,13 @@ def compare_paired(incumbent_rows, candidate_rows, min_effect, min_seeds=3, *, p
         "distinct_seeds": len(seed_sets[0]),
         "required_seeds": min_seeds,
         "replication_ok": replication_ok,
-        "passes": median_gain >= min_effect and candidate_failures == 0 and failure_rate_ok and replication_ok,
+        "passes": (
+            median_gain >= min_effect
+            and lower_bound > 0
+            and candidate_failures == 0
+            and failure_rate_ok
+            and replication_ok
+        ),
     }
     if policy == "per_target_pareto":
         per_target = []
@@ -218,15 +258,20 @@ def compare_paired(incumbent_rows, candidate_rows, min_effect, min_seeds=3, *, p
                     "regressions": sum(gain < 0 for gain in target_gains),
                 }
             )
-        selection_gain = max(item["median_gain"] for item in per_target)
+        selected = max(per_target, key=lambda item: item["median_gain"])
+        selection_gain = selected["median_gain"]
+        selection_lower_bound = median_lower_bound(selected["gains"])
         non_regressing = all(pair["gain"] >= 0 for pair in pairs)
         result.update(
             policy=policy,
             per_target=per_target,
             selection_gain=selection_gain,
+            selection_lower_bound=selection_lower_bound,
+            selection_target=selected["target"],
             non_regressing=non_regressing,
             passes=(
                 selection_gain >= min_effect
+                and selection_lower_bound > 0
                 and non_regressing
                 and candidate_failures == 0
                 and failure_rate_ok

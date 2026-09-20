@@ -173,11 +173,11 @@ flowchart TD
 
 1. Freeze the incumbent, inputs, comparison scope and resource limits.
 2. Give Fable and Astra the same development brief in paired mode. They do not see each other's initial proposals. The route records which configured model actually executed every call.
-3. Run incumbent and candidates in identical restricted workers; recompute objectives and feasibility outside generated code.
-4. Cross-review promising candidates. Model opinions never override mathematical checks.
+3. Run incumbent and candidates in identical restricted workers; recompute objectives and feasibility outside generated code. A candidate is raced: it must stay ahead on a cheap prefix, then on the first seed, then reproduce its advantage on each further development seed, and it is only called promising once its paired median gain clears the minimum effect with a 10th-percentile bootstrap bound above zero. A candidate that stops early costs the night one stage instead of the whole matrix, and the incumbent pays for a replication seed only when some candidate reaches it.
+4. Cross-review promising candidates, and review losing ones: a crash or a near miss gets one bounded post-mortem call whose named mechanism becomes that candidate's negative result. Model opinions never override mathematical checks.
 5. Confirm the best candidate on a separate target/seed matrix, requiring a minimum median effect, zero candidate failures, and no increased failure rate.
 6. For general MIP heuristics, compare against a freshly executed HiGHS baseline in the same worker environment before making a baseline-superiority claim.
-7. Preserve evidence and confirmed lineage for subsequent nights. Feed only development observations and sanitized lessons into future generation.
+7. Preserve evidence and confirmed lineage for subsequent nights. Feed only development observations and sanitized lessons into future generation: each candidate's per-target outcome rather than one scalar, the same gains rolled up per algorithm family, the diffs of this run's measured near misses, and the incumbent's own search curve when a solver reports one.
 
 Known benchmark targets remain labeled previously exposed. The existing MIP heuristic holdout is reusable confirmation data, not a sealed generalization test. Matrix multiplication confirms on the same development targets under fresh seeds, which measures solver repeatability rather than unseen generalization. The optional CVRP release cohort is generated only after its candidate and baseline are frozen, stays under the ignored `runs/sealed-release/` tree, and can be evaluated once. Because its six cases are synthetic rather than public benchmarks or operational data, it supports only the bounded descriptive comparison shown in the dashboard.
 

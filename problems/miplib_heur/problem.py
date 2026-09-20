@@ -148,6 +148,8 @@ INTERFACE CONTRACT (keep exactly):
   writes JSON {"target": NAME, "obj": float, "solution": {var_name: value, ...}} listing the nonzero variables
   must finish within SECONDS (hard kill at SECONDS+45; returning early is fine); print nothing important to stdout
   save atomically (write tmp, os.replace) on EVERY improvement so a timeout still leaves the best solution on disk
+  optional, never scored: also write "trace": [[seconds, objective], ...] -- at most 64 points, one per
+    improvement to your best-so-far -- so the loop can report when your search stopped improving
   allowed imports: python stdlib, numpy, scipy, highspy (HiGHS 1.15); use at most 2 HiGHS threads (three solvers run in parallel)
   the instance file: from records import instance_path; instance_path(NAME) -> .mps path (PYTHONPATH already includes
   problems/miplib_heur when the loop runs you; keep the champion's import block)

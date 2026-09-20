@@ -211,6 +211,8 @@ INTERFACE CONTRACT (keep exactly):
   writes JSON {"target": "N", "rank": R, "factors": [[[U],[V],[W]], ...]} where each of U,V,W is an n x n list of
     lists of ints; R = len(factors) must equal "rank"
   must finish within SECONDS (hard kill at SECONDS+45); save atomically (write tmp, os.replace) on EVERY improvement
+  optional, never scored: also write "trace": [[seconds, objective], ...] -- at most 64 points, one per
+    improvement to your best-so-far -- so the loop can report when your search stopped improving
   allowed imports: python stdlib and numpy only
   helpers on PYTHONPATH (problems/matrix_multiplication is on sys.path when the loop runs you):
     from verify import check, apply, naive_product

@@ -201,3 +201,79 @@ def test_allocation_orders_exploration_by_fewest_attempts_then_choice_order():
     ]
     exploration = research_memory.rank_auto_allocation(stats, choices, exploration_slots=2)["exploration"]
     assert [item["family"] for item in exploration] == ["new", "seen"]
+
+
+def _paired(target, seed, gain, failed=False):
+    return {"target": target, "seed": seed, "gain": gain, "candidate_failed": failed}
+
+
+def test_cell_outcomes_report_per_target_medians_and_counts():
+    record = {
+        "status": "rejected",
+        "idea": "[kind: swap*] granular swap",
+        "comparison": {
+            "pairs": [
+                _paired("alpha", 1, 0.01),
+                _paired("alpha", 2, 0.004),
+                _paired("beta", 1, -0.006),
+                _paired("gamma", 1, 0.0, failed=True),
+            ]
+        },
+    }
+    cells = research_memory.summarize_development([record])["entries"][0]["cells"]
+    assert (cells["won"], cells["lost"], cells["failed"]) == (2, 1, 1)
+    assert cells["targets"] == {"alpha": 0.7, "beta": -0.6, "gamma": 0.0}
+    assert research_memory.cells_text(cells) == "alpha +0.700% | beta -0.600% | gamma +0.000%"
+
+
+def test_cell_outcomes_drop_withheld_targets():
+    record = {
+        "status": "rejected",
+        "idea": "[kind: swap*] granular swap",
+        "comparison": {"pairs": [_paired("alpha", 1, 0.01), _paired("secret", 1, -0.02)]},
+    }
+    cells = research_memory.summarize_development([record], hidden_targets=("secret",))["entries"][0]["cells"]
+    assert set(cells["targets"]) == {"alpha"}
+
+
+def test_cell_outcomes_absent_without_paired_rows():
+    assert (
+        research_memory.summarize_development([{"status": "syntax_error", "idea": "x"}])["entries"][0]["cells"] is None
+    )
+
+
+def test_family_rollup_keeps_per_target_gains():
+    records = [
+        {
+            "status": "rejected",
+            "idea": "[kind: swap*] granular swap",
+            "comparison": {"pairs": [_paired("alpha", 1, gain), _paired("beta", 1, -0.01)]},
+        }
+        for gain in (0.004, 0.006)
+    ]
+    family = research_memory.summarize_development(records)["families"][0]
+    assert family["family"] == "swap*" and family["target_gains"] == {"alpha": 0.5, "beta": -1.0}
+
+
+def test_projected_cells_survive_being_summarized_again():
+    record = {
+        "status": "rejected",
+        "idea": "[kind: swap*] granular swap",
+        "comparison": {"pairs": [_paired("alpha", 1, 0.01), _paired("beta", 1, -0.006)]},
+    }
+    stored = research_memory.summarize_development([record])["entries"][0]
+    # History is written projected: re-reading it must not empty the per-target outcomes.
+    again = research_memory.summarize_development([stored])
+    assert again["entries"][0]["cells"]["targets"] == {"alpha": 1.0, "beta": -0.6}
+    assert again["entries"][0]["cells"]["won"] == 1
+    assert again["families"][0]["target_gains"] == {"alpha": 1.0, "beta": -0.6}
+
+
+def test_a_withheld_target_is_dropped_when_projected_cells_are_re_read():
+    stored = {
+        "status": "rejected",
+        "idea": "x",
+        "cells": {"won": 1, "lost": 1, "targets": {"alpha": 1.0, "secret": -2.0}},
+    }
+    cells = research_memory.summarize_development([stored], hidden_targets=("secret",))["entries"][0]["cells"]
+    assert set(cells["targets"]) == {"alpha"}

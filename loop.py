@@ -32,6 +32,7 @@ from pathlib import Path
 import evaluation
 import island_evolution
 import patching
+import postmortem
 import research_context
 import verification_contract
 from model_registry import (
@@ -45,6 +46,7 @@ from model_registry import (
 )
 from research_memory import (
     analyze_candidate,
+    cells_text,
     is_development_observation,
     mentions_target,
     operational_stats,
@@ -316,7 +318,7 @@ th{{background:#eee}}.win{{background:#c8f7c5}}h1{{margin:0}}</style>
                 value, payload = self.P.evaluate(output, target)
                 if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(float(value)):
                     raise ValueError("verifier returned a non-finite value")
-                return {
+                row = {
                     "target": target,
                     "seed": seed,
                     "value": float(value),
@@ -324,6 +326,10 @@ th{{background:#eee}}.win{{background:#c8f7c5}}h1{{margin:0}}</style>
                     "output_path": output,
                     "secs": round(time.time() - started, 3),
                 }
+                search = search_summary(output, getattr(self.P, "MAXIMIZE", False))
+                if search is not None:
+                    row["search"] = search
+                return row
             except Exception as exc:
                 return {
                     "target": target,
@@ -351,6 +357,7 @@ th{{background:#eee}}.win{{background:#c8f7c5}}h1{{margin:0}}</style>
         context_blocks=None,
         profile=None,
         generation_mode="full",
+        near_misses=(),
     ):
         """Build a prompt from development data only."""
         if context_blocks is None:
@@ -375,7 +382,11 @@ th{{background:#eee}}.win{{background:#c8f7c5}}h1{{margin:0}}</style>
             " Nothing else."
         )
         profile_block = (
-            f"\nDEVELOPMENT PROFILE (this run's matrix; seconds used is what the incumbent actually spent):\n{profile}\n"
+            f"\nDEVELOPMENT PROFILE (this run's matrix; seconds used is what the incumbent actually spent,"
+            f" and time to best is when it last improved. A solver may report its own curve by writing"
+            f' "trace": [[seconds, objective], ...] beside its solution; "-" means it reported none):\n'
+            f"{profile}"
+            f"\n"
             if profile
             else ""
         )
@@ -396,6 +407,24 @@ th{{background:#eee}}.win{{background:#c8f7c5}}h1{{margin:0}}</style>
         for key, value in retro.items():
             retro[key] = strip_local_paths(redact_targets(value, hidden_targets))
         retro_text = json.dumps(retro, sort_keys=True, separators=(",", ":")) if any(retro.values()) else "(none yet)"
+        near_miss_text = ""
+        for item in near_misses or ():
+            header = f"--- iteration {item.get('iteration')} ({item.get('status')}"
+            gain = item.get("median_gain")
+            if isinstance(gain, (int, float)):
+                header += f", median gain {gain * 100:+.3f}%"
+            header += ")"
+            near_miss_text += f"\n{header} ---\nIDEA: {str(item.get('idea') or '')[:300]}\n"
+            if item.get("cells"):
+                near_miss_text += f"PER-TARGET MEDIAN GAIN: {item['cells']}\n"
+            near_miss_text += f"WHY IT DID NOT PASS: {str(item.get('negative_result') or '')[:300]}\n"
+            near_miss_text += f"```diff\n{item.get('diff') or '(no diff available)'}\n```\n"
+        if near_miss_text:
+            near_miss_text = (
+                "MEASURED NEAR MISSES FROM THIS RUN (each diff is against the file above; these were run on the "
+                "development matrix and did not pass). Continue one of them by fixing the named failure, or say "
+                "in the IDEA line what you are doing differently and why:\n" + near_miss_text
+            )
         mission_text = "(no reviewed ARC mission is bound to this run)"
         if mission:
             mission_text = json.dumps(
@@ -436,7 +465,10 @@ DEVELOPMENT REFERENCES ONLY:
 {board}
 {profile_block}
 
-DEVELOPMENT HISTORY ONLY:
+DEVELOPMENT HISTORY ONLY (each entry's "cells" holds that candidate's own paired result per development
+target -- won/lost counts and the median gain in percent on each target; "families" rolls those same
+per-target gains up across every attempt in an algorithm family, so a family that wins on one instance class
+and loses on another is visible. Positive means better than the incumbent):
 {prior}
 
 PRIOR RETROSPECTIVE NOTES (the next experiment is an untested hypothesis, not evidence):
@@ -444,6 +476,7 @@ PRIOR RETROSPECTIVE NOTES (the next experiment is an untested hypothesis, not ev
 
 {context_blocks["text"]}
 
+{near_miss_text}
 {self.P.TASK}
 
 Begin the idea with an algorithm-family tag: "IDEA: [kind: <algorithm family>] <one sentence>".
@@ -823,6 +856,52 @@ def _call_with_budget(
 
 
 DEFAULT_SCREEN_FRACTION = 0.25
+DEFAULT_DEVELOPMENT_SEEDS = 3
+DEFAULT_POSTMORTEM_LIMIT = 3
+DEFAULT_POSTMORTEM_BUDGET = 0.5
+
+
+MAX_TRACE_POINTS = 64
+
+
+def search_summary(path, maximize):
+    """The optional best-so-far curve a solver may write beside its solution, validated and bounded.
+
+    The loop sees a final objective and a wall time, which cannot tell a solver that converged after four
+    seconds of its hundred from one that was still improving when the budget ran out -- the difference
+    between "search better" and "search harder", and the question the incumbent profile could not answer.
+    A solver may record its own curve as ``"trace": [[seconds, objective], ...]``.  Nothing here scores it:
+    the independent verifier remains the only source of a value, and a missing or malformed trace is simply
+    not reported.
+    """
+    try:
+        with open(path, encoding="utf-8") as stream:
+            data = json.load(stream)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    trace = data.get("trace") if isinstance(data, dict) else None
+    if not isinstance(trace, list) or not trace:
+        return None
+    points = []
+    for item in trace[:MAX_TRACE_POINTS]:
+        if not isinstance(item, (list, tuple)) or len(item) != 2:
+            return None
+        seconds, objective = item
+        for number in (seconds, objective):
+            if isinstance(number, bool) or not isinstance(number, (int, float)) or not math.isfinite(number):
+                return None
+        if seconds < 0:
+            return None
+        points.append((float(seconds), float(objective)))
+    points.sort(key=lambda point: point[0])
+    ahead = (lambda new, best: new > best) if maximize else (lambda new, best: new < best)
+    best = points[0][1]
+    time_to_best = points[0][0]
+    improvements = 0
+    for seconds, objective in points[1:]:
+        if ahead(objective, best):
+            best, time_to_best, improvements = objective, seconds, improvements + 1
+    return {"points": len(points), "improvements": improvements, "time_to_best": round(time_to_best, 3)}
 
 
 def _profile_number(value, digits=4):
@@ -854,16 +933,27 @@ def development_profile(incumbent_rows, records, time_budget, last_comparison=No
         if isinstance(row.get("secs"), (int, float)) and not isinstance(row.get("secs"), bool):
             entry["secs"].append(float(row["secs"]))
         entry["failed"] += bool(row.get("failed"))
-    lines = ["target | reference | incumbent | seconds used | seconds allowed | last candidate delta"]
+        search = row.get("search")
+        if isinstance(search, dict):
+            entry.setdefault("time_to_best", []).append(search.get("time_to_best"))
+            entry.setdefault("improvements", []).append(search.get("improvements"))
+    lines = [
+        "target | reference | incumbent | seconds used | seconds allowed | time to best | improvements | "
+        "last candidate delta"
+    ]
     for target in ordered:
         entry = by_target[target]
         value = statistics.median(entry["values"]) if entry["values"] else None
         seconds = max(entry["secs"]) if entry["secs"] else None
         delta = statistics.median(deltas[target]) if deltas.get(target) else None
         incumbent = "failed" if entry["failed"] and not entry["values"] else _profile_number(value, 8)
+        curve = [value for value in entry.get("time_to_best", []) if isinstance(value, (int, float))]
+        counts = [value for value in entry.get("improvements", []) if isinstance(value, (int, float))]
         lines.append(
             f"{target} | {_profile_number(records.get(target), 8)} | {incumbent} | "
             f"{_profile_number(seconds, 3)} | {_profile_number(time_budget, 3)} | "
+            f"{_profile_number(statistics.median(curve), 3) if curve else '-'} | "
+            f"{_profile_number(statistics.median(counts), 3) if counts else '-'} | "
             + (f"{delta * 100:+.3f}%" if delta is not None else "-")
         )
     return "\n".join(lines)
@@ -890,16 +980,86 @@ def screen_cells(matrix, fraction):
     return [cell for cell in matrix if cell["target"] in leading]
 
 
-def screen_verdict(comparison):
-    """Why a screened candidate cannot earn the rest of the matrix, or None to keep evaluating it."""
+def race_stages(matrix, screen_fraction):
+    """The cell groups a candidate must survive in order, cheapest first.
+
+    A single-seed verdict is not a measurement: the same solver on the same target moved 0.06%-0.57% between
+    seeds on cvrp confirmation runs (2026-09-08 to 09-17), while the acceptance threshold is 0.01%.  Every
+    replication seed therefore has to be spent before a candidate can be called promising -- and, because a
+    night only fits so many solver seconds, spent only on candidates still ahead after the cheaper stages.
+    """
+    seeds = sorted({cell["seed"] for cell in matrix})
+    first = [cell for cell in matrix if cell["seed"] == seeds[0]]
+    screen = screen_cells(first, screen_fraction)
+    screen_keys = {(cell["target"], cell["seed"]) for cell in screen}
+    stages = []
+    if screen:
+        stages.append({"kind": "screen", "seed": seeds[0], "cells": screen})
+    rest = [cell for cell in first if (cell["target"], cell["seed"]) not in screen_keys]
+    if rest:
+        stages.append({"kind": "first_seed", "seed": seeds[0], "cells": rest})
+    for seed in seeds[1:]:
+        stages.append({"kind": "replication", "seed": seed, "cells": [c for c in matrix if c["seed"] == seed]})
+    return stages
+
+
+def near_miss_records(candidate_records, limit=2):
+    """The measured losers this run can still build on, closest first.
+
+    A rejected candidate's code leaves the loop's world the moment it is written: the next prompt carries its
+    one-line idea and a scalar gain, so the next proposal restarts from the champion. Four near-identical
+    "granular swap* layered on the existing SISR/SA search" proposals across four nights (2026-09-14 to 09-17)
+    is what that costs. The diff is what turns a near miss into a starting point instead of a sentence.
+    """
+    scored = []
+    for record in candidate_records:
+        if record.get("status") not in ("rejected", "evaluation_failed") or not record.get("_candidate_file"):
+            continue
+        gain = record.get("median_gain")
+        scored.append((gain if isinstance(gain, (int, float)) else -math.inf, record.get("iteration") or 0, record))
+    scored.sort(key=lambda item: (-item[0], -item[1]))
+    return [record for _gain, _iteration, record in scored[:limit]]
+
+
+def _stage_error(rows, target):
+    """The solver's own message for a failed cell, so a crash reaches the next prompt as a crash."""
+    for row in rows:
+        if row.get("target") == target and row.get("error"):
+            return re.sub(r"\s+", " ", str(row["error"])).strip()[-240:]
+    return ""
+
+
+def race_verdict(comparison, rows=(), *, screening=False, stage_comparison=None):
+    """Why a candidate cannot earn the next stage, or None to keep evaluating it."""
     if comparison["candidate_failures"]:
         # compare_paired requires candidate_failures == 0, so a failed cell is already disqualifying:
         # finishing the matrix cannot change the verdict (2026-09-14: 15 further cells, ~15 minutes).
         failed = next(pair["target"] for pair in comparison["pairs"] if pair["candidate_failed"])
-        return ("evaluation_failed", f"failed on {failed} during the screen; a failed cell can never pass the gate")
-    if comparison["pairs"] and all(pair["gain"] < 0 for pair in comparison["pairs"]):
-        targets = sorted({pair["target"] for pair in comparison["pairs"]})
-        return ("screened_out", f"worse than the incumbent on every screening target ({', '.join(targets)})")
+        where = "during the screen" if screening else "during the race"
+        reason = f"failed on {failed} {where}; a failed cell can never pass the gate"
+        detail = _stage_error(rows, failed)
+        return ("evaluation_failed", f"{reason}: {detail}" if detail else reason)
+    if screening:
+        # Measured on 2026-09-14/16/17: the conservative all-negative rule screened 6 of 44 rejected
+        # candidates and none of the 33 promising ones.
+        if comparison["pairs"] and all(pair["gain"] < 0 for pair in comparison["pairs"]):
+            targets = sorted({pair["target"] for pair in comparison["pairs"]})
+            return ("screened_out", f"worse than the incumbent on every screening target ({', '.join(targets)})")
+        return None
+    if comparison["median_gain"] <= 0:
+        return (
+            "screened_out",
+            f"median gain {comparison['median_gain'] * 100:+.3f}% over {len(comparison['pairs'])} paired cells; "
+            "replication seeds are not spent on a candidate that is not ahead",
+        )
+    if stage_comparison is not None and stage_comparison["median_gain"] <= 0:
+        # A large win on one seed keeps the cumulative median positive long after the advantage stopped
+        # reproducing, which is the failure replication exists to catch. Judge the newest seed on its own.
+        return (
+            "screened_out",
+            f"seed {stage_comparison['pairs'][0]['seed']} did not reproduce the advantage "
+            f"(median gain {stage_comparison['median_gain'] * 100:+.3f}% on that seed)",
+        )
     return None
 
 
@@ -958,6 +1118,7 @@ def run_research(
     ledger_path=None,
     call_budget=2.0,
     seed_count=3,
+    development_seeds=DEFAULT_DEVELOPMENT_SEEDS,
     min_effect=1e-4,
     evidence_root=None,
     iters=40,
@@ -975,6 +1136,8 @@ def run_research(
     refresh_records=False,
     max_generation_failures=2,
     screen_fraction=DEFAULT_SCREEN_FRACTION,
+    postmortem_limit=DEFAULT_POSTMORTEM_LIMIT,
+    postmortem_budget=DEFAULT_POSTMORTEM_BUDGET,
     generation_mode="full",
     routing_policy="scheduled",
     routing_chain=DEFAULT_CHAIN,
@@ -1017,6 +1180,17 @@ def run_research(
         raise ValueError("generation requires positive call and invocation budgets")
     if isinstance(seed_count, bool) or not isinstance(seed_count, int) or seed_count < 1:
         raise ValueError("seed_count must be a positive integer")
+    if isinstance(development_seeds, bool) or not isinstance(development_seeds, int) or development_seeds < 1:
+        raise ValueError("development_seeds must be a positive integer")
+    if isinstance(postmortem_limit, bool) or not isinstance(postmortem_limit, int) or postmortem_limit < 0:
+        raise ValueError("postmortem_limit must be a non-negative integer (0 disables)")
+    if (
+        isinstance(postmortem_budget, bool)
+        or not isinstance(postmortem_budget, (int, float))
+        or not math.isfinite(postmortem_budget)
+        or postmortem_budget < 0
+    ):
+        raise ValueError("postmortem_budget must be a non-negative number")
     if (
         isinstance(max_generation_failures, bool)
         or not isinstance(max_generation_failures, int)
@@ -1365,6 +1539,7 @@ def run_research(
     def development_snapshot():
         snapshot = {
             "targets": development_targets,
+            "seeds": int(development_seeds),
             "matrix": development_matrix,
             "incumbent": _evidence_rows(incumbent_rows, root),
             "pending_generations": [
@@ -1387,6 +1562,102 @@ def run_research(
             }
         return snapshot
 
+    incumbent_keys = set()
+
+    def ensure_incumbent_rows(cells):
+        """Evaluate the incumbent on the cells it has not covered yet.
+
+        Replication seeds cost as much for the incumbent as for a candidate, so they are paid for when the
+        first candidate survives long enough to be compared on them, not up front on every night.
+        """
+        missing = [cell for cell in cells if (cell["target"], cell["seed"]) not in incumbent_keys]
+        if not missing:
+            return
+        rows = evaluation.score_rows(
+            plugin,
+            records,
+            loop.evaluate_matrix(
+                incumbent_snapshot,
+                missing,
+                budget,
+                os.path.join(run_dir, "development", "incumbent"),
+                workers,
+                solver_runner,
+                deadline,
+            ),
+        )
+        incumbent_rows.extend(rows)
+        incumbent_keys.update((row["target"], row["seed"]) for row in rows)
+
+    postmortem_state = {"completed": 0}
+
+    def review_failure(record, rows, code, parent):
+        """Ask the reviewing model which mechanism failed, so memory carries more than the loop's verdict.
+
+        Bounded three ways: only candidates whose outcome carries signal, a small per-call allowance, and a
+        per-run count. It never stops a night: a stopped or failed review is recorded and the loop moves on,
+        and the next iteration's own control check still sees a pause or an expired deadline.
+        """
+        if postmortem_limit <= 0 or postmortem_state["completed"] >= postmortem_limit:
+            return
+        if not postmortem.worth_reviewing(record):
+            return
+        allowance = min(float(postmortem_budget), float(call_budget))
+        if allowance <= 0:
+            return
+        if (
+            starting_scope_charge + usage["charged"] + allowance > invocation_limit + 1e-9
+            or ledger.remaining + 1e-9 < allowance
+        ):
+            return
+        reviewer = "astra" if record.get("family") == "anthropic" else "fable"
+        comparison = record.get("comparison") if isinstance(record.get("comparison"), dict) else {}
+        failed = next((pair["target"] for pair in comparison.get("pairs") or [] if pair.get("candidate_failed")), None)
+        prompt = postmortem.build_prompt(
+            record,
+            postmortem.candidate_diff(parent, code),
+            cells_text(_history_entry(record, run_id, hidden_targets).get("cells")),
+            _stage_error(rows, failed) if failed else "",
+            hidden_targets,
+        )
+        try:
+            answer = _call_with_budget(
+                call_model_fn,
+                prompt,
+                reviewer,
+                ledger,
+                allowance,
+                "postmortem",
+                usage,
+                deadline,
+                None,
+                routing_policy=(f"{reviewer}_only" if compatibility_callback else routing_policy),
+                routing_chain=effective_routing_chain,
+                disabled_families=disabled_families,
+                routing_journal=routing_journal,
+                routing_checkpoint=checkpoint_routing,
+                routing_scope=problem,
+                legacy_provider_callback=legacy_provider_callback,
+                allowance_remaining=lambda: invocation_limit - starting_scope_charge - usage["charged"],
+            )
+        except _ResearchStop as exc:
+            record["postmortem"] = {"provider": reviewer, "error": f"review stopped: {exc}"[:200]}
+            return
+        if answer.get("error"):
+            record["postmortem"] = {"provider": reviewer, "error": str(answer["error"])[:200]}
+            return
+        postmortem_state["completed"] += 1
+        parsed = postmortem.parse(answer.get("text") or answer.get("idea") or "", hidden_targets)
+        record["postmortem"] = {
+            "provider": reviewer,
+            "model": answer.get("model"),
+            "family": answer.get("family"),
+            "independent": answer.get("family") != record.get("family"),
+            **parsed,
+        }
+        if parsed["mechanism"]:
+            record["negative_result"] = postmortem.negative_result(record.get("negative_result"), parsed["mechanism"])
+
     def checkpoint_development():
         evidence["development"] = development_snapshot()
         checkpoint_routing()
@@ -1395,7 +1666,7 @@ def run_research(
 
     try:
         _check_research_control(root, deadline, paused_fn)
-        development_matrix = evaluation.build_matrix(development_targets, 1, base_seed=10_000)
+        development_matrix = evaluation.build_matrix(development_targets, development_seeds, base_seed=10_000)
         prior_development = prior_evidence.get("development") or {} if isinstance(prior_evidence, dict) else {}
         prior_evolution = prior_development.get("evolution") or {}
         if evolution_enabled and prior_evolution:
@@ -1417,25 +1688,20 @@ def run_research(
                 for row in (prior_development.get("incumbent") or [])
                 if isinstance(row, dict)
             ]
-            if len(incumbent_rows) != len(development_matrix) or any(
-                row.get("target") != cell["target"]
-                or row.get("seed") != cell["seed"]
-                or row.get("failed")
-                or not isinstance(row.get("score"), (int, float))
-                for row, cell in zip(incumbent_rows, development_matrix)
+            matrix_keys = {(cell["target"], cell["seed"]) for cell in development_matrix}
+            resumed_keys = [(row.get("target"), row.get("seed")) for row in incumbent_rows]
+            if (
+                not incumbent_rows
+                or len(set(resumed_keys)) != len(resumed_keys)
+                or any(key not in matrix_keys for key in resumed_keys)
+                or any(row.get("failed") or not isinstance(row.get("score"), (int, float)) for row in incumbent_rows)
             ):
                 raise ValueError("resumed island incumbent development rows are invalid")
+            incumbent_keys.update(resumed_keys)
         else:
-            incumbent_rows = loop.evaluate_matrix(
-                incumbent_snapshot,
-                development_matrix,
-                budget,
-                os.path.join(run_dir, "development", "incumbent"),
-                workers,
-                solver_runner,
-                deadline,
+            ensure_incumbent_rows(
+                [cell for cell in development_matrix if cell["seed"] == development_matrix[0]["seed"]]
             )
-            incumbent_rows = evaluation.score_rows(plugin, records, incumbent_rows)
         if evolution_enabled:
             incumbent_record = {
                 "candidate_path": _repo_relative(incumbent_snapshot, root),
@@ -1562,6 +1828,26 @@ def run_research(
                 prompt_path = iteration_pending[0]["_prompt_file"]
                 prompt = open(iteration_pending[0]["_prompt_file"], encoding="utf-8").read()
             else:
+                near_misses = []
+                for item in near_miss_records(candidate_records):
+                    try:
+                        with open(item["_candidate_file"], encoding="utf-8") as stream:
+                            near_miss_code = stream.read()
+                    except OSError:
+                        continue
+                    near_misses.append(
+                        {
+                            "iteration": item.get("iteration"),
+                            "status": item.get("status"),
+                            "idea": item.get("idea"),
+                            "median_gain": item.get("median_gain"),
+                            "negative_result": item.get("negative_result"),
+                            "cells": cells_text(_history_entry(item, run_id, hidden_targets).get("cells")),
+                            "diff": postmortem.candidate_diff(
+                                prompt_parent, near_miss_code, max_lines=80, max_chars=4000
+                            ),
+                        }
+                    )
                 prompt = loop.build_research_prompt(
                     prompt_parent
                     if not generation_plan or generation_plan["operator"] == "mutation"
@@ -1576,6 +1862,7 @@ def run_research(
                     prompt_context,
                     profile=development_profile(incumbent_rows, records, budget, last_comparison),
                     generation_mode=iteration_generation_mode,
+                    near_misses=near_misses,
                 )
                 if generation_plan and generation_plan["operator"] == "crossover":
                     from problems.matrix_multiplication.crossover import build_crossover_prompt
@@ -1808,17 +2095,20 @@ def run_research(
                 with open(candidate_path, "w", encoding="utf-8", newline="\n") as stream:
                     stream.write(code)
                 candidate_development_dir = os.path.join(candidate_dir, "development")
-                screening_cells = screen_cells(development_matrix, screen_fraction)
-                screening_keys = {(cell["target"], cell["seed"]) for cell in screening_cells}
-                screened = None
+                stages = race_stages(development_matrix, screen_fraction)
+                raced = None
+                comparison = None
                 candidate_rows = []
-                if screening_cells:
-                    screen_rows = evaluation.score_rows(
+                evaluated_keys = set()
+                race_log = []
+                for stage_index, stage in enumerate(stages):
+                    ensure_incumbent_rows(stage["cells"])
+                    stage_rows = evaluation.score_rows(
                         plugin,
                         records,
                         loop.evaluate_matrix(
                             candidate_path,
-                            screening_cells,
+                            stage["cells"],
                             budget,
                             candidate_development_dir,
                             workers,
@@ -1826,69 +2116,77 @@ def run_research(
                             deadline,
                         ),
                     )
-                    screen_comparison = evaluation.compare_paired(
-                        [row for row in incumbent_rows if (row["target"], row["seed"]) in screening_keys],
-                        screen_rows,
-                        min_effect,
-                        min_seeds=1,
-                        policy="median",
-                    )
-                    screened = screen_verdict(screen_comparison)
-                    last_comparison = screen_comparison
-                    candidate_rows = screen_rows
-                    record["screen"] = {
-                        "fraction": float(screen_fraction),
-                        "targets": sorted({cell["target"] for cell in screening_cells}),
-                        "cells": len(screening_cells),
-                        "of_cells": len(development_matrix),
-                        "median_gain": screen_comparison["median_gain"],
-                        "outcome": screened[0] if screened else "continued",
-                    }
-                if screened is None:
-                    remaining = [
-                        cell for cell in development_matrix if (cell["target"], cell["seed"]) not in screening_keys
-                    ]
-                    if remaining:
-                        candidate_rows = candidate_rows + evaluation.score_rows(
-                            plugin,
-                            records,
-                            loop.evaluate_matrix(
-                                candidate_path,
-                                remaining,
-                                budget,
-                                candidate_development_dir,
-                                workers,
-                                solver_runner,
-                                deadline,
-                            ),
-                        )
-                    by_cell = {(row["target"], row["seed"]): row for row in candidate_rows}
-                    candidate_rows = [by_cell[(cell["target"], cell["seed"])] for cell in development_matrix]
+                    candidate_rows.extend(stage_rows)
+                    evaluated_keys.update((cell["target"], cell["seed"]) for cell in stage["cells"])
+                    final_stage = stage_index == len(stages) - 1
                     comparison = evaluation.compare_paired(
-                        incumbent_rows,
+                        [row for row in incumbent_rows if (row["target"], row["seed"]) in evaluated_keys],
                         candidate_rows,
                         min_effect,
-                        min_seeds=1,
+                        min_seeds=development_seeds if final_stage else 1,
                         policy=comparison_policy,
                     )
                     last_comparison = comparison
-                else:
-                    status, reason = screened
+                    race_log.append(
+                        {
+                            "stage": stage["kind"],
+                            "seed": stage["seed"],
+                            "cells": len(evaluated_keys),
+                            "of_cells": len(development_matrix),
+                            "median_gain": comparison["median_gain"],
+                        }
+                    )
+                    if final_stage:
+                        break
+                    stage_keys = {(cell["target"], cell["seed"]) for cell in stage["cells"]}
+                    stage_comparison = (
+                        evaluation.compare_paired(
+                            [row for row in incumbent_rows if (row["target"], row["seed"]) in stage_keys],
+                            stage_rows,
+                            min_effect,
+                            min_seeds=1,
+                            policy="median",
+                        )
+                        if stage["kind"] == "replication"
+                        else None
+                    )
+                    raced = race_verdict(
+                        comparison,
+                        stage_rows,
+                        screening=stage["kind"] == "screen",
+                        stage_comparison=stage_comparison,
+                    )
+                    if raced:
+                        race_log[-1]["outcome"] = raced[0]
+                        break
+                record["race"] = race_log
+                if stages and stages[0]["kind"] == "screen":
+                    record["screen"] = {
+                        "fraction": float(screen_fraction),
+                        "targets": sorted({cell["target"] for cell in stages[0]["cells"]}),
+                        "cells": len(stages[0]["cells"]),
+                        "of_cells": len(development_matrix),
+                        "median_gain": race_log[0]["median_gain"],
+                        "outcome": race_log[0].get("outcome", "continued"),
+                    }
+                if raced is not None:
+                    status, reason = raced
                     record.update(
                         status=status,
                         candidate_path=_repo_relative(candidate_path, root),
                         _candidate_file=candidate_path,
                         candidate_hash=_sha256(candidate_path),
-                        # The screen measured a prefix of the matrix, so this candidate has no full-matrix
-                        # gain. Reporting the prefix median here would let a partial number be compared with
-                        # full-matrix gains and be picked as a night's best result.
+                        # The race stopped short of the full matrix, so this candidate has no full-matrix
+                        # gain. Reporting a partial median here would let it be compared with full-matrix
+                        # gains and be picked as a night's best result.
                         median_gain=None,
-                        comparison=screen_comparison,
+                        comparison=comparison,
                         negative_result=reason,
                         valid=status != "evaluation_failed",
                         development_verified=False,
                         promising=False,
                     )
+                    review_failure(record, candidate_rows, code, prompt_parent)
                     append_development_record(record)
                     candidate_records.append(record)
                     pending_generations[:] = [
@@ -1912,10 +2210,17 @@ def run_research(
                 if "selection_gain" in comparison:
                     record["selection_gain"] = comparison["selection_gain"]
                 if comparison["candidate_failures"]:
+                    failed_target = next(pair["target"] for pair in comparison["pairs"] if pair["candidate_failed"])
+                    detail = _stage_error(candidate_rows, failed_target)
+                    reason = (
+                        f"{comparison['candidate_failures']} development evaluation failures, first on {failed_target}"
+                    )
                     record.update(
                         status="evaluation_failed",
-                        negative_result=f"{comparison['candidate_failures']} development evaluation failures",
+                        negative_result=f"{reason}: {detail}" if detail else reason,
                     )
+                if not comparison["passes"]:
+                    review_failure(record, candidate_rows, code, prompt_parent)
                 candidate_records.append(record)
                 pending_generations[:] = [
                     item
@@ -2468,7 +2773,25 @@ def cli_main(argv=None):
     parser.add_argument("--routing-override", action="store_true")
     parser.add_argument("--deadline-epoch", type=float)
     parser.add_argument("--call-budget", type=float, default=2.0)
-    parser.add_argument("--seed-count", type=int, default=3)
+    parser.add_argument("--seed-count", type=int, default=3, help="confirmation seeds per target")
+    parser.add_argument(
+        "--postmortem-limit",
+        type=int,
+        default=DEFAULT_POSTMORTEM_LIMIT,
+        help="losing candidates reviewed per run for a mechanism-level negative result (0 disables)",
+    )
+    parser.add_argument(
+        "--postmortem-budget",
+        type=float,
+        default=DEFAULT_POSTMORTEM_BUDGET,
+        help="allowance for one post-mortem review call",
+    )
+    parser.add_argument(
+        "--development-seeds",
+        type=int,
+        default=DEFAULT_DEVELOPMENT_SEEDS,
+        help="replication seeds a candidate must survive before it can be called promising",
+    )
     parser.add_argument("--min-effect", type=float, default=1e-4)
     parser.add_argument("--evidence-root")
     parser.add_argument("--iters", type=int, default=40)
@@ -2526,6 +2849,9 @@ def cli_main(argv=None):
         ledger_path=args.ledger,
         call_budget=args.call_budget,
         seed_count=args.seed_count,
+        development_seeds=args.development_seeds,
+        postmortem_limit=args.postmortem_limit,
+        postmortem_budget=args.postmortem_budget,
         min_effect=args.min_effect,
         evidence_root=args.evidence_root,
         iters=0 if args.eval_only else args.iters,

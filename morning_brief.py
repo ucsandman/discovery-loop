@@ -93,6 +93,12 @@ def _candidates(development: dict[str, Any]) -> list[dict[str, Any]]:
                 "model": item.get("actual_model") or item.get("model"),
                 "idea": _trim(item.get("idea") or item.get("generation_error") or "", IDEA_CHARS),
                 "median_gain": gain,
+                # The development gate needs replication and a bound above zero, not a median alone, so the
+                # review page shows both rather than a number a reader would take for a settled result.
+                "median_lower_bound": _number(comparison.get("median_lower_bound")),
+                "seeds": comparison.get("distinct_seeds")
+                if isinstance(comparison.get("distinct_seeds"), int)
+                else None,
                 "status": item.get("status") or "unknown",
                 "valid": item.get("valid"),
             }

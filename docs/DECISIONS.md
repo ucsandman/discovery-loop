@@ -1,5 +1,30 @@
 # Research decisions
 
+## 2026-09-20: Buy replication with racing, and require a bound the noise cannot fake
+
+The development gate was measured against the instrument instead of being argued about. Across the 3-seed
+confirmation runs of 09-08 to 09-17 the same solver on the same cvrp target moved 0.06%-0.57% between seeds,
+while the gate accepted a median of 0.01% from a single seed. Three options were considered:
+
+1. Raise `min_effect` to sit above the noise. Rejected: it is one number chosen for all targets and all
+   budgets, it would have to be re-guessed whenever the solver budget or the target set changes, and it throws
+   away real small improvements rather than measuring them.
+2. Replicate every candidate on three seeds. Correct but unaffordable on its own: at 119 s per cell, 8 targets
+   and 3 workers, it triples every candidate's cost and a 180-minute cvrp slot would fit about 6.
+3. Replicate, but race. Adopted. Every candidate pays one stage; further seeds are spent only while it is still
+   ahead and its newest seed reproduced the advantage, and the incumbent pays for a seed only when a candidate
+   reaches it. Estimated 9-11 candidates per cvrp slot against 18 before.
+
+The pass condition is the paired median over the full matrix clearing `min_effect` **and** a bootstrap
+10th-percentile lower bound above zero, which is a property of the cells actually measured rather than a fixed
+threshold. Replayed over the 179 historical candidates carrying paired rows it keeps 16 of 44 cvrp and 7 of 23
+miplib_heur promotions and rescues no rejection: the cost is recall on a gate whose promotions were not
+reaching confirmation, and the gain is that a promotion now means something. `per_target_pareto` bounds the
+selected target's own gains instead, so matrix multiplication's "improve one target, regress none" is unchanged.
+
+Accepted consequence: fewer candidates and fewer promotions per night. The morning brief shows each candidate's
+bound and seed count beside its median, so a historical single-seed result is visibly a single-seed result.
+
 ## 2026-09-20: Screen candidates on a quarter of the matrix, and keep edit-block generation opt-in
 
 Two ways to buy more candidates per night were measured against the recorded development comparisons of 09-14,

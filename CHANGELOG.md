@@ -1,5 +1,52 @@
 # Changelog
 
+## Feedback loop: replicated development gate, reviewed losers, richer memory, 2026-09-20
+
+Audit of the 40 research runs on disk (200 candidates, 191 with a gain, 808 paired cells): 85 candidates were
+ahead, 75 behind and 31 exactly level; the 90th-percentile gain was +0.18% and the best +1.08%; 3 runs confirmed
+and none was publishable. The development matrix was one seed per target (`loop.py` built it with a hardcoded
+`1`), the gate accepted a median gain of 1e-4, and the replication check was disabled with `min_seeds=1`. On the
+three-seed confirmation runs the *same solver on the same target* moved 0.06%-0.57% between seeds on cvrp, so the
+label the whole loop learned from -- promising or rejected -- was decided inside its own noise band.
+
+- `loop.py` races every candidate: `race_stages` splits the matrix into the screening prefix, the rest of the
+  first seed, then one stage per replication seed, and `race_verdict` stops a candidate that fails a cell, is
+  worse on every screening target, is not ahead overall, or whose newest seed did not reproduce its advantage.
+  A loser costs one stage; only a candidate still ahead spends replication seconds. The incumbent is evaluated
+  lazily, so a night where nothing survives the first seed never pays for seeds two and three.
+  `--development-seeds` (default 3, set per slot in `night.json`) is now separate from `--seed-count`, which
+  stays the confirmation setting.
+- `evaluation.py` reports `median_lower_bound`, the 10th percentile of a bootstrap over the paired cells, and
+  requires it above zero to pass. Replayed over the 179 historical candidates that carry paired rows it keeps 16
+  of 44 cvrp and 7 of 23 miplib_heur promotions and rescues no rejection: it trades recall for precision on a
+  gate whose promotions were not reaching confirmation. The `per_target_pareto` policy bounds the selected
+  target's own gains instead, so "improve one target, regress none" stays expressible.
+- `postmortem.py` (new) reviews losing candidates. The critic previously ran only on candidates that passed, so
+  112 rejections and 4 evaluation failures were recorded with the loop's own verdict and nothing else -- and the
+  same idea came back: four near-identical "granular swap* layered on the existing SISR/SA search" proposals
+  across four nights. A crash or a near miss now gets one bounded call (`--postmortem-limit`, default 3,
+  `--postmortem-budget`, default $0.50) that answers with a MECHANISM and a RETRY line; the mechanism becomes
+  that candidate's negative result. A stopped or failed review never stalls the night.
+- `loop.py` records the solver's own error text instead of a count: `evaluation_failed` previously reached memory
+  as "3 development evaluation failures", which names nothing a model can fix.
+- `research_memory.py` keeps each candidate's per-target outcome (`cells`: won, lost, tied, failed and the median
+  gain on each target) and rolls the same per-target gains up per algorithm family, so a family that wins on one
+  instance class and loses on another is visible in the prompt instead of being averaged away.
+- `loop.py` puts this run's measured near misses in the generation prompt: up to two rejected candidates with
+  their idea, per-target gains, the reviewed reason they failed, and a bounded unified diff against the file
+  being edited. Until now a rejected candidate's code left the loop the moment it was written.
+- Solvers may report their own best-so-far curve as `"trace": [[seconds, objective], ...]`; `search_summary`
+  validates and bounds it (64 points), and the development profile gains "time to best" and "improvements"
+  columns. The interface contract for cvrp, miplib_heur and matrix_multiplication documents it as optional and
+  never scored. Nothing about scoring changed: the independent verifier remains the only source of a value.
+
+Expected cost, from the measured cvrp timings (119 s per development cell, 8 targets, 3 workers, so 5.3 minutes
+per full-target stage): a candidate that dies on the first seed still costs about one stage, a candidate that
+survives to promotion costs three, and the incumbent pays 15.8 minutes once per night instead of 5.3 -- but only
+if something reaches the replication seeds. Applying the historical 45% survival rate past the first seed, a
+180-minute cvrp slot that fit 18 candidates should now fit roughly 9 to 11. That is the trade for a label that
+means something; the screening prefix, the stage rules and the lazy incumbent are what keep it affordable.
+
 ## Night reliability and cheaper iterations, 2026-09-20
 
 Audit of the six nights 09-14 to 09-19: three produced no research at all. 09-15 ended with every model at
