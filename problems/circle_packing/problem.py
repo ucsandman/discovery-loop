@@ -25,6 +25,41 @@ RELEASE_WALL_MARGIN = 1e-10
 RELEASE_PAIR_SQ_MARGIN = 1e-12
 RELEASE_VALIDATION_SUPPORTED = True
 
+# Prize-contract descriptor (prize_contract.validate_prize_plugin). Nothing here changes how the
+# plugin runs; it records what this benchmark is measured against for the prize board. This plugin
+# withholds no targets: confirmation re-runs the development set under fresh seeds, so the holdout
+# benchmark is that same set and measures repeatability, not generalization.
+PRIZE = {
+    "objective": (
+        "Raise the verified sum of radii on the Packomania csqv targets above the frozen incumbent, "
+        "with containment and separation checked outside the generated solver."
+    ),
+    "candidate_artifact": "problems/circle_packing/solver.py written by the loop (CLI: --n --time --seed --out)",
+    "baseline": "problems/circle_packing/seed_solver.py",
+    "development_benchmark": list(TARGETS),
+    "holdout_benchmark": list(TARGETS),
+    "independent_verifier": "problems/circle_packing/verify.py",
+    "fitness_metrics": ["sum", "min_wall_slack", "min_pair_slack_sq"],
+    "real_target": (
+        "The Packomania csqv best-known table (N = 101..114). Ten entries from this lab were reviewed and "
+        "accepted upstream in September 2026; the remaining entries are unchanged public records."
+    ),
+    "prize_registry_id": "packomania-csqv-records",
+    "promotion_threshold": {"min_effect": 0.0001, "seed_count": 3, "holdout_required": True},
+    "estimated_scaling": (
+        "Cost grows with N through the local-search neighbourhood, not through a search exponent; there is no "
+        "measured scaling law for this plugin and prize_scaling reports it as unsupported."
+    ),
+    "publication_requirements": (
+        "An exact .pck submission, the matched-seed confirmation rows, and the verifier output at the release "
+        "margins. Publication goes through the existing dashboard approval bound to file hashes."
+    ),
+    "submission_requirements": (
+        "Nothing is submitted automatically. A verified improvement is drafted under the run's publish/ directory "
+        "and sent by hand to the contacts in problems/circle_packing/contacts.json after approval."
+    ),
+}
+
 
 def records_fetch():
     return {str(k): v for k, v in records.fetch().items()}

@@ -1,5 +1,9 @@
 # Errors and lessons
 
+## 2026-09-20: Prize Hunt review lessons
+
+Two plugin seed solvers that both wrote `from records import ...` after a `sys.path.insert` passed their own test modules and failed only in the full suite: the first plugin to import bound the bare name `records`, and the second got the wrong file. Every plugin helper now uses the package-qualified import when `__package__` is set and falls back to the bare import only inside the worker, and a slice is done only when the full suite is green. Second lesson: a scoring floor (0.01 s) that sat above a measured baseline (0.005 s, 0.0076 s) made a verified solve on the smallest rung score exactly FAIL_SCORE; any clamp must be tested against every committed baseline, not chosen by feel. Third: the ECDLP ladder data had no code-level anchor until review, unlike the hash ladder; a records file that decides which instance is attacked carries committed digests that `table()` checks on every read.
+
 ## 2026-09-15: Freeze the complete island iteration across a crash
 
 Review found that restoring parent hashes alone could still rebuild a paired prompt from changed development history, repeat a call whose response was lost, or compare persisted fitness against a newly evaluated incumbent. The repaired path freezes the full prompt and development baseline, records a call as started before execution, and validates run-scoped files on resume. Future population changes must exercise interruption between paired calls and resume after the incumbent has been evicted from the breeding population. Synthetic regressions and a real 15-evaluation Docker probe verified these boundaries without live provider calls.

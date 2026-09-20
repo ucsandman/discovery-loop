@@ -1,0 +1,13 @@
+{
+  "captured_at": "2026-09-20",
+  "captured_by": "operator",
+  "content_classification": "untrusted_quoted_source",
+  "what_was_observed": "The Hutter Prize page (plain HTTP) states the 500,000 EUR fund, the amount paid so far, the enwik9 record size and the 1 percent minimum claim. The separate rules page was not re-read.",
+  "hutter": {
+    "page": "http://prize.hutter1.net/",
+    "fund_eur": 500000,
+    "paid_so_far_eur": 29945,
+    "record_bytes": 110793128,
+    "min_claim_eur": 5000
+  }
+}

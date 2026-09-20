@@ -1,0 +1,167 @@
+{
+ "schema_version": 1,
+ "development": [
+  "sha256-t28-dev",
+  "sha256-t32-dev",
+  "sha256-t36-dev",
+  "ripemd160-t32-dev"
+ ],
+ "holdout": [
+  "sha256-t32-hold",
+  "sha256-t36-hold",
+  "ripemd160-t32-hold",
+  "sha256r24-t32-hold"
+ ],
+ "large": [
+  "sha256-t40-large",
+  "sha256-t44-large",
+  "ripemd160-t36-large",
+  "ripemd160-t40-large"
+ ],
+ "targets": {
+  "sha256-t28-dev": {
+   "name": "sha256-t28-dev",
+   "function": "sha256",
+   "rounds": null,
+   "bits": 28,
+   "salt": "7168e26752ff7b2d38f4aa7aeeffc02b",
+   "reference": {
+    "baseline_seconds": 0.005,
+    "expected_hashes": 20534.298825777154,
+    "note": "median of 3 seed solver runs (seeds [1, 2, 3])"
+   }
+  },
+  "sha256-t32-dev": {
+   "name": "sha256-t32-dev",
+   "function": "sha256",
+   "rounds": null,
+   "bits": 32,
+   "salt": "8aa99783a4f368a62b5fa7286de38e69",
+   "reference": {
+    "baseline_seconds": 0.086,
+    "expected_hashes": 82137.19530310862,
+    "note": "median of 3 seed solver runs (seeds [1, 2, 3])"
+   }
+  },
+  "sha256-t36-dev": {
+   "name": "sha256-t36-dev",
+   "function": "sha256",
+   "rounds": null,
+   "bits": 36,
+   "salt": "801b2d61b749e8160cfce47967ec8894",
+   "reference": {
+    "baseline_seconds": 0.336,
+    "expected_hashes": 328548.78121243446,
+    "note": "median of 3 seed solver runs (seeds [1, 2, 3])"
+   }
+  },
+  "ripemd160-t32-dev": {
+   "name": "ripemd160-t32-dev",
+   "function": "ripemd160",
+   "rounds": null,
+   "bits": 32,
+   "salt": "03572655cf15865888196844186fd05f",
+   "reference": {
+    "baseline_seconds": 0.182,
+    "expected_hashes": 82137.19530310862,
+    "note": "median of 3 seed solver runs (seeds [1, 2, 3])"
+   }
+  },
+  "sha256-t32-hold": {
+   "name": "sha256-t32-hold",
+   "function": "sha256",
+   "rounds": null,
+   "bits": 32,
+   "salt": "a69541573648b81a457d4219b40b5fdb",
+   "reference": {
+    "baseline_seconds": 0.082,
+    "expected_hashes": 82137.19530310862,
+    "note": "median of 3 seed solver runs (seeds [1, 2, 3])"
+   }
+  },
+  "sha256-t36-hold": {
+   "name": "sha256-t36-hold",
+   "function": "sha256",
+   "rounds": null,
+   "bits": 36,
+   "salt": "25d0ba73a1fed14c9eb62d84f6c91b37",
+   "reference": {
+    "baseline_seconds": 0.129,
+    "expected_hashes": 328548.78121243446,
+    "note": "median of 3 seed solver runs (seeds [1, 2, 3])"
+   }
+  },
+  "ripemd160-t32-hold": {
+   "name": "ripemd160-t32-hold",
+   "function": "ripemd160",
+   "rounds": null,
+   "bits": 32,
+   "salt": "e0a77b28117582fb333445d627b27400",
+   "reference": {
+    "baseline_seconds": 0.061,
+    "expected_hashes": 82137.19530310862,
+    "note": "median of 3 seed solver runs (seeds [1, 2, 3])"
+   }
+  },
+  "sha256r24-t32-hold": {
+   "name": "sha256r24-t32-hold",
+   "function": "sha256-reduced",
+   "rounds": 24,
+   "bits": 32,
+   "salt": "408bc9dfc0dd1647d93ad34153822fa3",
+   "reference": {
+    "baseline_seconds": 2.021,
+    "expected_hashes": 82137.19530310862,
+    "note": "median of 3 seed solver runs (seeds [1, 2, 3])"
+   }
+  },
+  "sha256-t40-large": {
+   "name": "sha256-t40-large",
+   "function": "sha256",
+   "rounds": null,
+   "bits": 40,
+   "salt": "168bd2e3690c785a35f1d1e68ea944de",
+   "reference": {
+    "baseline_seconds": 0.859,
+    "expected_hashes": 1314195.1248497379,
+    "note": "median of 3 seed solver runs (seeds [1, 2, 3])"
+   }
+  },
+  "sha256-t44-large": {
+   "name": "sha256-t44-large",
+   "function": "sha256",
+   "rounds": null,
+   "bits": 44,
+   "salt": "188a79c5f37dc6a48b89d597a54c910e",
+   "reference": {
+    "baseline_seconds": 3.127,
+    "expected_hashes": 5256780.499398951,
+    "note": "median of 3 seed solver runs (seeds [1, 2, 3])"
+   }
+  },
+  "ripemd160-t36-large": {
+   "name": "ripemd160-t36-large",
+   "function": "ripemd160",
+   "rounds": null,
+   "bits": 36,
+   "salt": "9931db4a105aadeff9ac21dadc10c6f8",
+   "reference": {
+    "baseline_seconds": 0.438,
+    "expected_hashes": 328548.78121243446,
+    "note": "median of 3 seed solver runs (seeds [1, 2, 3])"
+   }
+  },
+  "ripemd160-t40-large": {
+   "name": "ripemd160-t40-large",
+   "function": "ripemd160",
+   "rounds": null,
+   "bits": 40,
+   "salt": "44e4fc242396aa5b43e78c104e82850f",
+   "reference": {
+    "baseline_seconds": 1.447,
+    "expected_hashes": 1314195.1248497379,
+    "note": "median of 3 seed solver runs (seeds [1, 2, 3])"
+   }
+  }
+ }
+}

@@ -1,0 +1,226 @@
+{
+ "schema_version": 1,
+ "generated_at": "2026-09-20",
+ "generator": "problems/ecc_prize/curves.py --write",
+ "note": "public instance data only; no discrete logarithm is stored",
+ "targets": {
+  "development": [
+   "ecdlp-p24-dev",
+   "ecdlp-p28-dev",
+   "ecdlp-p32-dev",
+   "ecdlp-p36-dev"
+  ],
+  "holdout": [
+   "ecdlp-p28-hold",
+   "ecdlp-p32-hold",
+   "ecdlp-p36-hold",
+   "ecdlp-p40-hold"
+  ],
+  "large": [
+   "ecdlp-p44-large",
+   "ecdlp-p48-large"
+  ]
+ },
+ "instances": {
+  "ecdlp-p24-dev": {
+   "name": "ecdlp-p24-dev",
+   "bits": 24,
+   "p": 8752339,
+   "a": 7070146,
+   "b": 4272977,
+   "n": 8755639,
+   "P": [
+    2966163,
+    3059722
+   ],
+   "Q": [
+    5682438,
+    5935736
+   ],
+   "reference": {
+    "baseline_seconds": 0.0076,
+    "expected_iterations": 3708.5476375452076
+   }
+  },
+  "ecdlp-p28-dev": {
+   "name": "ecdlp-p28-dev",
+   "bits": 28,
+   "p": 199080887,
+   "a": 134212540,
+   "b": 79994280,
+   "n": 199100771,
+   "P": [
+    155695518,
+    175729006
+   ],
+   "Q": [
+    83915971,
+    49436849
+   ],
+   "reference": {
+    "baseline_seconds": 0.0169,
+    "expected_iterations": 17684.647572084436
+   }
+  },
+  "ecdlp-p32-dev": {
+   "name": "ecdlp-p32-dev",
+   "bits": 32,
+   "p": 3840478451,
+   "a": 3375753022,
+   "b": 569834246,
+   "n": 3840515963,
+   "P": [
+    755596153,
+    2451751140
+   ],
+   "Q": [
+    3840193284,
+    191805069
+   ],
+   "reference": {
+    "baseline_seconds": 0.0857,
+    "expected_iterations": 77670.25407244117
+   }
+  },
+  "ecdlp-p36-dev": {
+   "name": "ecdlp-p36-dev",
+   "bits": 36,
+   "p": 35700121799,
+   "a": 13248845821,
+   "b": 27373954922,
+   "n": 35700317281,
+   "P": [
+    29953424082,
+    29147835865
+   ],
+   "Q": [
+    34890827772,
+    12412904074
+   ],
+   "reference": {
+    "baseline_seconds": 0.2246,
+    "expected_iterations": 236807.78545142297
+   }
+  },
+  "ecdlp-p28-hold": {
+   "name": "ecdlp-p28-hold",
+   "bits": 28,
+   "p": 159053347,
+   "a": 139337145,
+   "b": 129430715,
+   "n": 159060337,
+   "P": [
+    69216943,
+    62309403
+   ],
+   "Q": [
+    146833884,
+    114100804
+   ],
+   "reference": {
+    "baseline_seconds": 0.02,
+    "expected_iterations": 15806.688239424422
+   }
+  },
+  "ecdlp-p32-hold": {
+   "name": "ecdlp-p32-hold",
+   "bits": 32,
+   "p": 3110300519,
+   "a": 1928402183,
+   "b": 2687449646,
+   "n": 3110341567,
+   "P": [
+    362688688,
+    1399229443
+   ],
+   "Q": [
+    429748496,
+    1439939175
+   ],
+   "reference": {
+    "baseline_seconds": 0.121,
+    "expected_iterations": 69897.87628047852
+   }
+  },
+  "ecdlp-p36-hold": {
+   "name": "ecdlp-p36-hold",
+   "bits": 36,
+   "p": 38352009187,
+   "a": 14570330899,
+   "b": 36627438230,
+   "n": 38352335431,
+   "P": [
+    16050830894,
+    5261576962
+   ],
+   "Q": [
+    16660177042,
+    23777336316
+   ],
+   "reference": {
+    "baseline_seconds": 0.1937,
+    "expected_iterations": 245445.93624466585
+   }
+  },
+  "ecdlp-p40-hold": {
+   "name": "ecdlp-p40-hold",
+   "bits": 40,
+   "p": 655479303247,
+   "a": 126002984197,
+   "b": 232226926768,
+   "n": 655479239867,
+   "P": [
+    78737926883,
+    190593882184
+   ],
+   "Q": [
+    87664059398,
+    528072589522
+   ],
+   "reference": {
+    "baseline_seconds": 0.8406,
+    "expected_iterations": 1014704.0860632199
+   }
+  },
+  "ecdlp-p44-large": {
+   "name": "ecdlp-p44-large",
+   "bits": 44,
+   "p": 17107096682287,
+   "a": 971834945630,
+   "b": 13080169472737,
+   "n": 17107097507761,
+   "P": [
+    6987965635523,
+    8917268367357
+   ],
+   "Q": [
+    1450518819141,
+    9334656299749
+   ],
+   "reference": {
+    "baseline_seconds": 8.9536,
+    "expected_iterations": 5183798.407279464
+   }
+  },
+  "ecdlp-p48-large": {
+   "name": "ecdlp-p48-large",
+   "bits": 48,
+   "p": 159891633096583,
+   "a": 99546922811768,
+   "b": 81986600187794,
+   "n": 159891618124543,
+   "P": [
+    169603288005,
+    146468820604691
+   ],
+   "Q": [
+    145183451643002,
+    132447379618789
+   ],
+   "reference": {
+    "baseline_seconds": 15.0659,
+    "expected_iterations": 15847938.87025453
+   }
+  }
+ }
+}

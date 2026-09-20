@@ -7,6 +7,7 @@ Start with the [project README](../README.md) for setup and the dashboard previe
 - [Operations](OPERATIONS.md): nightly execution, subscription routing, accounting, recovery and scheduled tasks.
 - [Architecture and contracts](RESEARCH-IMPLEMENTATION.md): model registry, routing, workers, experiments, development memory and evidence.
 - [Research portfolio](RESEARCH-PORTFOLIO.md): intended benefit and the evidence needed to demonstrate it.
+- [Prize Hunt](PRIZE-HUNT.md): the prize registry, its evidence and status vocabulary, scoring, scaling, economics and the safety rules.
 - [Decisions](DECISIONS.md): design choices and publication boundaries.
 - [Errors and lessons](ERRORS.md): concrete failures and prevention measures.
 - [Integration deviations](DEVIATIONS.md): deliberate limits and changed assumptions in the ARC mission bridge.

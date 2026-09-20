@@ -1,0 +1,39 @@
+{
+  "captured_at": "2026-09-20",
+  "captured_by": "operator",
+  "content_classification": "untrusted_quoted_source",
+  "what_was_observed": "The Certicom ECC Challenge page returned HTTP 200 and still lists the 131-bit challenges as unsolved; the linked 2009 challenge PDF lists the Level I and Level II prize amounts.",
+  "certicom": {
+    "page": "https://www.certicom.com/content/certicom/en/the-certicom-ecc-challenge.html",
+    "http": 200,
+    "page_copyright": "2025 Certicom Corp., a subsidiary of BlackBerry",
+    "pdf": "https://www.certicom.com/content/dam/certicom/images/pdfs/challenge-2009.pdf",
+    "pdf_bytes": 363054,
+    "level1_131": {
+      "ECC2K-130": {
+        "prize_usd": 20000,
+        "machine_days_est": 2700000000.0
+      },
+      "ECC2-131": {
+        "prize_usd": 20000,
+        "machine_days_est": 66000000000.0
+      },
+      "ECCp-131": {
+        "prize_usd": 20000,
+        "machine_days_est": 23000000000.0
+      }
+    },
+    "level2": {
+      "163": 30000,
+      "191": 40000,
+      "239": 50000,
+      "359": 100000
+    },
+    "solved": {
+      "ECCp-109": "Nov 2002",
+      "ECC2-109": "April 2004",
+      "ECC2K-108": "2000"
+    },
+    "rules_note": "PDF section 5.1.2: Certicom reserves the right to change or extend the challenge lists and prizes without notice; only one cash prize per challenge"
+  }
+}

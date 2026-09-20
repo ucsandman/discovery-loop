@@ -169,7 +169,61 @@ def load_schedule(path=SCHEDULE):
     configured = sum(float(slot.get("slot_budget_usd", 0)) + float(slot.get("retro_budget_usd", 0)) for slot in slots)
     if configured > float(night["budget_usd"]):
         raise ValueError("slot call and retro caps exceed the night budget")
+    prizes = _prize_block(config)
+    if prizes is not None:
+        _validate_prize_block(prizes, config, slots, modes, configured)
     return config
+
+
+def _prize_block(config):
+    """Return the nightly prize block only when it is enabled, else None.
+
+    An absent or disabled block is the committed default: nothing about the night's plan,
+    budget or commands changes, and the block's numbers are not validated beyond their types.
+    """
+    block = config.get("prizes")
+    if block is None:
+        return None
+    if not isinstance(block, dict) or not isinstance(block.get("enabled", False), bool):
+        raise ValueError("night prize settings must be an object with a boolean enabled flag")
+    return block if block.get("enabled", False) else None
+
+
+def _validate_prize_block(block, config, slots, modes, configured_usd):
+    """An enabled prize slot must fit inside the same deadline and budget ledger as every other slot."""
+    minutes = float(block.get("minutes", 0))
+    research_minutes = float(block.get("research_minutes", 0))
+    retro_minutes = float(block.get("retro_minutes", 0))
+    if minutes <= 0 or research_minutes <= 0 or retro_minutes <= 0 or research_minutes + retro_minutes > minutes:
+        raise ValueError("prize research and retro minutes must be positive and fit inside the prize slot")
+    slot_budget = float(block.get("slot_budget_usd", 0))
+    per_call = float(block.get("per_call_budget_usd", 0))
+    retro_budget = float(block.get("retro_budget_usd", 0))
+    if not 0 < per_call <= slot_budget:
+        raise ValueError("prize per-call budget must be positive and within its slot cap")
+    if retro_budget < 0:
+        raise ValueError("prize retro budget cannot be negative")
+    if block.get("provider", "paired") not in modes:
+        raise ValueError("configured prize provider must be fable, astra, or paired")
+    for name in ("moonshot_share", "max_share"):
+        if not 0 <= float(block.get(name, 0.2)) <= 1:
+            raise ValueError("prize moonshot_share and max_share must be fractions in [0, 1]")
+    deadline = float(config["night"]["deadline_minutes"])
+    planned_minutes = sum(float(slot["minutes"]) for slot in slots) + minutes
+    if planned_minutes > deadline:
+        raise ValueError(
+            "the prize slot pushes the night past its deadline: "
+            f"{planned_minutes:g} planned minutes against a {deadline:g}-minute deadline, "
+            f"{planned_minutes - deadline:g} minutes over; shorten a slot by that much"
+        )
+    budget = float(config["night"]["budget_usd"])
+    planned_usd = configured_usd + slot_budget + retro_budget
+    if planned_usd > budget:
+        raise ValueError(
+            "prize slot and retro caps exceed the night budget: "
+            f"${planned_usd:.2f} planned against a ${budget:.2f} budget, "
+            f"${planned_usd - budget:.2f} over; lower a slot budget by that much"
+        )
 
 
 def trial_for(config, run_id):
@@ -524,6 +578,186 @@ def _prepare_arc(config, slots, run_id):
     return plan, summary
 
 
+def _promotion_threshold(plugin):
+    """The bound plugin's ``PRIZE['promotion_threshold']`` floors, or {} when it declares none."""
+    try:
+        from problem_loader import load_problem
+
+        prize = getattr(load_problem(plugin), "PRIZE", None)
+    except (ImportError, ValueError, AttributeError, SyntaxError):
+        return {}
+    threshold = prize.get("promotion_threshold") if isinstance(prize, dict) else None
+    return threshold if isinstance(threshold, dict) else {}
+
+
+def _prize_slot(config, block, allocation, binding, prize_id):
+    """Build one bounded research slot for a prize, or (None, reason) when a ceiling is exceeded.
+
+    ``PRIZE_BINDINGS`` ceilings are refused rather than clamped: a block asking for more minutes
+    or a larger per-call cap than the reviewed binding allows is a configuration error, and
+    silently shrinking it would hide that (arc_catalogue's mission_plan drops such slots with no
+    trace at all, which is hard to diagnose).
+    """
+    plugin = binding["plugin"]
+    minutes = float(block.get("minutes", 0.0))
+    max_minutes = float(binding.get("max_minutes", minutes))
+    if minutes > max_minutes:
+        return None, f"the block asks for {minutes:g} minutes; the {plugin} binding allows {max_minutes:g}"
+    slot_budget = round(float(allocation.get("usd", 0.0)), 2)
+    if slot_budget <= 0:
+        return None, "the allocation left this prize no allowance"
+    max_slot = float(binding.get("max_slot_budget_usd", slot_budget))
+    if slot_budget > max_slot:
+        return None, f"the allocation of ${slot_budget:.2f} exceeds the {plugin} binding cap of ${max_slot:.2f}"
+    requested_call = float(block.get("per_call_budget_usd", 0.0))
+    max_call = float(binding.get("max_per_call_budget_usd", requested_call))
+    if requested_call > max_call:
+        return (
+            None,
+            f"the block's ${requested_call:.2f} per-call cap exceeds the {plugin} binding cap of ${max_call:.2f}",
+        )
+    per_call = round(min(requested_call, slot_budget), 2)
+    if per_call <= 0:
+        return None, "the prize per-call cap resolves to zero"
+    threshold = _promotion_threshold(plugin)
+    provider = block.get("provider") or "paired"
+    slot = {
+        "id": f"prize-{prize_id}",
+        "problem": plugin,
+        "kind": "research",
+        "provider": provider,
+        "prize_id": prize_id,
+        "minutes": minutes,
+        "research_minutes": float(block.get("research_minutes", minutes)),
+        "retro_minutes": float(block.get("retro_minutes", 0.0)),
+        "slot_budget_usd": slot_budget,
+        "effective_slot_budget_usd": round(min(slot_budget, float(config["night"]["provider_caps_usd"][provider])), 2),
+        "per_call_budget_usd": per_call,
+        "retro_budget_usd": float(block.get("retro_budget_usd", 0.0)),
+        "iters": int(block.get("iters", 20)),
+        # The plugin's promotion threshold is a floor, never a ceiling: a prize claim has to clear
+        # the plugin's own paired bar before anything downstream calls it progress.
+        "seed_count": max(int(block.get("seed_count", 1)), int(threshold.get("seed_count", 1) or 1)),
+        "min_effect": max(float(block.get("min_effect", 0.0)), float(threshold.get("min_effect", 0.0) or 0.0)),
+        "time_per_target": float(block.get("time_per_target", 60)),
+        "workers": int(block.get("workers", 2)),
+        "max_generation_failures": int(block.get("max_generation_failures", 2)),
+    }
+    return slot, None
+
+
+def _prepare_prizes(config, slots, run_id, root=None):
+    """Pick at most one prize research slot for tonight. Sibling of :func:`_prepare_arc`.
+
+    Returns ``(extra_slots, summary)``. Nothing here spends, fetches or submits: it re-snapshots
+    the local registry, asks ``prize_scoring.allocate`` for a plan over the enabled prizes and the
+    measured ``prize_economics`` progress, and turns the top allocation into one bounded slot.
+    """
+    block = _prize_block(config)
+    summary = {
+        "status": "disabled",
+        "prize_id": None,
+        "plugin": None,
+        "reason": "the nightly prize block is absent or disabled",
+        "allocations": [],
+        "notes": [],
+        "dropped": [],
+        "slot": None,
+        "mission": None,
+        "run_id": run_id,
+    }
+    if block is None:
+        return [], summary
+
+    import prize_economics
+    import prize_scoring
+    from prize_registry import PRIZE_BINDINGS, refresh_registry, registry_view
+
+    root = ROOT if root is None else Path(root)
+    refresh = refresh_registry(root)["refresh"]
+    view = registry_view(root)
+    summary.update(
+        status="none",
+        reason="no enabled prize produced a runnable allocation",
+        refresh=refresh.get("status"),
+        registry_hash=view.get("registry_hash"),
+    )
+    prizes = [prize for prize in view.get("prizes", []) if isinstance(prize, dict) and prize.get("enabled")]
+    progress_by_id = {}
+    for prize in prizes:
+        binding = PRIZE_BINDINGS.get(prize.get("id"))
+        if binding:
+            progress_by_id[prize["id"]] = prize_economics.progress(root, binding["plugin"])
+    plan = prize_scoring.allocate(
+        prizes,
+        allowance_usd=float(block.get("slot_budget_usd", 0.0)),
+        minutes=float(block.get("research_minutes", block.get("minutes", 0.0))),
+        moonshot_share=float(block.get("moonshot_share", 0.2)),
+        max_share=float(block.get("max_share", 0.5)),
+        progress_by_id=progress_by_id,
+    )
+    summary["allocations"] = plan["allocations"]
+    summary["notes"] = plan["notes"]
+
+    requested_next = (view.get("control") or {}).get("next_id")
+    ordered = sorted(plan["allocations"], key=lambda item: item["prize_id"] != requested_next)
+    scheduled = {slot.get("problem") for slot in slots}
+    for allocation in ordered:
+        prize_id = allocation["prize_id"]
+        binding = PRIZE_BINDINGS.get(prize_id)
+        if not binding:
+            summary["dropped"].append({"prize_id": prize_id, "reason": "no reviewed binding names a local plugin"})
+            continue
+        if binding["plugin"] in scheduled:
+            summary["dropped"].append(
+                {"prize_id": prize_id, "reason": f"{binding['plugin']} already has a slot tonight"}
+            )
+            continue
+        slot, reason = _prize_slot(config, block, allocation, binding, prize_id)
+        if slot is None:
+            summary["dropped"].append({"prize_id": prize_id, "reason": reason})
+            continue
+        summary.update(
+            status="selected",
+            prize_id=prize_id,
+            plugin=binding["plugin"],
+            reason=allocation["reason"],
+            slot=slot,
+            requested_next=prize_id == requested_next,
+            mission={
+                "schema_version": 1,
+                "prize_id": prize_id,
+                "plugin": binding["plugin"],
+                "run_id": run_id,
+                "registry_hash": view.get("registry_hash"),
+                "allocation": allocation,
+                "success_criterion": binding["success_criterion"],
+                "budget": {
+                    "minutes": slot["minutes"],
+                    "allowance": slot["effective_slot_budget_usd"],
+                    "per_call_allowance": slot["per_call_budget_usd"],
+                    "seed_count": slot["seed_count"],
+                    "minimum_effect": slot["min_effect"],
+                },
+                "selected_at": _iso(),
+                "note": (
+                    "Informational record of why this slot was scheduled. The loop reads no prize text, "
+                    "nothing is submitted anywhere, and the real challenge instance is never a target."
+                ),
+            },
+        )
+        return [slot], summary
+    return [], summary
+
+
+def _with_prize_slots(slots, extra_slots):
+    """Insert prize slots ahead of the validation tail so confirmation still runs last."""
+    if not extra_slots:
+        return slots
+    index = next((position for position, slot in enumerate(slots) if slot.get("kind") == "validation"), len(slots))
+    return [*slots[:index], *extra_slots, *slots[index:]]
+
+
 def run_night(
     config,
     run_id,
@@ -552,6 +786,8 @@ def run_night(
     checkpoint = run_root / "night.json"
     ledger_path = run_root / "budget.json"
     slots = planned_slots(config, run_id)
+    prize_slots, prize_summary = _prepare_prizes(config, slots, run_id)
+    slots = _with_prize_slots(slots, prize_slots)
     planned_order = [slot["id"] for slot in slots]
     schedule_plan = schedule_advice(config, slots)
     arc_plan, arc_summary = _prepare_arc(config, slots, run_id)
@@ -577,6 +813,7 @@ def run_night(
             "schedule_plan": schedule_plan,
             "routing": {**routing, "override": bool(run_routing_override)},
             "arc": arc_summary,
+            "prizes": prize_summary,
         }
     run_root.mkdir(parents=True, exist_ok=True)
     with FileLock(LOCK):
@@ -590,6 +827,12 @@ def run_night(
                 raise ValueError("Checkpoint run identity does not match")
             if existing.get("status") == "completed":
                 return existing
+            # A resumed night replays the prize choice it checkpointed rather than re-allocating
+            # against tonight's registry, so the second half of a slot keeps the first half's budget.
+            stored_prizes = existing.get("prizes")
+            if isinstance(stored_prizes, dict) and isinstance(stored_prizes.get("slot"), dict):
+                slots = _with_prize_slots([slot for slot in slots if not slot.get("prize_id")], [stored_prizes["slot"]])
+                prize_summary = {**stored_prizes, "resumed": True}
             run_routing_override = (existing.get("routing") or {}).get("override") is True
             existing_order = (existing.get("arc") or {}).get("execution_order", [])
             if existing_order:
@@ -641,6 +884,13 @@ def run_night(
                 from arc_catalogue import DEFAULT_STATE, consume_next
 
                 consume_next(DEFAULT_STATE, requested_next, run_id)
+            if isinstance(prize_summary.get("mission"), dict):
+                atomic_json(run_root / prize_summary["plugin"] / "prize-mission.json", prize_summary["mission"])
+                if prize_summary.get("requested_next"):
+                    from prize_registry import consume_next as consume_prize_next
+
+                    consume_prize_next(ROOT, prize_summary["prize_id"], run_id)
+        status["prizes"] = prize_summary
         checks = _preflight(config, slots, provider_check=provider_check, sandbox_check=sandbox_check)
         status["preflight"] = checks
         if not checks["ok"]:
@@ -700,6 +950,8 @@ def run_night(
                 "started_at": _iso(),
                 "stages": {},
             }
+            if slot.get("prize_id"):
+                record["prize_id"] = slot["prize_id"]
             mission_path = run_root / slot["problem"] / "mission.json"
             if mission_path.is_file():
                 mission = read_json(mission_path, {}) or {}

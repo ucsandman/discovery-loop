@@ -67,6 +67,40 @@ def test_run_solver_mounts_only_staged_inputs_and_dedicated_output(tmp_path, mon
     assert seen["timeout"] <= 48
 
 
+@pytest.mark.parametrize(
+    "name, target",
+    [("ecc_prize", "ecdlp-p24-dev"), ("hash_collision_prize", "sha256-t28-dev")],
+)
+def test_prize_plugins_stage_their_records_json_beside_the_trusted_helpers(tmp_path, monkeypatch, name, target):
+    """A prize worker needs the committed ladder data: records.py, verify.py and records.json, nothing else."""
+    problem = _write_problem(tmp_path, name)
+    (problem / "records.json").write_text('{"instances": {}}', encoding="utf-8")
+    (problem / "seed_solver.py").write_text("raise SystemExit('baseline must stay out')\n", encoding="utf-8")
+    solver = tmp_path / "candidate.py"
+    solver.write_text("print('candidate')\n", encoding="utf-8")
+    out = tmp_path / "runs" / "case.json"
+    staged = []
+
+    monkeypatch.setattr(isolation, "preflight", lambda root=None, image=None: {"ok": True, "details": {}})
+
+    def fake_container(command, _timeout, _container_name):
+        stage = Path(isolation._mount_source(command, "/workspace"))
+        staged.extend(str(p.relative_to(stage)).replace("\\", "/") for p in stage.rglob("*") if p.is_file())
+        envelope = {"returncode": 0, "stdout": "", "stderr": "", "result": None, "output_error": None}
+        return subprocess.CompletedProcess(command, 0, json.dumps(envelope), "")
+
+    monkeypatch.setattr(isolation, "_execute_container", fake_container)
+    isolation.run_solver(name, solver, target, 3, 7, out, root=tmp_path)
+
+    assert sorted(staged) == [
+        f"problems/{name}/records.json",
+        f"problems/{name}/records.py",
+        f"problems/{name}/verify.py",
+        "solver.py",
+        "worker_entry.py",
+    ]
+
+
 def test_cached_cvrp_input_is_the_only_instance_staged(tmp_path, monkeypatch):
     problem = _write_problem(tmp_path, "cvrp")
     instances = problem / "instances"

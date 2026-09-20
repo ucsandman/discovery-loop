@@ -27,12 +27,16 @@ _HELPERS = {
     "miplib_open": ("records.py", "verify.py"),
     "miplib_heur": ("records.py", "verify.py"),
     "pglib_opf": ("records.py", "verify.py", "matpower.py"),
+    "ecc_prize": ("records.py", "verify.py"),
+    "hash_collision_prize": ("records.py", "verify.py"),
 }
 _METADATA = {
     "cvrp": ("records.json",),
     "miplib_open": ("records.json",),
     "miplib_heur": ("baseline.json", "benchmark_table.json"),
     "pglib_opf": ("BASELINE.md",),
+    "ecc_prize": ("records.json",),
+    "hash_collision_prize": ("records.json",),
 }
 _MAX_OUTPUT_BYTES = 16 * 1024 * 1024
 _MAX_LOG_CHARS = 16 * 1024

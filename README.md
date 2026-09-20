@@ -11,7 +11,7 @@
 ![Subscription CLI](https://img.shields.io/badge/Models-Subscription_CLI-526B4E)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
-[Paper](https://arxiv.org/abs/2609.05093) · [Quick start](#developer-setup) · [How it works](#how-an-experiment-works) · [Results](#published-result-circle-packing) · [Nightly routine](#nightly-integration) · [Documentation](docs/README.md) · [Contributing](CONTRIBUTING.md)
+[Paper](https://arxiv.org/abs/2609.05093) · [Quick start](#developer-setup) · [How it works](#how-an-experiment-works) · [Results](#published-result-circle-packing) · [Nightly routine](#nightly-integration) · [Prize Hunt](#prize-hunt) · [Documentation](docs/README.md) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -29,6 +29,7 @@ A local research lab for improving optimization solvers. A configured subscripti
 | Reproducible comparisons | Matched targets and seeds, independent feasibility checks and a recorded immutable worker image. |
 | Bounded overnight work | A shared allowance, checkpoints, pause controls and an explicit deadline. |
 | Human review | Evidence inspection and approvals bound to exact files, with no automatic publication. |
+| Prize bookkeeping | A curated registry of public challenges with dated evidence, scored against each other, plus measured scaling toward the real target sizes and what each research direction cost. Nothing is submitted or claimed. |
 
 > **Release status:** The pipeline and dashboard are implemented. The operator installation activated the Windows research, morning-integration and dashboard tasks on 2026-09-05, with rollback backups. New installations still preview before applying task changes. The dashboard can prepare one fresh synthetic CVRP cohort for a one-use release check; it does not do so automatically, and the result is not a validated real-world impact claim.
 
@@ -191,10 +192,27 @@ Known benchmark targets remain labeled previously exposed. The existing MIP heur
 | pglib_opf | AC power-flow validation; opt-in 2,000+ bus cases (`LARGE_TARGETS`) for manual `--targets` runs | Original-case residuals at 1e-8, baseline rounding uncertainty and reference polishing |
 | matrix_multiplication | Exact bilinear rank search | Exact tensor-identity verification; a verified rank below the best known is a benchmark record |
 | circle_packing | Geometric optimization | Finite values, containment, separation and an explicit improvement margin |
+| ecc_prize | Elliptic-curve discrete logarithm ladder on generated 24–48 bit prime-field curves | Independent scalar multiplication recomputes `k·P` and compares it with `Q` |
+| hash_collision_prize | Collision search on salted, truncated digests (28–44 bits) | Independent re-hashing of both messages, distinctness and length limits |
 
 The default nightly trial focuses on routing and general optimization, with a validation-only power-grid stage. See [research portfolio](docs/RESEARCH-PORTFOLIO.md) for intended beneficiaries, success measures, and evidence needed before claiming practical benefit.
 
 Problem helpers use isolated package namespaces. Legacy solvers can still import their documented local helpers inside workers.
+
+## Prize Hunt
+
+Prize Hunt is the bookkeeping layer that decides which public challenge, bounty or record table is worth research allowance, and what a result there would mean. `data/prizes.json` is an operator-curated registry: every amount, deadline and "still open" sentence is quoted from a public page with a dated evidence file beside it. `prize_scoring.py` compares entries on one axis, `prize_scaling.py` fits the measured ladder and extrapolates to the real target size, and `prize_economics.py` reports what each research direction cost and which ones to stop.
+
+Nothing here submits, claims, emails or spends anything. Prize amounts are quoted wording, not expected income, and no result is ever described as won. Executable work comes only from the reviewed bindings in `prize_registry.PRIZE_BINDINGS`, in code: editing the JSON changes what is displayed, never what is run. Two plugins, `ecc_prize` and `hash_collision_prize`, give the two hardest categories a local authorized ladder to measure; the real challenge instances are metadata only, and a ladder result measures search machinery rather than progress toward them.
+
+```powershell
+python prize_registry.py refresh
+python prize_registry.py list
+```
+
+The prize board, the allocation queue and the per-direction economics are at **http://localhost:8766/prize** when the dashboard is running. The nightly `prizes` block in `night.json` ships disabled, so a default night schedules exactly what it scheduled before; `python night.py --dry-run` prints the prize summary either way.
+
+`refresh` re-validates the registry and writes the snapshot under `runs/prizes/`; `list` and `show <id>` read that snapshot. `check-sources` is the only registry command that uses the network, and it only re-checks URLs already in the file. `prize_intake.py add <url>` fetches one operator-typed page into a candidate file that an operator must approve by hand. See [Prize Hunt](docs/PRIZE-HUNT.md) for the schema, the scoring maps, the safety rules and the first-experiment command.
 
 ## Post-loop dashboard
 
@@ -284,6 +302,7 @@ The dashboard is an internal localhost surface, not a public website. No externa
 | [ARC scheduled integration](docs/ARC-SCHEDULES.md) | Local ARC snapshot, optional loopback task and morning-report limits |
 | [Integration deviations](docs/DEVIATIONS.md) | Where the ARC integration deliberately differs from a general problem runner |
 | [Research portfolio](docs/RESEARCH-PORTFOLIO.md) | Beneficiaries, measurements and limits on claims |
+| [Prize Hunt](docs/PRIZE-HUNT.md) | Prize registry, scoring, scaling, economics and the safety rules |
 | [Decisions](docs/DECISIONS.md) | Why the system works this way |
 | [Contributing](CONTRIBUTING.md) | Development workflow and verification |
 | [Changelog](CHANGELOG.md) | Shipped changes |

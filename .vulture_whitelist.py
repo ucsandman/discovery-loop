@@ -15,6 +15,7 @@ _.LARGE_DEFAULTS
 _.VALIDATION
 _.RELEASE_HOLDOUT
 _.CONFIRMATION_ON_DEVELOPMENT
+_.EVOLUTION_POLICY  # read via getattr in loop.py; the matmul plugin opts in
 _.HOLDOUT
 _.DEFAULTS
 # research_context reads tags through getattr; plugin integrity tests check capabilities.

@@ -1,0 +1,1019 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-09-20",
+  "prizes": [
+    {
+      "id": "certicom-eccp-131",
+      "name": "Certicom ECC Challenge Level I: ECCp-131",
+      "category": "ecdlp",
+      "description": "Recover the discrete logarithm on the 131-bit prime-field elliptic curve published in the Certicom ECC Challenge. The lab researches the algorithm on a generated ladder of small curves; the 131-bit instance is metadata only and is never a run target.",
+      "source_url": "https://www.certicom.com/content/certicom/en/the-certicom-ecc-challenge.html",
+      "rules_url": "https://www.certicom.com/content/dam/certicom/images/pdfs/challenge-2009.pdf",
+      "advertised_prize": "US$20,000",
+      "currency": "USD",
+      "estimated_usd": 20000.0,
+      "estimated_usd_basis": "US$20,000 is the Level I prize listed for ECCp-131 in the 2009 Certicom ECC Challenge PDF (363,054 bytes) read on 2026-09-20. No payment has been publicly confirmed since Certicom became a BlackBerry subsidiary, so the amount is quoted, not expected.",
+      "status": "status_uncertain",
+      "status_confidence": "medium",
+      "last_verified": "2026-09-20",
+      "submission_requirements": "Report a solution to Certicom as described in section 5.1.1 of the 2009 challenge PDF. Nothing in this repository submits, claims or reports anything; any real claim is a manual step.",
+      "target_definition": "ECCp-131: the 131-bit prime-field curve instance (y^2 = x^3 + ax + b over F_p, prime order n, cofactor 1) listed as unsolved on the Certicom challenge page.",
+      "known_best_result": "ECCp-109 was solved in November 2002. The 131-bit prime-field instance is still listed as unsolved.",
+      "verification_method": "A claimed scalar k is checked by recomputing k*P and comparing with Q using the published curve parameters; the check is public and needs no secret.",
+      "computational_difficulty": "infeasible_today",
+      "research_difficulty": "open_problem",
+      "authorization_notes": "Public, explicitly advertised challenge with published parameters and no registration. The lab runs only generated ladder curves; no third-party key, address or system is touched.",
+      "plugin": "ecc_prize",
+      "probability_category": "negligible",
+      "compute_cost_estimate": {
+        "category": "prohibitive",
+        "note": "Certicom estimated 2.3e10 machine-days on 1997 machines for ECCp-131."
+      },
+      "model_cost_estimate": {
+        "category": "moderate",
+        "note": "Ladder research slots cost single-digit dollars per night."
+      },
+      "publication_value": "high",
+      "commercial_value": "medium",
+      "transfer_value": "high",
+      "competition_level": "medium",
+      "time_horizon": "open_ended",
+      "parallelizable": true,
+      "dense_feedback": true,
+      "independent_verification": "strong",
+      "research_priority": "active",
+      "notes": "Priority 'active' means the ladder is worth research time, not that the 131-bit instance is reachable. The challenge page is live and the PDF still lists US$20,000, but section 5.1.2 lets Certicom change or withdraw a prize without notice and no payment has been publicly confirmed since Certicom became a BlackBerry subsidiary. The amount is quoted, not expected.",
+      "evidence": [
+        {
+          "date": "2026-09-20",
+          "url": "https://www.certicom.com/content/certicom/en/the-certicom-ecc-challenge.html",
+          "observed": "HTTP 200. The page footer reads 'Copyright 2025 Certicom Corp., a subsidiary of BlackBerry' and the 131-bit Level I challenges are still listed as unsolved.",
+          "file": "data/prizes/evidence/2026-09-20-certicom.json"
+        },
+        {
+          "date": "2026-09-20",
+          "url": "https://www.certicom.com/content/dam/certicom/images/pdfs/challenge-2009.pdf",
+          "observed": "challenge-2009.pdf (363,054 bytes) lists the Level I prizes at US$20,000 each for ECC2K-130, ECC2-131 and ECCp-131, and section 5.1.2 reserves the right to change or withdraw the challenge and its prizes without notice.",
+          "file": "data/prizes/evidence/2026-09-20-certicom.json"
+        }
+      ],
+      "history": [
+        {
+          "date": "2026-09-20",
+          "field": "status",
+          "from": null,
+          "to": "status_uncertain",
+          "by": "operator",
+          "note": "initial registry entry from the 2026-09-20 evidence capture"
+        }
+      ]
+    },
+    {
+      "id": "certicom-ecc2k-130",
+      "name": "Certicom ECC Challenge Level I: ECC2K-130",
+      "category": "ecdlp",
+      "description": "Recover the discrete logarithm on the ECC2K-130 binary-field curve published in the Certicom ECC Challenge. This lab has no binary-field plugin, so the entry is display data only.",
+      "source_url": "https://www.certicom.com/content/certicom/en/the-certicom-ecc-challenge.html",
+      "rules_url": "https://www.certicom.com/content/dam/certicom/images/pdfs/challenge-2009.pdf",
+      "advertised_prize": "US$20,000",
+      "currency": "USD",
+      "estimated_usd": 20000.0,
+      "estimated_usd_basis": "US$20,000 is the Level I prize listed for ECC2K-130 in the 2009 Certicom ECC Challenge PDF read on 2026-09-20. No payment has been publicly confirmed since Certicom became a BlackBerry subsidiary.",
+      "status": "status_uncertain",
+      "status_confidence": "medium",
+      "last_verified": "2026-09-20",
+      "submission_requirements": "Report a solution to Certicom as described in section 5.1.1 of the 2009 challenge PDF. Nothing in this repository submits, claims or reports anything; any real claim is a manual step.",
+      "target_definition": "ECC2K-130: the 130-or-131-bit binary-field curve instance listed as unsolved by Certicom.",
+      "known_best_result": "ECC2K-108 was solved in 2000 and ECC2-109 in April 2004; the 130-bit and 131-bit binary instances are still listed as unsolved.",
+      "verification_method": "A claimed scalar k is checked by recomputing k*P and comparing with Q using the published curve parameters.",
+      "computational_difficulty": "infeasible_today",
+      "research_difficulty": "open_problem",
+      "authorization_notes": "Public, explicitly advertised challenge with published parameters and no registration.",
+      "plugin": null,
+      "probability_category": "negligible",
+      "compute_cost_estimate": {
+        "category": "prohibitive",
+        "note": "Certicom estimated 2.7e9 machine-days on 1997 machines."
+      },
+      "model_cost_estimate": {
+        "category": "negligible",
+        "note": "No plugin is bound, so no model spend is possible."
+      },
+      "publication_value": "high",
+      "commercial_value": "medium",
+      "transfer_value": "medium",
+      "competition_level": "low",
+      "time_horizon": "open_ended",
+      "parallelizable": true,
+      "dense_feedback": false,
+      "independent_verification": "strong",
+      "research_priority": "watch",
+      "notes": "Binary Koblitz curve. No binary-field plugin exists here, so the entry stays unbound. The challenge page is live and the PDF still lists US$20,000, but section 5.1.2 lets Certicom change or withdraw a prize without notice and no payment has been publicly confirmed since Certicom became a BlackBerry subsidiary. The amount is quoted, not expected.",
+      "evidence": [
+        {
+          "date": "2026-09-20",
+          "url": "https://www.certicom.com/content/certicom/en/the-certicom-ecc-challenge.html",
+          "observed": "HTTP 200. The page footer reads 'Copyright 2025 Certicom Corp., a subsidiary of BlackBerry' and the 131-bit Level I challenges are still listed as unsolved.",
+          "file": "data/prizes/evidence/2026-09-20-certicom.json"
+        },
+        {
+          "date": "2026-09-20",
+          "url": "https://www.certicom.com/content/dam/certicom/images/pdfs/challenge-2009.pdf",
+          "observed": "challenge-2009.pdf (363,054 bytes) lists the Level I prizes at US$20,000 each for ECC2K-130, ECC2-131 and ECCp-131, and section 5.1.2 reserves the right to change or withdraw the challenge and its prizes without notice.",
+          "file": "data/prizes/evidence/2026-09-20-certicom.json"
+        }
+      ],
+      "history": [
+        {
+          "date": "2026-09-20",
+          "field": "status",
+          "from": null,
+          "to": "status_uncertain",
+          "by": "operator",
+          "note": "initial registry entry from the 2026-09-20 evidence capture"
+        }
+      ]
+    },
+    {
+      "id": "certicom-ecc2-131",
+      "name": "Certicom ECC Challenge Level I: ECC2-131",
+      "category": "ecdlp",
+      "description": "Recover the discrete logarithm on the ECC2-131 binary-field curve published in the Certicom ECC Challenge. This lab has no binary-field plugin, so the entry is display data only.",
+      "source_url": "https://www.certicom.com/content/certicom/en/the-certicom-ecc-challenge.html",
+      "rules_url": "https://www.certicom.com/content/dam/certicom/images/pdfs/challenge-2009.pdf",
+      "advertised_prize": "US$20,000",
+      "currency": "USD",
+      "estimated_usd": 20000.0,
+      "estimated_usd_basis": "US$20,000 is the Level I prize listed for ECC2-131 in the 2009 Certicom ECC Challenge PDF read on 2026-09-20. No payment has been publicly confirmed since Certicom became a BlackBerry subsidiary.",
+      "status": "status_uncertain",
+      "status_confidence": "medium",
+      "last_verified": "2026-09-20",
+      "submission_requirements": "Report a solution to Certicom as described in section 5.1.1 of the 2009 challenge PDF. Nothing in this repository submits, claims or reports anything; any real claim is a manual step.",
+      "target_definition": "ECC2-131: the 130-or-131-bit binary-field curve instance listed as unsolved by Certicom.",
+      "known_best_result": "ECC2K-108 was solved in 2000 and ECC2-109 in April 2004; the 130-bit and 131-bit binary instances are still listed as unsolved.",
+      "verification_method": "A claimed scalar k is checked by recomputing k*P and comparing with Q using the published curve parameters.",
+      "computational_difficulty": "infeasible_today",
+      "research_difficulty": "open_problem",
+      "authorization_notes": "Public, explicitly advertised challenge with published parameters and no registration.",
+      "plugin": null,
+      "probability_category": "negligible",
+      "compute_cost_estimate": {
+        "category": "prohibitive",
+        "note": "Certicom estimated 6.6e10 machine-days on 1997 machines."
+      },
+      "model_cost_estimate": {
+        "category": "negligible",
+        "note": "No plugin is bound, so no model spend is possible."
+      },
+      "publication_value": "high",
+      "commercial_value": "medium",
+      "transfer_value": "medium",
+      "competition_level": "low",
+      "time_horizon": "open_ended",
+      "parallelizable": true,
+      "dense_feedback": false,
+      "independent_verification": "strong",
+      "research_priority": "watch",
+      "notes": "Binary curve over F_2^131. No binary-field plugin exists here, so the entry stays unbound. The challenge page is live and the PDF still lists US$20,000, but section 5.1.2 lets Certicom change or withdraw a prize without notice and no payment has been publicly confirmed since Certicom became a BlackBerry subsidiary. The amount is quoted, not expected.",
+      "evidence": [
+        {
+          "date": "2026-09-20",
+          "url": "https://www.certicom.com/content/certicom/en/the-certicom-ecc-challenge.html",
+          "observed": "HTTP 200. The page footer reads 'Copyright 2025 Certicom Corp., a subsidiary of BlackBerry' and the 131-bit Level I challenges are still listed as unsolved.",
+          "file": "data/prizes/evidence/2026-09-20-certicom.json"
+        },
+        {
+          "date": "2026-09-20",
+          "url": "https://www.certicom.com/content/dam/certicom/images/pdfs/challenge-2009.pdf",
+          "observed": "challenge-2009.pdf (363,054 bytes) lists the Level I prizes at US$20,000 each for ECC2K-130, ECC2-131 and ECCp-131, and section 5.1.2 reserves the right to change or withdraw the challenge and its prizes without notice.",
+          "file": "data/prizes/evidence/2026-09-20-certicom.json"
+        }
+      ],
+      "history": [
+        {
+          "date": "2026-09-20",
+          "field": "status",
+          "from": null,
+          "to": "status_uncertain",
+          "by": "operator",
+          "note": "initial registry entry from the 2026-09-20 evidence capture"
+        }
+      ]
+    },
+    {
+      "id": "certicom-level-ii",
+      "name": "Certicom ECC Challenge Level II (163, 191, 239 and 359 bits)",
+      "category": "ecdlp",
+      "description": "One summary entry for the four Level II Certicom challenges. They are far beyond ECCp-131 and are recorded for completeness only.",
+      "source_url": "https://www.certicom.com/content/certicom/en/the-certicom-ecc-challenge.html",
+      "rules_url": "https://www.certicom.com/content/dam/certicom/images/pdfs/challenge-2009.pdf",
+      "advertised_prize": "US$30,000 to US$100,000 depending on curve size",
+      "currency": "USD",
+      "estimated_usd": null,
+      "estimated_usd_basis": "The 2009 challenge PDF lists US$30,000 (163-bit), US$40,000 (191-bit), US$50,000 (239-bit) and US$100,000 (359-bit). No single amount applies to a summary entry, so no USD figure is recorded.",
+      "status": "status_uncertain",
+      "status_confidence": "medium",
+      "last_verified": "2026-09-20",
+      "submission_requirements": "Same as Level I: report to Certicom per section 5.1.1 of the PDF. Nothing in this repository submits, claims or reports anything; any real claim is a manual step.",
+      "target_definition": "Level II Certicom challenge curves at 163, 191, 239 and 359 bits.",
+      "known_best_result": "No Level II challenge has been reported solved.",
+      "verification_method": "A claimed scalar k is checked by recomputing k*P and comparing with Q.",
+      "computational_difficulty": "infeasible_today",
+      "research_difficulty": "breakthrough_required",
+      "authorization_notes": "Public, explicitly advertised challenge with published parameters.",
+      "plugin": null,
+      "probability_category": "negligible",
+      "compute_cost_estimate": {
+        "category": "prohibitive",
+        "note": "Each Level II instance is many orders of magnitude beyond the 131-bit Level I instances."
+      },
+      "model_cost_estimate": {
+        "category": "negligible",
+        "note": "Excluded from research, so no model spend."
+      },
+      "publication_value": "high",
+      "commercial_value": "medium",
+      "transfer_value": "medium",
+      "competition_level": "low",
+      "time_horizon": "open_ended",
+      "parallelizable": true,
+      "dense_feedback": false,
+      "independent_verification": "strong",
+      "research_priority": "excluded",
+      "notes": "Excluded: nothing here changes the Level II economics. The challenge page is live and the PDF still lists US$20,000, but section 5.1.2 lets Certicom change or withdraw a prize without notice and no payment has been publicly confirmed since Certicom became a BlackBerry subsidiary. The amount is quoted, not expected.",
+      "evidence": [
+        {
+          "date": "2026-09-20",
+          "url": "https://www.certicom.com/content/dam/certicom/images/pdfs/challenge-2009.pdf",
+          "observed": "challenge-2009.pdf (363,054 bytes) lists the Level I prizes at US$20,000 each for ECC2K-130, ECC2-131 and ECCp-131, and section 5.1.2 reserves the right to change or withdraw the challenge and its prizes without notice.",
+          "file": "data/prizes/evidence/2026-09-20-certicom.json"
+        }
+      ],
+      "history": [
+        {
+          "date": "2026-09-20",
+          "field": "status",
+          "from": null,
+          "to": "status_uncertain",
+          "by": "operator",
+          "note": "initial registry entry from the 2026-09-20 evidence capture"
+        }
+      ]
+    },
+    {
+      "id": "todd-sha1-collision",
+      "name": "Peter Todd SHA-1 collision bounty",
+      "category": "hash-collision",
+      "description": "The first of the Peter Todd hash-collision bounties. It was funded with 2.4998322 BTC and claimed in 2017 after the SHAttered SHA-1 collision; the address is empty.",
+      "source_url": "https://bitcointalk.org/index.php?topic=293382.0",
+      "rules_url": null,
+      "advertised_prize": "2.4998322 BTC (funded; address balance now 0)",
+      "currency": "BTC",
+      "estimated_usd": 0.0,
+      "estimated_usd_basis": "Address 37k7toV1Nv4DfmQbmZ8KuZDQCYK9x5KpzP held 0 BTC across 37 transactions on 2026-09-20. The bounty was spent after the 2017 SHAttered collision, so nothing is payable.",
+      "status": "solved",
+      "status_confidence": "high",
+      "last_verified": "2026-09-20",
+      "submission_requirements": "Nothing to submit: the output was already spent. Nothing in this repository submits, claims or reports anything; any real claim is a manual step.",
+      "target_definition": "Two distinct messages with the same full SHA-1 digest.",
+      "known_best_result": "SHAttered (Stevens et al., 2017) produced the first public SHA-1 collision.",
+      "verification_method": "Anyone can recompute both digests; the spent on-chain output is the public record.",
+      "computational_difficulty": "large",
+      "research_difficulty": "engineering",
+      "authorization_notes": "Historical public bounty, already claimed. Recorded as a calibration reference only.",
+      "plugin": null,
+      "probability_category": "negligible",
+      "compute_cost_estimate": {
+        "category": "prohibitive",
+        "note": "SHAttered cost roughly 110 GPU-years of computation in 2017."
+      },
+      "model_cost_estimate": {
+        "category": "negligible",
+        "note": "No plugin is bound, so no model spend is possible."
+      },
+      "publication_value": "none",
+      "commercial_value": "none",
+      "transfer_value": "low",
+      "competition_level": "none",
+      "time_horizon": "open_ended",
+      "parallelizable": true,
+      "dense_feedback": false,
+      "independent_verification": "strong",
+      "research_priority": "parked",
+      "notes": "Kept as the worked example of what a claimed bounty looks like on chain: funded, then spent.",
+      "evidence": [
+        {
+          "date": "2026-09-20",
+          "url": "https://mempool.space/api/address/37k7toV1Nv4DfmQbmZ8KuZDQCYK9x5KpzP",
+          "observed": "Address funded with 2.4998322 BTC; balance 0 across 37 transactions.",
+          "file": "data/prizes/evidence/2026-09-20-todd-bounties.json"
+        }
+      ],
+      "history": [
+        {
+          "date": "2026-09-20",
+          "field": "status",
+          "from": null,
+          "to": "solved",
+          "by": "operator",
+          "note": "initial registry entry from the 2026-09-20 evidence capture"
+        }
+      ]
+    },
+    {
+      "id": "todd-sha256-collision",
+      "name": "Peter Todd SHA-256 collision bounty",
+      "category": "hash-collision",
+      "description": "A funded Peter Todd hash-collision bounty: a pay-to-script-hash output that anyone can spend by publishing two distinct preimages that collide under SHA-256.",
+      "source_url": "https://bitcointalk.org/index.php?topic=293382.0",
+      "rules_url": null,
+      "advertised_prize": "0.27734251 BTC (address balance)",
+      "currency": "BTC",
+      "estimated_usd": 22272.0,
+      "estimated_usd_basis": "0.27734251 BTC observed at 35Snmmy3uhaer2gTboc81ayCip4m9DT4ko on 2026-09-20 across 10 transactions, valued at the 80,304 USD/BTC CoinGecko spot rate observed the same day.",
+      "status": "verified_active",
+      "status_confidence": "high",
+      "last_verified": "2026-09-20",
+      "submission_requirements": "The bounty is an anyone-can-spend script; claiming it means broadcasting a Bitcoin transaction. This lab never connects to a wallet, a key or a node. Nothing in this repository submits, claims or reports anything; any real claim is a manual step.",
+      "target_definition": "Two distinct messages of at most 520 bytes with the same full SHA-256 digest.",
+      "known_best_result": "No SHA-256 collision is known; the best published attacks reach reduced-round variants only.",
+      "verification_method": "Anyone can recompute both digests. The on-chain script OP_2DUP OP_EQUAL OP_NOT OP_VERIFY ... enforces the same check: two distinct preimages under 521 bytes whose digests are equal.",
+      "computational_difficulty": "infeasible_today",
+      "research_difficulty": "breakthrough_required",
+      "authorization_notes": "Publicly advertised bounty whose funds sit in an anyone-can-spend script; no permission, account or third-party system is involved. Research runs on truncated proxies only.",
+      "plugin": "hash_collision_prize",
+      "probability_category": "negligible",
+      "compute_cost_estimate": {
+        "category": "prohibitive",
+        "note": "A generic birthday collision needs about 2^128 hashes."
+      },
+      "model_cost_estimate": {
+        "category": "moderate",
+        "note": "Proxy-ladder research slots cost single-digit dollars per night."
+      },
+      "publication_value": "high",
+      "commercial_value": "high",
+      "transfer_value": "high",
+      "competition_level": "high",
+      "time_horizon": "open_ended",
+      "parallelizable": true,
+      "dense_feedback": true,
+      "independent_verification": "strong",
+      "research_priority": "watch",
+      "notes": "Funds on chain are the proof that the bounty is live. Truncated collisions measure search machinery only; they are not partial progress toward a full collision.",
+      "evidence": [
+        {
+          "date": "2026-09-20",
+          "url": "https://mempool.space/api/address/35Snmmy3uhaer2gTboc81ayCip4m9DT4ko",
+          "observed": "Address balance 0.27734251 BTC across 10 transactions.",
+          "file": "data/prizes/evidence/2026-09-20-todd-bounties.json"
+        },
+        {
+          "date": "2026-09-20",
+          "url": "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd",
+          "observed": "Bitcoin spot price 80,304 USD.",
+          "file": "data/prizes/evidence/2026-09-20-todd-bounties.json"
+        }
+      ],
+      "history": [
+        {
+          "date": "2026-09-20",
+          "field": "status",
+          "from": null,
+          "to": "verified_active",
+          "by": "operator",
+          "note": "initial registry entry from the 2026-09-20 evidence capture"
+        }
+      ]
+    },
+    {
+      "id": "todd-ripemd160-collision",
+      "name": "Peter Todd RIPEMD-160 collision bounty",
+      "category": "hash-collision",
+      "description": "A funded Peter Todd hash-collision bounty: a pay-to-script-hash output that anyone can spend by publishing two distinct preimages that collide under RIPEMD-160.",
+      "source_url": "https://bitcointalk.org/index.php?topic=293382.0",
+      "rules_url": null,
+      "advertised_prize": "0.11576888 BTC (address balance)",
+      "currency": "BTC",
+      "estimated_usd": 9297.0,
+      "estimated_usd_basis": "0.11576888 BTC observed at 3KyiQEGqqdb4nqfhUzGKN6KPhXmQsLNpay on 2026-09-20 across 5 transactions, valued at the 80,304 USD/BTC CoinGecko spot rate observed the same day.",
+      "status": "verified_active",
+      "status_confidence": "high",
+      "last_verified": "2026-09-20",
+      "submission_requirements": "The bounty is an anyone-can-spend script; claiming it means broadcasting a Bitcoin transaction. This lab never connects to a wallet, a key or a node. Nothing in this repository submits, claims or reports anything; any real claim is a manual step.",
+      "target_definition": "Two distinct messages of at most 520 bytes with the same full RIPEMD-160 digest.",
+      "known_best_result": "No RIPEMD-160 collision is known.",
+      "verification_method": "Anyone can recompute both digests. The on-chain script OP_2DUP OP_EQUAL OP_NOT OP_VERIFY ... enforces the same check: two distinct preimages under 521 bytes whose digests are equal.",
+      "computational_difficulty": "infeasible_today",
+      "research_difficulty": "breakthrough_required",
+      "authorization_notes": "Publicly advertised bounty whose funds sit in an anyone-can-spend script; no permission, account or third-party system is involved. Research runs on truncated proxies only.",
+      "plugin": "hash_collision_prize",
+      "probability_category": "negligible",
+      "compute_cost_estimate": {
+        "category": "prohibitive",
+        "note": "A 160-bit digest has an 80-bit generic birthday bound: about 2^80 = 1.2e24 hashes."
+      },
+      "model_cost_estimate": {
+        "category": "moderate",
+        "note": "Proxy-ladder research slots cost single-digit dollars per night."
+      },
+      "publication_value": "high",
+      "commercial_value": "medium",
+      "transfer_value": "high",
+      "competition_level": "high",
+      "time_horizon": "open_ended",
+      "parallelizable": true,
+      "dense_feedback": true,
+      "independent_verification": "strong",
+      "research_priority": "watch",
+      "notes": "The cheapest of the funded bounties in generic terms and still far out of reach. Truncated collisions measure search machinery only; they are not partial progress toward a full collision.",
+      "evidence": [
+        {
+          "date": "2026-09-20",
+          "url": "https://mempool.space/api/address/3KyiQEGqqdb4nqfhUzGKN6KPhXmQsLNpay",
+          "observed": "Address balance 0.11576888 BTC across 5 transactions.",
+          "file": "data/prizes/evidence/2026-09-20-todd-bounties.json"
+        },
+        {
+          "date": "2026-09-20",
+          "url": "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd",
+          "observed": "Bitcoin spot price 80,304 USD.",
+          "file": "data/prizes/evidence/2026-09-20-todd-bounties.json"
+        }
+      ],
+      "history": [
+        {
+          "date": "2026-09-20",
+          "field": "status",
+          "from": null,
+          "to": "verified_active",
+          "by": "operator",
+          "note": "initial registry entry from the 2026-09-20 evidence capture"
+        }
+      ]
+    },
+    {
+      "id": "todd-hash160-collision",
+      "name": "Peter Todd HASH160 collision bounty",
+      "category": "hash-collision",
+      "description": "A funded Peter Todd hash-collision bounty: a pay-to-script-hash output that anyone can spend by publishing two distinct preimages that collide under RIPEMD-160(SHA-256(x)).",
+      "source_url": "https://bitcointalk.org/index.php?topic=293382.0",
+      "rules_url": null,
+      "advertised_prize": "0.10026873 BTC (address balance)",
+      "currency": "BTC",
+      "estimated_usd": 8052.0,
+      "estimated_usd_basis": "0.10026873 BTC observed at 39VXyuoc6SXYKp9TcAhoiN1mb4ns6z3Yu6 on 2026-09-20 across 2 transactions, valued at the 80,304 USD/BTC CoinGecko spot rate observed the same day.",
+      "status": "verified_active",
+      "status_confidence": "high",
+      "last_verified": "2026-09-20",
+      "submission_requirements": "The bounty is an anyone-can-spend script; claiming it means broadcasting a Bitcoin transaction. This lab never connects to a wallet, a key or a node. Nothing in this repository submits, claims or reports anything; any real claim is a manual step.",
+      "target_definition": "Two distinct messages of at most 520 bytes with the same RIPEMD-160(SHA-256(x)) digest.",
+      "known_best_result": "No HASH160 collision is known.",
+      "verification_method": "Anyone can recompute both digests. The on-chain script OP_2DUP OP_EQUAL OP_NOT OP_VERIFY ... enforces the same check: two distinct preimages under 521 bytes whose digests are equal.",
+      "computational_difficulty": "infeasible_today",
+      "research_difficulty": "breakthrough_required",
+      "authorization_notes": "Publicly advertised bounty whose funds sit in an anyone-can-spend script; no permission, account or third-party system is involved. Research runs on truncated proxies only.",
+      "plugin": "hash_collision_prize",
+      "probability_category": "negligible",
+      "compute_cost_estimate": {
+        "category": "prohibitive",
+        "note": "A 160-bit digest has an 80-bit generic birthday bound: about 2^80 = 1.2e24 hashes."
+      },
+      "model_cost_estimate": {
+        "category": "moderate",
+        "note": "Proxy-ladder research slots cost single-digit dollars per night."
+      },
+      "publication_value": "high",
+      "commercial_value": "high",
+      "transfer_value": "high",
+      "competition_level": "high",
+      "time_horizon": "open_ended",
+      "parallelizable": true,
+      "dense_feedback": true,
+      "independent_verification": "strong",
+      "research_priority": "watch",
+      "notes": "HASH160 is the Bitcoin address hash, so a collision would matter well beyond this bounty. Truncated collisions measure search machinery only; they are not partial progress toward a full collision.",
+      "evidence": [
+        {
+          "date": "2026-09-20",
+          "url": "https://mempool.space/api/address/39VXyuoc6SXYKp9TcAhoiN1mb4ns6z3Yu6",
+          "observed": "Address balance 0.10026873 BTC across 2 transactions.",
+          "file": "data/prizes/evidence/2026-09-20-todd-bounties.json"
+        },
+        {
+          "date": "2026-09-20",
+          "url": "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd",
+          "observed": "Bitcoin spot price 80,304 USD.",
+          "file": "data/prizes/evidence/2026-09-20-todd-bounties.json"
+        }
+      ],
+      "history": [
+        {
+          "date": "2026-09-20",
+          "field": "status",
+          "from": null,
+          "to": "verified_active",
+          "by": "operator",
+          "note": "initial registry entry from the 2026-09-20 evidence capture"
+        }
+      ]
+    },
+    {
+      "id": "todd-hash256-collision",
+      "name": "Peter Todd HASH256 collision bounty",
+      "category": "hash-collision",
+      "description": "A funded Peter Todd hash-collision bounty: a pay-to-script-hash output that anyone can spend by publishing two distinct preimages that collide under SHA-256(SHA-256(x)).",
+      "source_url": "https://bitcointalk.org/index.php?topic=293382.0",
+      "rules_url": null,
+      "advertised_prize": "0.10026873 BTC (address balance)",
+      "currency": "BTC",
+      "estimated_usd": 8052.0,
+      "estimated_usd_basis": "0.10026873 BTC observed at 3DUQQvz4t57Jy7jxE86kyFcNpKtURNf1VW on 2026-09-20 across 2 transactions, valued at the 80,304 USD/BTC CoinGecko spot rate observed the same day.",
+      "status": "verified_active",
+      "status_confidence": "high",
+      "last_verified": "2026-09-20",
+      "submission_requirements": "The bounty is an anyone-can-spend script; claiming it means broadcasting a Bitcoin transaction. This lab never connects to a wallet, a key or a node. Nothing in this repository submits, claims or reports anything; any real claim is a manual step.",
+      "target_definition": "Two distinct messages of at most 520 bytes with the same SHA-256(SHA-256(x)) digest.",
+      "known_best_result": "No SHA-256d collision is known.",
+      "verification_method": "Anyone can recompute both digests. The on-chain script OP_2DUP OP_EQUAL OP_NOT OP_VERIFY ... enforces the same check: two distinct preimages under 521 bytes whose digests are equal.",
+      "computational_difficulty": "infeasible_today",
+      "research_difficulty": "breakthrough_required",
+      "authorization_notes": "Publicly advertised bounty whose funds sit in an anyone-can-spend script; no permission, account or third-party system is involved. Research runs on truncated proxies only.",
+      "plugin": "hash_collision_prize",
+      "probability_category": "negligible",
+      "compute_cost_estimate": {
+        "category": "prohibitive",
+        "note": "A generic birthday collision on a 256-bit digest needs about 2^128 hashes."
+      },
+      "model_cost_estimate": {
+        "category": "moderate",
+        "note": "Proxy-ladder research slots cost single-digit dollars per night."
+      },
+      "publication_value": "high",
+      "commercial_value": "high",
+      "transfer_value": "high",
+      "competition_level": "high",
+      "time_horizon": "open_ended",
+      "parallelizable": true,
+      "dense_feedback": true,
+      "independent_verification": "strong",
+      "research_priority": "watch",
+      "notes": "Double SHA-256 is the Bitcoin block hash. Truncated collisions measure search machinery only; they are not partial progress toward a full collision.",
+      "evidence": [
+        {
+          "date": "2026-09-20",
+          "url": "https://mempool.space/api/address/3DUQQvz4t57Jy7jxE86kyFcNpKtURNf1VW",
+          "observed": "Address balance 0.10026873 BTC across 2 transactions.",
+          "file": "data/prizes/evidence/2026-09-20-todd-bounties.json"
+        },
+        {
+          "date": "2026-09-20",
+          "url": "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd",
+          "observed": "Bitcoin spot price 80,304 USD.",
+          "file": "data/prizes/evidence/2026-09-20-todd-bounties.json"
+        }
+      ],
+      "history": [
+        {
+          "date": "2026-09-20",
+          "field": "status",
+          "from": null,
+          "to": "verified_active",
+          "by": "operator",
+          "note": "initial registry entry from the 2026-09-20 evidence capture"
+        }
+      ]
+    },
+    {
+      "id": "hutter-prize",
+      "name": "Hutter Prize for Lossless Compression of Human Knowledge",
+      "category": "compression",
+      "description": "A standing prize for compressing enwik9, the first 1e9 bytes of an English Wikipedia dump, below the current record. No plugin exists for it in this lab.",
+      "source_url": "http://prize.hutter1.net/",
+      "rules_url": null,
+      "advertised_prize": "500,000 EUR fund; a claim pays 500,000 x (1 - S/L)",
+      "currency": "EUR",
+      "estimated_usd": null,
+      "estimated_usd_basis": "The fund is 500,000 EUR and a claim pays 500,000 x (1 - S/L) with L = 110,793,128 bytes; the minimum claim is 5,000 EUR (1 percent) and 29,945 EUR has been paid so far. No EUR/USD rate was observed on 2026-09-20, so no USD figure is recorded.",
+      "status": "probably_active",
+      "status_confidence": "medium",
+      "last_verified": "2026-09-20",
+      "submission_requirements": "Submit a self-contained compressor and decompressor that reproduce enwik9 exactly and beat the record by at least 1 percent, under the prize's time and memory limits. Nothing in this repository submits, claims or reports anything; any real claim is a manual step.",
+      "target_definition": "Compress enwik9 below the standing record of 110,793,128 bytes.",
+      "known_best_result": "110,793,128 bytes; 29,945 EUR paid out so far.",
+      "verification_method": "The submitted decompressor must reproduce enwik9 byte for byte within the rules' time and memory limits on the judge's machine.",
+      "computational_difficulty": "large",
+      "research_difficulty": "open_problem",
+      "authorization_notes": "Public, explicitly advertised prize with published rules and an open submission process.",
+      "plugin": null,
+      "probability_category": "unlikely",
+      "compute_cost_estimate": {
+        "category": "expensive",
+        "note": "Every evaluation compresses and decompresses a 1 GB corpus under the rules' time limit."
+      },
+      "model_cost_estimate": {
+        "category": "expensive",
+        "note": "No plugin exists; a serious attempt would be a project, not a nightly slot."
+      },
+      "publication_value": "high",
+      "commercial_value": "low",
+      "transfer_value": "high",
+      "competition_level": "medium",
+      "time_horizon": "years",
+      "parallelizable": false,
+      "dense_feedback": true,
+      "independent_verification": "strong",
+      "research_priority": "watch",
+      "notes": "The prize page is served over plain HTTP. The separate rules page was not re-read on 2026-09-20, so the status is 'probably active' rather than verified.",
+      "evidence": [
+        {
+          "date": "2026-09-20",
+          "url": "http://prize.hutter1.net/",
+          "observed": "500,000 EUR fund; 29,945 EUR paid so far; record 110,793,128 bytes for enwik9; minimum claim 5,000 EUR (1 percent).",
+          "file": "data/prizes/evidence/2026-09-20-hutter.json"
+        }
+      ],
+      "history": [
+        {
+          "date": "2026-09-20",
+          "field": "status",
+          "from": null,
+          "to": "probably_active",
+          "by": "operator",
+          "note": "initial registry entry from the 2026-09-20 evidence capture"
+        }
+      ]
+    },
+    {
+      "id": "packomania-csqv-records",
+      "name": "Packomania csqv best-known circle packings",
+      "category": "benchmark-record",
+      "description": "The Packomania csqv tables of best-known sum-of-radii packings of N circles in a unit square. There is no cash prize; the value is publication and priority credit.",
+      "source_url": "https://www.packomania.com/",
+      "rules_url": null,
+      "advertised_prize": "No cash prize",
+      "currency": "none",
+      "estimated_usd": null,
+      "estimated_usd_basis": "No cash prize is offered; the value is publication and priority credit only.",
+      "status": "not_prize_eligible",
+      "status_confidence": "high",
+      "last_verified": null,
+      "submission_requirements": "Send the packing to the Packomania maintainer for inclusion. Any claim from this lab goes through the existing evidence and approval chain. Nothing in this repository submits, claims or reports anything; any real claim is a manual step.",
+      "target_definition": "Sum-of-radii records for N = 101 to 114 circles in a unit square (csqv table).",
+      "known_best_result": "Ten records produced by this repository have been accepted upstream.",
+      "verification_method": "The packing is re-checked for overlaps and containment by the plugin's independent verifier before any claim is prepared.",
+      "computational_difficulty": "moderate",
+      "research_difficulty": "incremental",
+      "authorization_notes": "A public record table with an open submission address. No cash and no registration.",
+      "plugin": "circle_packing",
+      "probability_category": "likely",
+      "compute_cost_estimate": {
+        "category": "cheap",
+        "note": "Minutes of local CPU per target."
+      },
+      "model_cost_estimate": {
+        "category": "moderate",
+        "note": "One nightly research slot."
+      },
+      "publication_value": "high",
+      "commercial_value": "low",
+      "transfer_value": "medium",
+      "competition_level": "medium",
+      "time_horizon": "weeks",
+      "parallelizable": true,
+      "dense_feedback": true,
+      "independent_verification": "strong",
+      "research_priority": "active",
+      "notes": "The Packomania site was not fetched on 2026-09-20; this entry records the structural fact that no cash prize exists, plus the repository's own accepted-record history.",
+      "evidence": [],
+      "history": [
+        {
+          "date": "2026-09-20",
+          "field": "status",
+          "from": null,
+          "to": "not_prize_eligible",
+          "by": "operator",
+          "note": "initial registry entry from the 2026-09-20 evidence capture"
+        }
+      ]
+    },
+    {
+      "id": "matmul-rank-records",
+      "name": "Best-known ranks of small matrix-multiplication tensors",
+      "category": "benchmark-record",
+      "description": "Exact integer rank upper bounds for n x n matrix multiplication. No cash prize; a first improvement on the 3x3 bound since 1976 would be a publication.",
+      "source_url": "https://arxiv.org/abs/2506.13242",
+      "rules_url": null,
+      "advertised_prize": "No cash prize",
+      "currency": "none",
+      "estimated_usd": null,
+      "estimated_usd_basis": "No cash prize is offered; the value is publication and transfer only.",
+      "status": "not_prize_eligible",
+      "status_confidence": "high",
+      "last_verified": null,
+      "submission_requirements": "A result would be written up and published; nothing is submitted automatically. Nothing in this repository submits, claims or reports anything; any real claim is a manual step.",
+      "target_definition": "Exact integer rank upper bounds at n = 3 (23, Laderman 1976) and n = 4 (49).",
+      "known_best_result": "n=2 rank 7 (proven optimal); n=3 rank 23 since 1976; n=4 rank 49. Rank 48 is known over the rationals (Dumas, Pernet and Sedoglavic 2025, arXiv:2506.13242) but needs fractional coefficients.",
+      "verification_method": "The exact tensor identity is checked in integer arithmetic: no tolerance, no false positives.",
+      "computational_difficulty": "large",
+      "research_difficulty": "open_problem",
+      "authorization_notes": "An open mathematical question with published bounds. No sponsor and no registration.",
+      "plugin": "matrix_multiplication",
+      "probability_category": "unlikely",
+      "compute_cost_estimate": {
+        "category": "moderate",
+        "note": "Stochastic search over integer tensors; hours of local CPU."
+      },
+      "model_cost_estimate": {
+        "category": "moderate",
+        "note": "One nightly research slot."
+      },
+      "publication_value": "high",
+      "commercial_value": "medium",
+      "transfer_value": "high",
+      "competition_level": "high",
+      "time_horizon": "months",
+      "parallelizable": true,
+      "dense_feedback": true,
+      "independent_verification": "strong",
+      "research_priority": "active",
+      "notes": "n=2 is a calibration target: rank 7 is proven optimal and cannot be beaten.",
+      "evidence": [],
+      "history": [
+        {
+          "date": "2026-09-20",
+          "field": "status",
+          "from": null,
+          "to": "not_prize_eligible",
+          "by": "operator",
+          "note": "initial registry entry from the 2026-09-20 evidence capture"
+        }
+      ]
+    },
+    {
+      "id": "cvrplib-x-open",
+      "name": "CVRPLIB X open instances",
+      "category": "benchmark-record",
+      "description": "Ten CVRPLIB X instances (200 to 500 nodes) whose best-known solutions are not proven optimal, so the listed cost is beatable. No cash prize.",
+      "source_url": "https://galgos.inf.puc-rio.br/cvrplib",
+      "rules_url": null,
+      "advertised_prize": "No cash prize",
+      "currency": "none",
+      "estimated_usd": null,
+      "estimated_usd_basis": "No cash prize is offered; the value is publication and commercial transfer.",
+      "status": "not_prize_eligible",
+      "status_confidence": "high",
+      "last_verified": null,
+      "submission_requirements": "A new best-known solution is reported to the CVRPLIB maintainers by hand. Nothing in this repository submits, claims or reports anything; any real claim is a manual step.",
+      "target_definition": "Total rounded-EUC_2D cost on the ten open CVRPLIB X instances.",
+      "known_best_result": "The best-known costs published in the live CVRPLIB table.",
+      "verification_method": "The independent verifier re-checks that every customer is served once and every route respects capacity, then recomputes the cost.",
+      "computational_difficulty": "moderate",
+      "research_difficulty": "incremental",
+      "authorization_notes": "A public benchmark library with an open submission process. No cash and no registration.",
+      "plugin": "cvrp",
+      "probability_category": "possible",
+      "compute_cost_estimate": {
+        "category": "moderate",
+        "note": "Minutes of local CPU per instance per seed."
+      },
+      "model_cost_estimate": {
+        "category": "moderate",
+        "note": "One nightly research slot."
+      },
+      "publication_value": "medium",
+      "commercial_value": "medium",
+      "transfer_value": "medium",
+      "competition_level": "high",
+      "time_horizon": "weeks",
+      "parallelizable": true,
+      "dense_feedback": true,
+      "independent_verification": "strong",
+      "research_priority": "active",
+      "notes": "Routing solvers are sold commercially, so a durable improvement has transfer value beyond the table.",
+      "evidence": [],
+      "history": [
+        {
+          "date": "2026-09-20",
+          "field": "status",
+          "from": null,
+          "to": "not_prize_eligible",
+          "by": "operator",
+          "note": "initial registry entry from the 2026-09-20 evidence capture"
+        }
+      ]
+    },
+    {
+      "id": "miplib-open-instances",
+      "name": "MIPLIB 2017 open instances",
+      "category": "benchmark-record",
+      "description": "MIPLIB instances with no known optimal solution, where a better primal bound is a recorded result. No cash prize.",
+      "source_url": "https://miplib.zib.de",
+      "rules_url": null,
+      "advertised_prize": "No cash prize",
+      "currency": "none",
+      "estimated_usd": null,
+      "estimated_usd_basis": "No cash prize is offered; the value is publication and transfer.",
+      "status": "not_prize_eligible",
+      "status_confidence": "high",
+      "last_verified": null,
+      "submission_requirements": "A new incumbent is reported to the MIPLIB maintainers by hand. Nothing in this repository submits, claims or reports anything; any real claim is a manual step.",
+      "target_definition": "Primal objective value on the ten selected MIPLIB open instances.",
+      "known_best_result": "The best-known objective values published by MIPLIB.",
+      "verification_method": "The independent verifier re-checks every constraint and integrality condition before the objective is accepted.",
+      "computational_difficulty": "large",
+      "research_difficulty": "incremental",
+      "authorization_notes": "A public benchmark library with an open submission process. No cash and no registration.",
+      "plugin": "miplib_open",
+      "probability_category": "possible",
+      "compute_cost_estimate": {
+        "category": "moderate",
+        "note": "Long single-instance runs; hours of local CPU."
+      },
+      "model_cost_estimate": {
+        "category": "moderate",
+        "note": "One nightly research slot."
+      },
+      "publication_value": "medium",
+      "commercial_value": "medium",
+      "transfer_value": "medium",
+      "competition_level": "medium",
+      "time_horizon": "months",
+      "parallelizable": true,
+      "dense_feedback": true,
+      "independent_verification": "strong",
+      "research_priority": "queued",
+      "notes": "",
+      "evidence": [],
+      "history": [
+        {
+          "date": "2026-09-20",
+          "field": "status",
+          "from": null,
+          "to": "not_prize_eligible",
+          "by": "operator",
+          "note": "initial registry entry from the 2026-09-20 evidence capture"
+        }
+      ]
+    },
+    {
+      "id": "pglib-opf-benchmarks",
+      "name": "PGLib-OPF benchmark cases",
+      "category": "benchmark-record",
+      "description": "Optimal power flow benchmark cases. No cash prize, and reported improvements are tolerance-dependent.",
+      "source_url": "https://github.com/power-grid-lib/pglib-opf",
+      "rules_url": null,
+      "advertised_prize": "No cash prize",
+      "currency": "none",
+      "estimated_usd": null,
+      "estimated_usd_basis": "No cash prize is offered.",
+      "status": "not_prize_eligible",
+      "status_confidence": "high",
+      "last_verified": null,
+      "submission_requirements": "Nothing is submitted; results stay local unless written up. Nothing in this repository submits, claims or reports anything; any real claim is a manual step.",
+      "target_definition": "AC optimal power flow objective on the PGLib-OPF case set.",
+      "known_best_result": "Published reference objectives per case, at the tolerance stated in the plugin README.",
+      "verification_method": "The independent verifier re-solves the power flow and checks every limit at 1e-8.",
+      "computational_difficulty": "large",
+      "research_difficulty": "incremental",
+      "authorization_notes": "A public benchmark repository. No cash, no sponsor and no registration.",
+      "plugin": "pglib_opf",
+      "probability_category": "unlikely",
+      "compute_cost_estimate": {
+        "category": "moderate",
+        "note": "Large cases take most of a slot."
+      },
+      "model_cost_estimate": {
+        "category": "moderate",
+        "note": "One nightly research slot."
+      },
+      "publication_value": "low",
+      "commercial_value": "medium",
+      "transfer_value": "low",
+      "competition_level": "medium",
+      "time_horizon": "months",
+      "parallelizable": true,
+      "dense_feedback": true,
+      "independent_verification": "partial",
+      "research_priority": "parked",
+      "notes": "Improvements here are tolerance-dependent, which is why the publication value is low; see the plugin README.",
+      "evidence": [],
+      "history": [
+        {
+          "date": "2026-09-20",
+          "field": "status",
+          "from": null,
+          "to": "not_prize_eligible",
+          "by": "operator",
+          "note": "initial registry entry from the 2026-09-20 evidence capture"
+        }
+      ]
+    },
+    {
+      "id": "rsa-factoring-challenge",
+      "name": "RSA Factoring Challenge",
+      "category": "other",
+      "description": "The historical RSA Factoring Challenge. RSA Laboratories ended it in 2007 and no prize is payable.",
+      "source_url": "https://en.wikipedia.org/wiki/RSA_Factoring_Challenge",
+      "rules_url": null,
+      "advertised_prize": "Historical cash prizes, withdrawn",
+      "currency": "none",
+      "estimated_usd": 0.0,
+      "estimated_usd_basis": "RSA Laboratories ended the challenge in 2007. Nothing is payable for RSA-896 or any remaining modulus, so the value is zero rather than unknown.",
+      "status": "closed",
+      "status_confidence": "high",
+      "last_verified": null,
+      "submission_requirements": "Nothing to submit: the challenge is closed. Nothing in this repository submits, claims or reports anything; any real claim is a manual step.",
+      "target_definition": "Factor one of the remaining RSA challenge moduli, such as RSA-896.",
+      "known_best_result": "RSA-250 was factored in 2020, after the challenge had already closed.",
+      "verification_method": "A claimed factorization is checked by multiplying the factors back.",
+      "computational_difficulty": "infeasible_today",
+      "research_difficulty": "open_problem",
+      "authorization_notes": "Operator instruction, 2026-09-20: do not treat this as a cash target.",
+      "plugin": null,
+      "probability_category": "negligible",
+      "compute_cost_estimate": {
+        "category": "prohibitive",
+        "note": "RSA-896 is far beyond the reach of this lab."
+      },
+      "model_cost_estimate": {
+        "category": "negligible",
+        "note": "Excluded from research, so no model spend."
+      },
+      "publication_value": "high",
+      "commercial_value": "none",
+      "transfer_value": "medium",
+      "competition_level": "low",
+      "time_horizon": "open_ended",
+      "parallelizable": true,
+      "dense_feedback": false,
+      "independent_verification": "strong",
+      "research_priority": "excluded",
+      "notes": "No page was fetched on 2026-09-20; the entry records the operator's instruction and a closed status.",
+      "evidence": [],
+      "history": [
+        {
+          "date": "2026-09-20",
+          "field": "status",
+          "from": null,
+          "to": "closed",
+          "by": "operator",
+          "note": "initial registry entry from the 2026-09-20 evidence capture"
+        }
+      ]
+    },
+    {
+      "id": "bitcoin-puzzle-transaction",
+      "name": "Bitcoin puzzle transaction (2015)",
+      "category": "other",
+      "description": "The 2015 'puzzle transaction' whose private keys are confined to successive 2^(k-1) to 2^k ranges. Recorded so that it is visibly excluded, not so that it can be worked on.",
+      "source_url": "https://bitcointalk.org/index.php?topic=1306983.0",
+      "rules_url": null,
+      "advertised_prize": "Unverified; amounts are held in on-chain outputs",
+      "currency": "BTC",
+      "estimated_usd": null,
+      "estimated_usd_basis": "No amount was verified and no address is recorded in this registry.",
+      "status": "status_uncertain",
+      "status_confidence": "low",
+      "last_verified": null,
+      "submission_requirements": "Not applicable: the entry is excluded from research. Nothing in this repository submits, claims or reports anything; any real claim is a manual step.",
+      "target_definition": "Private keys confined to 2^(k-1) to 2^k ranges in a 2015 transaction.",
+      "known_best_result": "Not recorded here.",
+      "verification_method": "Not applicable.",
+      "computational_difficulty": "large",
+      "research_difficulty": "engineering",
+      "authorization_notes": "anonymous creator; not an explicitly authorized research challenge under this lab's policy; not admitted until the operator decides otherwise",
+      "plugin": null,
+      "probability_category": "negligible",
+      "compute_cost_estimate": {
+        "category": "prohibitive",
+        "note": "The unsolved ranges are large key searches."
+      },
+      "model_cost_estimate": {
+        "category": "negligible",
+        "note": "Excluded from research, so no model spend."
+      },
+      "publication_value": "none",
+      "commercial_value": "none",
+      "transfer_value": "low",
+      "competition_level": "high",
+      "time_horizon": "open_ended",
+      "parallelizable": true,
+      "dense_feedback": false,
+      "independent_verification": "weak",
+      "research_priority": "excluded",
+      "notes": "No addresses are recorded here by design, and the source URL was not fetched on 2026-09-20.",
+      "evidence": [],
+      "history": [
+        {
+          "date": "2026-09-20",
+          "field": "status",
+          "from": null,
+          "to": "status_uncertain",
+          "by": "operator",
+          "note": "initial registry entry from the 2026-09-20 evidence capture"
+        }
+      ]
+    }
+  ]
+}

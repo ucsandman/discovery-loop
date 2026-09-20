@@ -64,6 +64,45 @@ FAIL_SCORE = -1.0  # crash / timeout / infeasible output; worse than any feasibl
 GAP_CLIP = 0.5
 RELEASE_VALIDATION_SUPPORTED = True
 
+# Prize-contract descriptor (prize_contract.validate_prize_plugin). Additive metadata for the prize
+# board; it changes nothing the plugin runs. Nothing is withheld here either (see
+# CONFIRMATION_ON_DEVELOPMENT above), so the holdout benchmark is the development set re-run under
+# fresh seeds and measures repeatability.
+PRIZE = {
+    "objective": (
+        "Lower the verified integer rank of the n x n matrix-multiplication tensor on the open targets, "
+        "with the exact tensor identity recomputed outside the generated solver."
+    ),
+    "candidate_artifact": (
+        "problems/matrix_multiplication/solver.py written by the loop (CLI: --target --time --seed --out), "
+        "writing {'factors': [[U, V, W], ...]}"
+    ),
+    "baseline": "problems/matrix_multiplication/seed_solver.py",
+    "development_benchmark": list(TARGETS),
+    "holdout_benchmark": list(TARGETS),
+    "independent_verifier": "problems/matrix_multiplication/verify.py",
+    "fitness_metrics": ["rank", "feasible", "n"],
+    "real_target": (
+        "The best-known rank bounds for small matrix-multiplication tensors (n = 3, n = 4). No cash prize is "
+        "attached; n = 2 is a proven-optimal calibration target that cannot be beaten."
+    ),
+    "prize_registry_id": "matmul-rank-records",
+    "promotion_threshold": {"min_effect": 0.0001, "seed_count": 3, "holdout_required": True},
+    "estimated_scaling": (
+        "The search space grows with the number of tensor entries, so cost rises steeply with n; no scaling law "
+        "has been fitted for this plugin and prize_scaling reports it as unsupported."
+    ),
+    "publication_requirements": (
+        "The exact factor triples, the verifier output, the matched-seed confirmation rows and the reference rank "
+        "the claim is measured against. The current incumbent emits rank 26 for n = 3 against a reference of 23, "
+        "so it is research continuity and not a record claim."
+    ),
+    "submission_requirements": (
+        "Nothing is submitted automatically. A verified rank below the best known would be drafted under the run's "
+        "publish/ directory and reviewed by hand before any external message."
+    ),
+}
+
 
 def _info():
     t = records.table()

@@ -18,6 +18,21 @@
       "disabled_families": []
     }
   },
+  "prizes": {
+    "enabled": false,
+    "minutes": 60,
+    "research_minutes": 45,
+    "retro_minutes": 15,
+    "slot_budget_usd": 8.0,
+    "per_call_budget_usd": 1.0,
+    "retro_budget_usd": 2.0,
+    "moonshot_share": 0.2,
+    "max_share": 0.5,
+    "provider": "paired",
+    "iters": 20,
+    "time_per_target": 60,
+    "workers": 2
+  },
   "trial": {
     "anchor_date": "2026-09-05",
     "cycle": [

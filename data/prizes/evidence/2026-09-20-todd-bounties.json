@@ -1,0 +1,39 @@
+{
+  "captured_at": "2026-09-20",
+  "captured_by": "operator",
+  "content_classification": "untrusted_quoted_source",
+  "what_was_observed": "Address balances and transaction counts for the five Peter Todd hash-collision bounty addresses, plus the Bitcoin spot price used to convert them. Balances are on-chain facts; the USD figures are that one rate on that one day.",
+  "btc_usd": 80304,
+  "btc_usd_source": "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd",
+  "todd_bounties": {
+    "source": "https://bitcointalk.org/index.php?topic=293382.0",
+    "balance_source": "https://mempool.space/api/address/<addr>",
+    "sha1": {
+      "address": "37k7toV1Nv4DfmQbmZ8KuZDQCYK9x5KpzP",
+      "funded_btc": 2.4998322,
+      "balance_btc": 0.0,
+      "txs": 37,
+      "note": "spent: claimed after SHAttered (2017)"
+    },
+    "sha256": {
+      "address": "35Snmmy3uhaer2gTboc81ayCip4m9DT4ko",
+      "balance_btc": 0.27734251,
+      "txs": 10
+    },
+    "ripemd160": {
+      "address": "3KyiQEGqqdb4nqfhUzGKN6KPhXmQsLNpay",
+      "balance_btc": 0.11576888,
+      "txs": 5
+    },
+    "hash160": {
+      "address": "39VXyuoc6SXYKp9TcAhoiN1mb4ns6z3Yu6",
+      "balance_btc": 0.10026873,
+      "txs": 2
+    },
+    "hash256": {
+      "address": "3DUQQvz4t57Jy7jxE86kyFcNpKtURNf1VW",
+      "balance_btc": 0.10026873,
+      "txs": 2
+    }
+  }
+}

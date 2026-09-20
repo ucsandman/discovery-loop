@@ -1,5 +1,14 @@
 # Changelog
 
+## Prize Hunt, 2026-09-20
+
+- `data/prizes.json`: an operator-curated registry of 17 public challenges, bounties, record tables and benchmarks, every entry quoted from a page read on 2026-09-20 with a dated evidence file beside it. Amounts and availability are unverified quoted wording; nothing is described as won. `prize_registry.py` validates it and exposes `refresh`, `list`, `show`, `set-status` and the network-touching `check-sources`; the reviewed bindings that make a prize executable live in `PRIZE_BINDINGS`, in code, and `validate_snapshot` re-derives every admission from that dict.
+- `prize_contract.py`: the 13-field `PRIZE` descriptor a prize plugin must declare, checked structurally with `ast`. `problem.evaluate` may not reference `seed_solver` or a generated `solver`, so measured code can never verify itself. `circle_packing` and `matrix_multiplication` gained descriptors; neither plugin's behaviour changed.
+- `prize_scoring.py`, `prize_scaling.py`, `prize_economics.py`: documented categorical maps producing low/mid/high bands with cash and credibility reported separately, a least-squares `log2(seconds) = alpha + beta*bits` fit over the measured ladder with extrapolation to the real target size, and a per-direction cost ledger with stop recommendations and the shared dead-end file. `allocate` returns a plan; it spends nothing.
+- `problems/ecc_prize`: generated prime-field ECDLP instances at 24-48 bits with an independent verifier that recomputes `k*P`. ECCp-131 is metadata only. `problems/hash_collision_prize`: salted truncated-digest collisions at 28-44 bits. Truncated collisions measure search machinery only; they are not partial progress toward a full collision. Both plugins report `beats() == False` and unsupported release validation.
+- `prize_intake.py`: one operator-typed URL is fetched with a 10 second timeout and a 512 KiB cap into `data/prizes/intake/<slug>.json` as an untrusted quoted source. Nothing from the page is executed, and an operator must approve a candidate before it reaches the registry.
+- Docs: `docs/PRIZE-HUNT.md`, a README section, a research-portfolio row per ladder marked unvalidated and ladder-only, and a decisions entry on bindings in code, opt-in prize slots and proxy targets.
+
 ## Large PGLib cases, 2026-09-18
 
 - `problems/pglib_opf.LARGE_TARGETS`: the seven 2,000–2,746 bus TYP cases as opt-in targets with `LARGE_DEFAULTS` (600 s, 2 workers). They stay out of the nightly `TARGETS`; `loop.py --targets` may select them, and the prompt gains a large-case note when any is present.

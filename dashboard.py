@@ -41,6 +41,9 @@ STATIC_FILES = {
     "/morning": ("morning.html", "text/html; charset=utf-8"),
     "/morning.html": ("morning.html", "text/html; charset=utf-8"),
     "/morning.js": ("morning.js", "text/javascript; charset=utf-8"),
+    "/prize": ("prize.html", "text/html; charset=utf-8"),
+    "/prize.html": ("prize.html", "text/html; charset=utf-8"),
+    "/prize.js": ("prize.js", "text/javascript; charset=utf-8"),
     "/favicon.svg": ("favicon.svg", "image/svg+xml"),
 }
 
@@ -409,6 +412,112 @@ class DashboardApp:
             raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_payload", str(exc)) from exc
         return {"catalogue": self.arc_catalogue()}
 
+    def prize(self) -> dict[str, Any]:
+        try:
+            from prize_report import build_prize
+
+            result = build_prize(self.root)
+            if isinstance(result, dict) and isinstance(result.get("board"), list):
+                return {"generated_at": _utc_now(), **_sanitize(result, self.root)}
+        except (ImportError, OSError, TypeError, ValueError):
+            pass
+        return {
+            "generated_at": _utc_now(),
+            "registry": {"source": None, "registry_hash": None, "prizes": [], "control": {}, "refresh": {}},
+            "board": [],
+            "queue": {"allocations": [], "unallocated_usd": 0.0, "notes": [], "label": "unavailable"},
+            "money_board": {},
+            "economics": {},
+            "stop_recommendations": [],
+            "intake": [],
+            "nightly": {"enabled": False, "block": None},
+            "non_claims": [],
+            "notices": ["The prize hunt modules are unavailable in this checkout."],
+        }
+
+    def update_prize_control(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from prize_registry import RegistryError, load_snapshot, refresh_registry, update_control
+
+        _expect_keys(payload, {"action"}, {"prize_id"})
+        action = payload.get("action")
+        if action not in {"enable", "disable", "choose_next", "clear_next"}:
+            raise ApiError(
+                HTTPStatus.BAD_REQUEST, "invalid_payload", "Action must enable, disable, choose next, or clear next."
+            )
+        if action == "clear_next":
+            _expect_keys(payload, {"action"})
+            arguments: dict[str, Any] = {"clear_next": True}
+        else:
+            _expect_keys(payload, {"action", "prize_id"})
+            keyword = {"enable": "enable", "disable": "disable", "choose_next": "next_id"}[action]
+            arguments = {keyword: payload["prize_id"]}
+        try:
+            # Admission is re-derived from the cached snapshot, so cache it before the first write.
+            # refresh_registry only re-reads data/prizes.json; it never fetches anything.
+            if load_snapshot(self.root) is None:
+                refresh_registry(self.root)
+            update_control(self.root, **arguments)
+        except (RegistryError, OSError, TypeError, ValueError) as exc:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_payload", str(exc)) from exc
+        return {"prize": self.prize()}
+
+    def update_prize_status(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from prize_registry import RegistryError, refresh_registry, update_status
+
+        _expect_keys(payload, {"prize_id", "status", "status_confidence", "observed", "url"}, {"note"})
+        try:
+            update_status(
+                self.root / "data" / "prizes.json",
+                payload["prize_id"],
+                status=payload["status"],
+                status_confidence=payload["status_confidence"],
+                observed=payload["observed"],
+                url=payload["url"],
+                by="dashboard",
+                note=payload.get("note"),
+            )
+            # The cached snapshot is derived from data/prizes.json, so re-derive it after the edit.
+            refresh_registry(self.root)
+        except (RegistryError, OSError, TypeError, ValueError) as exc:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_payload", str(exc)) from exc
+        return {"prize": self.prize()}
+
+    def record_prize_dead_end(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from prize_economics import record_dead_end
+
+        _expect_keys(payload, {"approach", "why_failed", "evidence", "tags", "problem"})
+        tags = payload["tags"]
+        if not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags):
+            raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_payload", "Tags must be a list of strings.")
+        try:
+            record_dead_end(self.root, payload, "dashboard")
+        except (OSError, TypeError, ValueError) as exc:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_payload", str(exc)) from exc
+        return {"prize": self.prize()}
+
+    def update_prize_intake(self, payload: dict[str, Any]) -> dict[str, Any]:
+        from prize_intake import IntakeError, approve, reject
+
+        _expect_keys(payload, {"action", "slug"}, {"reason"})
+        action = payload.get("action")
+        if action not in {"approve", "reject"}:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_payload", "Action must approve or reject.")
+        if action == "approve":
+            _expect_keys(payload, {"action", "slug"})
+        else:
+            _expect_keys(payload, {"action", "slug", "reason"})
+        try:
+            if action == "approve":
+                from prize_registry import refresh_registry
+
+                approve(payload["slug"], root=self.root, by="dashboard")
+                refresh_registry(self.root)
+            else:
+                reject(payload["slug"], reason=payload["reason"], root=self.root, by="dashboard")
+        except (IntakeError, OSError, TypeError, ValueError) as exc:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_payload", str(exc)) from exc
+        return {"prize": self.prize()}
+
     def update_control(self, payload: dict[str, Any]) -> dict[str, Any]:
         _expect_keys(payload, {"action"}, {"evidence_path"})
         action = payload.get("action")
@@ -472,32 +581,40 @@ class DashboardApp:
             slots = schedule.get("slots")
             if not isinstance(slots, list):
                 raise ApiError(HTTPStatus.CONFLICT, "invalid_state", "The night schedule has no slot list.")
+            # An enabled prizes block is charged against the same deadline and budget ledger as the
+            # slots (night.load_schedule enforces that), so it has to be scaled with them or every
+            # downward edit is rejected.
+            prizes = schedule.get("prizes")
+            prizes = prizes if isinstance(prizes, dict) and prizes.get("enabled") is True else None
+            blocks = [slot for slot in slots if isinstance(slot, dict)]
+            if prizes is not None:
+                blocks.append(prizes)
             configured = sum(
-                float(slot.get("slot_budget_usd", 0)) + float(slot.get("retro_budget_usd", 0))
-                for slot in slots
-                if isinstance(slot, dict)
+                float(block.get("slot_budget_usd", 0)) + float(block.get("retro_budget_usd", 0)) for block in blocks
             )
             if configured > budget:
                 scale = budget / configured
-                for slot in slots:
-                    if not isinstance(slot, dict):
-                        continue
-                    slot["slot_budget_usd"] = float(slot.get("slot_budget_usd", 0)) * scale
-                    slot["retro_budget_usd"] = float(slot.get("retro_budget_usd", 0)) * scale
-                    if slot.get("kind") == "research":
-                        slot["per_call_budget_usd"] = min(
-                            float(slot.get("per_call_budget_usd", 0)), slot["slot_budget_usd"]
+                for block in blocks:
+                    block["slot_budget_usd"] = float(block.get("slot_budget_usd", 0)) * scale
+                    block["retro_budget_usd"] = float(block.get("retro_budget_usd", 0)) * scale
+                    if block.get("kind") == "research" or block is prizes:
+                        block["per_call_budget_usd"] = min(
+                            float(block.get("per_call_budget_usd", 0)), block["slot_budget_usd"]
                         )
-            configured_minutes = sum(float(slot.get("minutes", 0)) for slot in slots if isinstance(slot, dict))
+            configured_minutes = sum(float(block.get("minutes", 0)) for block in blocks)
             if configured_minutes > duration:
                 scale = duration / configured_minutes
-                for slot in slots:
-                    if not isinstance(slot, dict):
-                        continue
-                    slot["minutes"] = float(slot.get("minutes", 0)) * scale
-                    if slot.get("kind") == "research":
-                        slot["research_minutes"] = float(slot.get("research_minutes", 0)) * scale
-                        slot["retro_minutes"] = float(slot.get("retro_minutes", 0)) * scale
+                for block in blocks:
+                    block["minutes"] = float(block.get("minutes", 0)) * scale
+                    if block.get("kind") == "research" or block is prizes:
+                        research = float(block.get("research_minutes", 0)) * scale
+                        retro = float(block.get("retro_minutes", 0)) * scale
+                        # Scaling the parts of a slot that already filled it can land one ulp above
+                        # the scaled whole, which the night schedule then refuses to load.
+                        if research + retro > block["minutes"]:
+                            retro = block["minutes"] - research
+                        block["research_minutes"] = research
+                        block["retro_minutes"] = retro
             handle, validation_name = tempfile.mkstemp(
                 prefix=".dashboard-validation-", suffix=".json", dir=self.schedule_path.parent
             )
@@ -696,6 +813,8 @@ def _handler(app: DashboardApp):
                     self._json(HTTPStatus.OK, app.morning())
                 elif path == "/api/arc/catalogue":
                     self._json(HTTPStatus.OK, app.arc_catalogue())
+                elif path in {"/api/prizes", "/api/prize"}:
+                    self._json(HTTPStatus.OK, app.prize())
                 elif path in STATIC_FILES:
                     filename, content_type = STATIC_FILES[path]
                     target = app.web_root / filename
@@ -728,6 +847,14 @@ def _handler(app: DashboardApp):
                 elif path == "/api/arc/control":
                     result = app.update_arc_control(payload)
                     self._json(HTTPStatus.OK, result)
+                elif path == "/api/prizes/control":
+                    self._json(HTTPStatus.OK, app.update_prize_control(payload))
+                elif path == "/api/prizes/status":
+                    self._json(HTTPStatus.OK, app.update_prize_status(payload))
+                elif path == "/api/prizes/dead-end":
+                    self._json(HTTPStatus.OK, app.record_prize_dead_end(payload))
+                elif path == "/api/prizes/intake":
+                    self._json(HTTPStatus.OK, app.update_prize_intake(payload))
                 elif path == "/api/holdout/prepare":
                     result = app.prepare_holdout(payload)
                     self._json(HTTPStatus.CREATED, result)

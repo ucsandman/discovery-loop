@@ -225,3 +225,18 @@ td.idea { max-width: 42rem; }
 pre.retro { white-space: pre-wrap; font-family: var(--sans); font-size: .85rem; color: var(--muted); border-left: 2px solid var(--line); padding-left: .8rem; margin: .5rem 0 0; }
 .brief .footnote { margin-top: 3rem; }
 @media (max-width: 48rem) { .card-facts > div { grid-template-columns: 1fr; gap: .15rem; } }
+
+/* Prize hunt page */
+#money-board .card { border-top-color: var(--green); }
+#money-board .card h3 { font-size: 1.15rem; }
+#status-forms details { border-top: 1px solid var(--line); padding: .35rem 0 .75rem; }
+#status-forms details[open] { padding-bottom: 1.1rem; }
+#status-forms summary { font-family: var(--serif); font-weight: 650; }
+#status-forms .control-row { margin-top: .9rem; }
+#prize-controls .card { border-top-color: var(--ink); }
+#stop-list .card { border-top-color: var(--rust); }
+#stop-list .control-row { margin-top: .9rem; }
+#intake-list .control-row { margin-top: .9rem; }
+#non-claims { margin-top: 1rem; padding-left: 1.1rem; }
+#non-claims li { margin-top: .5rem; }
+#board-list td.idea, #queue-list td.idea { max-width: 26rem; }

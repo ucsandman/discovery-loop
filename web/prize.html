@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Prize hunt board for discovery-loop: which public challenges are worth research time, what each experiment cost, and what the measured scaling says. Nothing is submitted from this page.">
+  <title>Prize hunt</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/prize.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the money board</a>
+  <main class="shell brief" id="main">
+    <header class="masthead">
+      <div>
+        <p class="eyebrow" id="dateline">Prize hunt</p>
+        <h1>Where research money is worth spending</h1>
+        <p class="lede"><span id="lede-count">Public challenges</span>, scored from recorded evidence: what each one advertises, whether anyone still appears to pay it, what an attempt costs here, and what the measured scaling says about the real target. No prize was won, claimed, or submitted, and nothing on this page was sent anywhere.</p>
+        <p class="crosslink"><a href="/">Open the review dashboard</a> · <a href="/morning">Read the morning brief</a></p>
+      </div>
+      <div class="night-state" aria-live="polite">
+        <span class="stamp neutral" id="prize-stamp"><span class="signal"></span>Reading registry</span>
+        <strong id="prize-summary">Loading the prize board</strong>
+        <span class="subtle" id="prize-source">Prize wording and amounts are quoted from public pages and are untrusted display data.</span>
+      </div>
+    </header>
+
+    <p class="notice" id="prize-notice" role="status"></p>
+
+    <section class="brief-section" aria-labelledby="money-title">
+      <div class="section-head">
+        <div><p class="kicker">Seven questions, one answer each</p><h2 id="money-title">Money board</h2></div>
+        <span class="folio" id="money-folio">Reading…</span>
+      </div>
+      <p class="trial-note">Each card answers one question by a fixed rule over the scored registry and the recorded run ledgers; the rule is printed on the card so the pick can be checked by hand. A card is a ranking, not a recommendation to spend.</p>
+      <div id="money-board" class="card-grid"><p class="empty">Reading the registry…</p></div>
+    </section>
+
+    <section class="brief-section" aria-labelledby="board-title">
+      <div class="section-head">
+        <div><p class="kicker">Every prize in the registry</p><h2 id="board-title">Prize board</h2></div>
+        <span class="folio" id="board-folio">Reading…</span>
+      </div>
+      <p class="trial-note">One row per registry entry: the advertised wording, the status and how confident that status is, the expected-value category, what one attempt is estimated to cost, the best candidate any run produced, the measured improvement, the extrapolation to the real target, what has been spent, and the next experiment on record.</p>
+      <div class="table-wrap trial-table-wrap">
+        <table>
+          <thead><tr><th>Prize</th><th>Status (confidence)</th><th>EV category</th><th>Est. solve cost</th><th>Best candidate</th><th>Improvement</th><th>Scaling estimate</th><th>Spend</th><th>Next experiment</th></tr></thead>
+          <tbody id="board-list"><tr><td colspan="9" class="empty">Reading prizes…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="minor-head"><h3 id="status-title">Re-check a prize status</h3></div>
+      <p class="trial-note">A status is only as good as the date beside it. Recording a re-check here appends evidence and a history row to data/prizes.json; nothing is ever overwritten or deleted, and this form fetches nothing.</p>
+      <div id="status-forms" aria-labelledby="status-title"><p class="empty">Reading prizes…</p></div>
+    </section>
+
+    <section class="brief-section" aria-labelledby="queue-title">
+      <div class="section-head">
+        <div><p class="kicker">How a nightly allowance would be split</p><h2 id="queue-title">Research queue</h2></div>
+        <span class="folio" id="queue-folio">Reading…</span>
+      </div>
+      <p class="trial-note">A plan, not a spend: the allowance is split between measurable-progress and moonshot buckets, weighted by priority and information gain, with a cap on any single prize. Enabling a prize only makes it eligible for that plan.</p>
+      <p class="trial-note" id="nightly-state">Reading the night schedule…</p>
+      <div class="table-wrap trial-table-wrap">
+        <table>
+          <thead><tr><th>Prize</th><th>Plugin</th><th>Bucket</th><th>Allowance</th><th>Minutes</th><th>Why</th></tr></thead>
+          <tbody id="queue-list"><tr><td colspan="6" class="empty">Reading the plan…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="minor-head"><h3 id="controls-title">Enable, disable, or choose what runs next</h3></div>
+      <p class="trial-note">Only prizes with a reviewed binding to a local plugin can be enabled. The choice is stored in runs/prizes/control.json and read by the night runner; pressing a button here starts nothing.</p>
+      <div id="prize-controls" class="card-grid" aria-labelledby="controls-title"><p class="empty">Reading admissions…</p></div>
+    </section>
+
+    <section class="brief-section" aria-labelledby="economics-title">
+      <div class="section-head">
+        <div><p class="kicker">What each research direction cost and returned</p><h2 id="economics-title">Economics &amp; dead ends</h2></div>
+        <span class="folio" id="economics-folio">Reading…</span>
+      </div>
+      <p class="trial-note">Model allowance is charged API-equivalent cost, not a bill; local compute is an electricity estimate from solver seconds. Each plugin shows its six strongest idea families, keep-verdicts first; the folio says how many exist in total. A direction with three or more attempts and no measured gain is proposed as a dead end for you to confirm.</p>
+      <div id="direction-list" class="card-grid"><p class="empty">Reading the ledgers…</p></div>
+      <div class="minor-head"><h3 id="stop-title">Stop recommendations</h3></div>
+      <p class="trial-note">Recording one appends it to problems/_dead_ends.json so later runs are told not to repeat it. Nothing is deleted and no run is stopped.</p>
+      <div id="stop-list" class="card-grid" aria-labelledby="stop-title"><p class="empty">Reading the ledgers…</p></div>
+    </section>
+
+    <section class="brief-section" aria-labelledby="ready-title">
+      <div class="section-head">
+        <div><p class="kicker">Work that is waiting on a person</p><h2 id="ready-title">Ready for confirmation or review</h2></div>
+        <span class="folio" id="ready-folio">Reading…</span>
+      </div>
+      <p class="trial-note">Ready for confirmation means a development candidate beat the incumbent by more than the minimum effect and no confirmation run has been recorded. Ready for review means a confirmation already passed and the evidence is sitting unread.</p>
+      <div id="ready-list" class="card-grid"><p class="empty">Reading the evidence…</p></div>
+    </section>
+
+    <section class="brief-section" aria-labelledby="intake-title">
+      <div class="section-head">
+        <div><p class="kicker">Pages fetched by hand, admitted by you</p><h2 id="intake-title">Intake</h2></div>
+        <span class="folio" id="intake-folio">Reading…</span>
+      </div>
+      <p class="trial-note">Each candidate is one page someone typed into <code>python prize_intake.py add &lt;url&gt;</code>. The text is quoted, untrusted, and never executed. Approving moves it into data/prizes.json; rejecting keeps the file with your reason.</p>
+      <div id="intake-list" class="card-grid"><p class="empty">Reading candidates…</p></div>
+    </section>
+
+    <p class="footnote">Prize amounts, rules and statuses are quoted from public pages as they read on the recorded date and may be wrong or withdrawn; a status with low or medium confidence has not been re-read recently. Nothing here is submitted, emailed, or sent anywhere, and no result on this page is a claim on any prize.</p>
+    <ul class="footnote" id="non-claims"></ul>
+  </main>
+</body>
+</html>
