@@ -31,6 +31,16 @@ STATUS = os.path.join(HERE, "runs", "night-status.json")
 ROOT = Path(HERE)
 LOCK = ROOT / "runs" / "night.lock"
 SUCCESS_STATUSES = {"completed"}
+# loop.py stops this long before the hard kill so it can finish the in-flight step and write
+# evidence.json. With no margin, 5 of 12 cvrp nights (2026-09-20..10-01) were killed mid-finalize
+# and recorded timed_out with evidence still "running".
+FINALIZE_MARGIN_SECONDS = 300.0
+
+
+def _loop_deadline(kill_deadline, now, margin_seconds=FINALIZE_MARGIN_SECONDS):
+    """Deadline handed to loop.py: the kill deadline minus a finalize margin, capped at 10% of the window."""
+    window = kill_deadline - now
+    return kill_deadline - min(margin_seconds, max(0.0, 0.1 * window))
 
 
 def limit_cpu(fraction=0.5):
@@ -1033,16 +1043,19 @@ def run_night(
                 slot_deadline - retro_seconds,
                 time.time() + 60 * float(slot.get("research_minutes", slot["minutes"])),
             )
+            loop_deadline = _loop_deadline(
+                research_deadline, time.time(), 60 * float(slot.get("finalize_minutes", FINALIZE_MARGIN_SECONDS / 60))
+            )
             command = _research_command(
                 slot,
                 run_id,
                 ledger_path,
                 evidence_root,
-                max(0.01, (research_deadline - time.time()) / 60),
+                max(0.01, (loop_deadline - time.time()) / 60),
                 routing=routing,
                 journal_path=journal_path,
                 routing_override=run_routing_override,
-                deadline=research_deadline,
+                deadline=loop_deadline,
                 mission_path=mission_path if mission_path.is_file() else None,
             )
             code, reason = _run_bounded(

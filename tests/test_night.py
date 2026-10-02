@@ -144,12 +144,15 @@ def test_resume_skips_completed_slots_and_never_publishes(tmp_path, monkeypatch)
     monkeypatch.setattr(night, "publish_slot", lambda *_: (_ for _ in ()).throw(AssertionError("published")))
     calls = []
 
-    def fake_run(command, _log, _deadline, _heartbeat_seconds, heartbeat):
+    def fake_run(command, _log, kill_deadline, _heartbeat_seconds, heartbeat):
         calls.append(command)
         problem = command[command.index("--problem") + 1]
         run_root = Path(config["night"]["evidence_root"]) / "2026-09-05" / problem
         run_root.mkdir(parents=True, exist_ok=True)
         if command[2].endswith("loop.py"):
+            # loop.py must stop well before the hard kill so it can write evidence.json.
+            loop_deadline = float(command[command.index("--deadline-epoch") + 1])
+            assert kill_deadline - loop_deadline >= 60
             evidence = {
                 "status": "completed",
                 "provider": command[command.index("--provider") + 1],
@@ -360,3 +363,12 @@ def test_only_the_cvrp_slot_generates_edit_blocks_for_now():
         modes[slot["id"]] = command[command.index("--generation-mode") + 1]
         assert command[command.index("--screen-fraction") + 1] == "0.25"
     assert modes == {"cvrp-research": "diff", "miplib-heur-research": "full", "matmul-research": "full"}
+
+
+def test_loop_deadline_leaves_a_finalize_margin_before_the_kill():
+    # A 3-hour cvrp slot: loop.py must stop 5 minutes before night.py kills it.
+    assert night._loop_deadline(10_800.0, 0.0) == 10_500.0
+    # A short prize window keeps 90% of its time instead of losing the full 5 minutes.
+    assert night._loop_deadline(600.0, 0.0) == 540.0
+    # An already-expired window never moves the loop deadline past the kill deadline.
+    assert night._loop_deadline(100.0, 200.0) == 100.0
