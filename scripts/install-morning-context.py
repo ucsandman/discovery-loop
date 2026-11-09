@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 
 OLD_PROMPT = '"/meditate $MODE"'
+CMD_ANCHOR = 'CMD=("$CLAUDE_BIN"'
 MARKER = "# discovery-loop: consume only the sanitized numeric research report from the morning wrapper."
 INSERT = """# discovery-loop: consume only the sanitized numeric research report from the morning wrapper.
 MEDITATION_PROMPT="/meditate $MODE"
@@ -25,10 +26,12 @@ fi
 def transform(source):
     if MARKER in source:
         return source
-    if source.count(OLD_PROMPT) != 2 or source.count("CMD=(/c/") != 2:
+    # run-nightly.sh switched from a literal /c/... claude path to "$CLAUDE_BIN" on 2026-09-19;
+    # the old anchor raised here every night for 51 days and the meditation never launched.
+    if source.count(OLD_PROMPT) != 2 or source.count(CMD_ANCHOR) != 2:
         raise ValueError("Meditation runner changed; expected two original command prompts. No file changed.")
     updated = source.replace(OLD_PROMPT, '"$MEDITATION_PROMPT"')
-    index = updated.index("CMD=(/c/")
+    index = updated.index(CMD_ANCHOR)
     return updated[:index] + INSERT + updated[index:]
 
 
