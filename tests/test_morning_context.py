@@ -14,8 +14,8 @@ def module():
 
 def test_adds_context_to_both_primary_and_fallback_without_changing_policy():
     source = """#!/bin/bash
-CMD=(/c/example/claude -p "/meditate $MODE" --strict-mcp-config)
-CMD=(/c/example/claude -p "/meditate $MODE" --model opus --strict-mcp-config)
+CMD=("$CLAUDE_BIN" -p "/meditate $MODE" --strict-mcp-config)
+CMD=("$CLAUDE_BIN" -p "/meditate $MODE" --model opus --strict-mcp-config)
 """
     result = module().transform(source)
     assert result.count('-p "$MEDITATION_PROMPT"') == 2

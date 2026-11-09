@@ -257,7 +257,7 @@ def test_morning_report_is_sanitized_and_zero_work_is_visible(tmp_path, monkeypa
 def test_meditation_context_transforms_in_memory_only(tmp_path, monkeypatch):
     morning = _morning_module()
     runner = tmp_path / "run-nightly.sh"
-    source = 'CMD=(/c/tool -p "/meditate $MODE")\nCMD=(/c/tool -p "/meditate $MODE")\n'
+    source = 'CMD=("$CLAUDE_BIN" -p "/meditate $MODE")\nCMD=("$CLAUDE_BIN" -p "/meditate $MODE")\n'
     runner.write_text(source, encoding="utf-8")
     observed = {}
 
