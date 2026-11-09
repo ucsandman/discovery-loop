@@ -1029,6 +1029,23 @@ def _stage_error(rows, target):
     return ""
 
 
+def _still_ahead(comparison):
+    """Whether a candidate has earned the next replication seed.
+
+    A median of exactly zero is a tie, not a loss. miplib_heur cells often finish level with the incumbent:
+    on 2026-10-29, 11 of 13 candidates had a zero median over 16 cells while 9 of them won more cells than
+    they lost (iteration 11: 7 wins, 3 losses, 6 ties), and none was ever replicated. A tied median with more
+    wins than losses goes on to the next seed; the final gate in compare_paired still decides promotion.
+    """
+    if comparison["median_gain"] > 0:
+        return True
+    if comparison["median_gain"] < 0:
+        return False
+    wins = sum(pair["gain"] > 0 for pair in comparison["pairs"])
+    losses = sum(pair["gain"] < 0 for pair in comparison["pairs"])
+    return wins > losses
+
+
 def race_verdict(comparison, rows=(), *, screening=False, stage_comparison=None):
     """Why a candidate cannot earn the next stage, or None to keep evaluating it."""
     if comparison["candidate_failures"]:
@@ -1046,13 +1063,13 @@ def race_verdict(comparison, rows=(), *, screening=False, stage_comparison=None)
             targets = sorted({pair["target"] for pair in comparison["pairs"]})
             return ("screened_out", f"worse than the incumbent on every screening target ({', '.join(targets)})")
         return None
-    if comparison["median_gain"] <= 0:
+    if not _still_ahead(comparison):
         return (
             "screened_out",
             f"median gain {comparison['median_gain'] * 100:+.3f}% over {len(comparison['pairs'])} paired cells; "
             "replication seeds are not spent on a candidate that is not ahead",
         )
-    if stage_comparison is not None and stage_comparison["median_gain"] <= 0:
+    if stage_comparison is not None and not _still_ahead(stage_comparison):
         # A large win on one seed keeps the cumulative median positive long after the advantage stopped
         # reproducing, which is the failure replication exists to catch. Judge the newest seed on its own.
         return (

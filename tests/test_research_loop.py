@@ -904,6 +904,31 @@ def test_a_candidate_behind_on_the_first_seed_costs_no_replication_at_all(tmp_pa
     assert {seed for _who, _target, seed in seen} == {10_000}
 
 
+def _tied_median(target, _seed):
+    """Three of eight targets win, one loses, four tie: the median is exactly zero, wins outnumber losses."""
+    index = ScreenProblem.DEV.index(target)
+    return 1.01 if index < 3 else 0.99 if index == 3 else 1.0
+
+
+def test_a_tied_median_with_more_wins_than_losses_is_replicated_and_then_judged_by_the_gate(tmp_path):
+    evidence, seen = _race_run(tmp_path, _tied_median)
+    candidate = evidence["development"]["candidates"][0]
+    assert [stage["stage"] for stage in candidate["race"]] == ["first_seed", "replication", "replication"]
+    assert {seed for who, _target, seed in seen if who == "candidate"} == {10_000, 10_001, 10_002}
+    # Replication was spent, but a zero median still cannot pass min_effect: the gate, not the race, rejects it.
+    assert candidate["status"] == "rejected"
+    assert candidate["promising"] is False
+    assert candidate["median_gain"] == 0
+
+
+def test_a_tied_median_with_more_losses_than_wins_costs_no_replication(tmp_path):
+    evidence, seen = _race_run(tmp_path, lambda target, seed: 2.0 - _tied_median(target, seed))
+    candidate = evidence["development"]["candidates"][0]
+    assert candidate["status"] == "screened_out"
+    assert "replication seeds are not spent" in candidate["negative_result"]
+    assert {seed for _who, _target, seed in seen} == {10_000}
+
+
 def test_the_screen_still_runs_ahead_of_the_replication_stages(tmp_path):
     evidence, seen = _race_run(tmp_path, lambda _target, _seed: 0.5, screen_fraction=0.25)
     candidate = evidence["development"]["candidates"][0]
