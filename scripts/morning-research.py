@@ -23,11 +23,13 @@ REPO = Path(__file__).resolve().parents[1]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
+from night_lifecycle import NIGHT_AT_REST, NightState, SlotState, StageResult, next_states  # noqa: E402
 from research_state import atomic_json, read_json  # noqa: E402
 
 STATUS_PATH = REPO / "runs" / "night-status.json"
 REPORT_PATH = REPO / "runs" / "research" / "morning.json"
-TERMINAL = {"completed", "partial", "failed", "paused"}
+# "At rest" in the lifecycle table: no night process owns the checkpoint any more.
+TERMINAL = {state.value for state in NIGHT_AT_REST}
 KNOWN_PROBLEMS = {"cvrp", "miplib_heur", "pglib_opf"}
 KNOWN_PROVIDERS = {"fable", "astra", "paired", "validation"}
 ARC_REFRESH_STATUSES = {"fresh", "stale", "unavailable"}
@@ -237,7 +239,10 @@ def _safe_problem(value: Any) -> str:
 
 
 def _safe_status(value: Any) -> str:
-    allowed = {"pending", "running", "completed", "partial", "failed", "paused", "timed_out", "missing"}
+    # Every stored night, slot and stage value from the lifecycle table, plus the report's own pending/missing.
+    allowed = {"pending", "missing"} | {
+        member.value for machine in (NightState, SlotState, StageResult) for member in machine
+    }
     return value if value in allowed else "unknown"
 
 
@@ -417,6 +422,7 @@ def build_report(
         "run_id": run_id,
         "generated_at": _iso(current),
         "status": _safe_status(status.get("status")) if status else "missing",
+        "allowed_next": next_states(status.get("status")),
         "fresh": fresh,
         "marked_for_human_review": marked_problem,
         "task": task_info or {"name": "discovery-loop-night", "available": False},

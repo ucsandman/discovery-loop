@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Night lifecycle is explicit. `night_lifecycle.py` holds the night, slot and stage vocabularies, both transition tables, the terminal sets and the labels, and every status `night.py` writes goes through it. Resume now closes orphaned `running` slot attempts as `failed` with reason `orphaned_on_resume` before it appends a new one (4 of 66 recorded nights had duplicate slot ids, one with 5 copies, and 12 attempts were stuck at `running`). A write outside the table exits 2 with an `illegal_transition` JSON on stderr, and a duplicated slot id fails `load_schedule`. New additive fields: `night_lifecycle` on `/api/status`, `allowed_next` on `night.py` stdout and `morning.json`, and `label`/`tone` on morning-brief nights and slots. The dashboard stamp now says Partly finished, Waiting for Docker or Run stopped responding where it said Awaiting next run, and counts each study once. `morning.json` reports `budget_exhausted`, `skipped`, `preflight_retry`, `provider_unavailable`, `interrupted` and `error` where it said `unknown`, and the morning brief counts slots once per id.
+
 ## Feedback loop: replicated development gate, reviewed losers, richer memory, 2026-09-20
 
 Audit of the 40 research runs on disk (200 candidates, 191 with a gain, 808 paired cells): 85 candidates were

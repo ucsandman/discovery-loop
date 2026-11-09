@@ -64,9 +64,12 @@
   function renderNight() {
     const status = state.status;
     const night = status.night_status || {};
+    const lifecycle = status.night_lifecycle || {};
     const control = status.control || {};
     const slots = Array.isArray(night.slots) ? night.slots : [];
-    const completed = slots.filter((slot) => slot.status === "completed" || slot.exit_code === 0).length;
+    // Counted once per slot id at its latest attempt; labels come from the lifecycle table in night_lifecycle.py.
+    const finished = numberFrom(lifecycle.slots_finished);
+    const total = numberFrom(lifecycle.slots_total);
     const matchingEvidence = state.evidence.filter((item) => item.run_id === night.run_id);
     const slotIterations = slots.map((slot) => slot.night_iterations ?? slot.iterations).filter(finite);
     const evidenceIterations = matchingEvidence.map((item) => item.usage?.iterations).filter(finite);
@@ -77,17 +80,11 @@
       : slotSpend.length ? slotSpend.reduce((sum, value) => sum + value, 0) : null;
     const tokens = tokenCount(night.usage || slots.map((slot) => slot.usage));
     const stamp = byId("night-stamp");
-    const rawStatus = String(night.status || night.state || "").toLowerCase();
-    let label = "Awaiting next run";
-    let kind = "neutral";
-    if (control.paused && rawStatus === "running") { label = "Pause requested"; kind = "warn"; }
-    else if (control.paused) { label = "Research paused"; kind = "warn"; }
-    else if (rawStatus === "running") { label = "Run in progress"; kind = "good"; }
-    else if (night.finished || rawStatus === "completed") { label = "Run complete"; kind = "good"; }
-    else if (["failed", "partial_failure", "error"].includes(rawStatus)) { label = "Review needed"; kind = "warn"; }
+    const label = lifecycle.label || "Awaiting next run";
+    const kind = ["good", "warn", "neutral"].includes(lifecycle.tone) ? lifecycle.tone : "neutral";
     stamp.className = `stamp ${kind}`;
     stamp.replaceChildren(node("span", "signal"), document.createTextNode(label));
-    byId("night-summary").textContent = slots.length ? `${completed} of ${slots.length} studies finished` : "No active research night";
+    byId("night-summary").textContent = total ? `${finished} of ${total} studies finished` : "No active research night";
     const usageParts = [
       slotIterations.length || evidenceIterations.length ? `${iterations} iterations` : "Iterations not reported",
       spend === null ? "Allowance use not reported" : `${formatAllowance(spend)} reported total_cost_usd API-equivalent`,

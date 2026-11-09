@@ -73,3 +73,10 @@ _.parse_sol
 # loop.py entrypoint, called under __main__ (vulture reports it at 60% whenever loop.py is staged).
 _.main
 _.build_prize  # imported lazily inside dashboard.DashboardApp.prize
+# night_lifecycle.StageResult members, looked up by value: loop.py writes these evidence statuses and
+# night.py stores them through check_stage_result.
+_.INTERRUPTED
+_.ERROR
+_.PROVIDER_UNAVAILABLE
+# scripts/morning-research.py: pre-existing dead code, already unused before the lifecycle change; left in place.
+_.STATUS_PATH

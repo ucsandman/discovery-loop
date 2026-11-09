@@ -23,6 +23,7 @@ from typing import Any
 from urllib.parse import urlsplit
 import webbrowser
 
+from night_lifecycle import night_display
 from research_state import FileLock, atomic_json, read_json
 
 
@@ -313,11 +314,14 @@ class DashboardApp:
         night_status = _safe_read(self.night_status_path, {})
         if not isinstance(night_status, dict):
             night_status = {"status": "unavailable"}
+        # Derived from the lifecycle table; night_status stays a verbatim mirror of the file.
+        lifecycle = night_display(night_status, paused=control["paused"], now=datetime.now(timezone.utc))
         return {
             "generated_at": _utc_now(),
             "csrf_token": self.csrf_token,
             "control": _sanitize(control, self.root),
             "night_status": _sanitize(night_status, self.root),
+            "night_lifecycle": _sanitize(lifecycle, self.root),
             "schedule": self.schedule_summary(),
             "legacy": self.legacy_runs(),
             "trial": _sanitize(_trial_summary(self.root), self.root),

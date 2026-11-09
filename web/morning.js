@@ -33,6 +33,7 @@
     const span = node("span", `stamp ${kind}`, label);
     return span;
   };
+  // Fallback only: the brief carries label/tone from night_lifecycle.py; legacy evidence-only statuses lack them.
   const statusKind = (status) => {
     if (status === "completed") return "good";
     if (["failed", "error", "timed_out", "provider_unavailable"].includes(status)) return "warn";
@@ -53,9 +54,9 @@
       return;
     }
     const totals = night.totals || {};
-    const kind = statusKind(night.status);
+    const kind = night.tone ?? statusKind(night.status);
     stampNode.className = `stamp ${kind}`;
-    stampNode.replaceChildren(node("span", "signal"), document.createTextNode(titleCase(night.status)));
+    stampNode.replaceChildren(node("span", "signal"), document.createTextNode(night.label ?? titleCase(night.status)));
     byId("dateline").textContent = `Morning brief · ${longDate(night.date)}`;
     byId("night-summary").textContent = `${totals.completed ?? 0} of ${totals.slots ?? 0} slots finished · ${totals.candidates ?? 0} ideas tried · ${totals.confirmed ?? 0} confirmed`;
     byId("night-usage").textContent = `${allowance(night.budget_used)} of ${allowance(night.budget_limit)} allowance · started ${clock(night.started_at)}, last write ${clock(night.finished_at)}`;
@@ -126,7 +127,7 @@
     title.append(node("h3", "", slot.mission?.title || titleCase(slot.problem)));
     head.append(title);
     const stamps = node("div", "stamp-row");
-    stamps.append(stamp(titleCase(slot.status), statusKind(slot.status)));
+    stamps.append(stamp(slot.label ?? titleCase(slot.status), slot.tone ?? statusKind(slot.status)));
     if (slot.kind === "research" && slot.status === "completed") {
       stamps.append(stamp(slot.confirmed ? "Confirmed" : "Not confirmed", slot.confirmed ? "good" : "neutral"));
       stamps.append(stamp(slot.publishable ? "Publishable" : "Not publishable", slot.publishable ? "good" : "neutral"));
@@ -220,12 +221,12 @@
       if (night.run_id !== night.date) first.append(node("span", "subtle", ` ${night.run_id}`));
       row.append(first);
       const status = node("td");
-      status.append(stamp(titleCase(night.status), statusKind(night.status)));
+      status.append(stamp(night.label ?? titleCase(night.status), night.tone ?? statusKind(night.status)));
       row.append(status);
       row.append(node("td", "", `${allowance(night.budget_used)} / ${allowance(night.budget_limit)}`));
       const problems = node("td");
       night.slots.forEach((slot) => {
-        const line = node("div", "", `${titleCase(slot.problem)}${slot.arm ? ` · ${slot.arm}` : ""} · ${titleCase(slot.status)}${finite(slot.best?.median_gain) ? ` · best ${pct(slot.best.median_gain)}` : ""}`);
+        const line = node("div", "", `${titleCase(slot.problem)}${slot.arm ? ` · ${slot.arm}` : ""} · ${slot.label ?? titleCase(slot.status)}${finite(slot.best?.median_gain) ? ` · best ${pct(slot.best.median_gain)}` : ""}`);
         problems.append(line);
       });
       row.append(problems);

@@ -9,9 +9,11 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from night_lifecycle import latest_attempts, night_display, slot_label
 from research_state import read_json
 
 IDEA_CHARS = 260
@@ -148,7 +150,7 @@ def _retro(run_dir: Path, problem: str) -> dict[str, Any] | None:
     }
 
 
-def _slot(run_dir: Path, root: Path, slot: dict[str, Any]) -> dict[str, Any]:
+def _slot(run_dir: Path, root: Path, slot: dict[str, Any], night_status: Any = None) -> dict[str, Any]:
     problem = str(slot.get("problem") or "")
     evidence_path = run_dir / problem / "evidence.json"
     evidence = _read(evidence_path, {})
@@ -161,11 +163,16 @@ def _slot(run_dir: Path, root: Path, slot: dict[str, Any]) -> dict[str, Any]:
     best = max(scored, key=lambda row: row["median_gain"]) if scored else None
     stages = slot.get("stages") if isinstance(slot.get("stages"), dict) else {}
     research_stage = stages.get("research") if isinstance(stages.get("research"), dict) else {}
+    status = slot.get("status") or evidence.get("status") or "unknown"
+    # A running record inside an at-rest night reads Interrupted; its raw status is never rewritten.
+    label, tone = slot_label(night_status, status)
     return {
         "problem": problem,
         "kind": slot.get("kind"),
         "arm": slot.get("provider"),
-        "status": slot.get("status") or evidence.get("status") or "unknown",
+        "status": status,
+        "label": label,
+        "tone": tone,
         "reason": slot.get("reason"),
         "started_at": slot.get("started_at"),
         "finished_at": slot.get("finished_at"),
@@ -198,15 +205,22 @@ def _night(run_dir: Path, root: Path) -> dict[str, Any] | None:
     night = _read(run_dir / "night.json", None)
     if not isinstance(night, dict):
         return None
-    slots = [_slot(run_dir, root, slot) for slot in night.get("slots", []) if isinstance(slot, dict)]
+    records = [slot for slot in night.get("slots", []) if isinstance(slot, dict)]
+    slots = [_slot(run_dir, root, slot, night.get("status")) for slot in records]
+    # A resumed slot id has one record per attempt; the totals count each id once, at its latest attempt.
+    latest_ids = {id(record) for record in latest_attempts(records)}
+    latest = [row for record, row in zip(records, slots) if id(record) in latest_ids]
     run_id = str(night.get("run_id") or run_dir.name)
     logical = night.get("scheduled_run_id") if isinstance(night.get("scheduled_run_id"), str) else run_id[:10]
     trial = night.get("trial") if isinstance(night.get("trial"), dict) else {}
     research = [slot for slot in slots if slot["kind"] == "research"]
+    display = night_display(night, now=datetime.now(timezone.utc))
     return {
         "run_id": run_id,
         "date": logical,
         "status": night.get("status") or "unknown",
+        "label": display["label"] if display["known"] else None,
+        "tone": display["tone"] if display["known"] else None,
         "invocation": night.get("invocation_kind"),
         "started_at": night.get("started_at"),
         "finished_at": night.get("updated_at"),
@@ -217,8 +231,8 @@ def _night(run_dir: Path, root: Path) -> dict[str, Any] | None:
         "limitations": [item for item in night.get("limitations", []) if isinstance(item, str)],
         "slots": slots,
         "totals": {
-            "slots": len(slots),
-            "completed": sum(1 for slot in slots if slot["status"] == "completed"),
+            "slots": len(latest),
+            "completed": sum(1 for slot in latest if slot["status"] == "completed"),
             "candidates": sum(len(slot["candidates"]) for slot in research),
             "promising": sum(slot["promising"] for slot in research),
             "confirmed": sum(1 for slot in research if slot["confirmed"]),

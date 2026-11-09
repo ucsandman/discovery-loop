@@ -23,6 +23,18 @@ from loop import (
     DEFAULT_SCREEN_FRACTION,
 )
 from model_registry import VALID_ROUTING_POLICIES, model_spec, policy_chain, routing_config
+from night_lifecycle import (
+    NIGHT_TERMINAL,
+    SLOT_TERMINAL,
+    IllegalTransition,
+    NightState,
+    SlotState,
+    append_attempt,
+    assert_transition,
+    check_stage_result,
+    close_orphaned_attempts,
+    next_states,
+)
 from research_state import BudgetLedger, FileLock, atomic_json, paused, read_json
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -154,6 +166,9 @@ def load_schedule(path=SCHEDULE):
     problems = [slot.get("problem") for slot in slots]
     if len(set(problems)) != len(problems):
         raise ValueError("each problem may appear in at most one slot")
+    slot_ids = [slot.get("id") for slot in slots]
+    if len(set(slot_ids)) != len(slot_ids):
+        raise ValueError("each slot id may appear at most once")
     research = {slot.get("problem") for slot in slots if slot.get("kind") == "research"}
     if not {"cvrp", "miplib_heur"} <= research:
         raise ValueError("research slots must include cvrp and miplib_heur")
@@ -592,10 +607,11 @@ def _new_status(
     config, run_id, deadline, ledger_path, routing, routing_override, *, invocation_kind="manual", scheduled_run_id=None
 ):
     index, assignment = trial_for(config, run_id)
+    assert_transition(None, NightState.RUNNING)
     status = {
         "schema_version": 2,
         "run_id": run_id,
-        "status": "running",
+        "status": NightState.RUNNING.value,
         "started_at": _iso(),
         "updated_at": _iso(),
         "deadline": _iso(deadline),
@@ -891,7 +907,7 @@ def run_night(
         if existing:
             if existing.get("run_id") != run_id:
                 raise ValueError("Checkpoint run identity does not match")
-            if existing.get("status") == "completed":
+            if existing.get("status") in NIGHT_TERMINAL:
                 return existing
             # A resumed night replays the prize choice it checkpointed rather than re-allocating
             # against tonight's registry, so the second half of a slot keeps the first half's budget.
@@ -922,8 +938,12 @@ def run_night(
             if deadline_cap is not None:
                 deadline = min(deadline, float(deadline_cap))
                 status["deadline"] = _iso(deadline)
-            status["status"] = "running"
+            assert_transition(status.get("status"), NightState.RUNNING)
+            status["status"] = NightState.RUNNING.value
             status.pop("finished_at", None)
+            # The night lock is held for the whole run and released when its process dies, so every running
+            # attempt found here is an orphan. Close it before any new attempt for the same slot id is appended.
+            close_orphaned_attempts(status.setdefault("slots", []), finished_at=_iso())
         else:
             deadline = started_now + 60 * int(config["night"]["deadline_minutes"])
             if deadline_cap is not None:
@@ -957,19 +977,24 @@ def run_night(
 
                     consume_prize_next(ROOT, prize_summary["prize_id"], run_id)
         status["prizes"] = prize_summary
+
+        def _on_preflight_wait(check):
+            # A copy: only the disk shows preflight_retry; in memory the night stays running.
+            assert_transition(status["status"], NightState.PREFLIGHT_RETRY)
+            _write_status({**status, "preflight": check, "status": NightState.PREFLIGHT_RETRY.value}, checkpoint)
+
         checks = _preflight_with_retry(
             config,
             slots,
             provider_check=provider_check,
             sandbox_check=sandbox_check,
             deadline=deadline,
-            on_wait=lambda check: _write_status(
-                {**status, "preflight": check, "status": "preflight_retry"}, checkpoint
-            ),
+            on_wait=_on_preflight_wait,
         )
         status["preflight"] = checks
         if not checks["ok"]:
-            status["status"] = "failed"
+            assert_transition(status["status"], NightState.FAILED)
+            status["status"] = NightState.FAILED.value
             if checks["sandbox"].get("ok") is not True:
                 status["limitations"] = ["Docker preflight failed"]
             else:
@@ -979,7 +1004,7 @@ def run_night(
             return status
         ledger = BudgetLedger(ledger_path, float(config["night"]["budget_usd"]))
         completed_before = {
-            entry.get("id") for entry in status.get("slots", []) if entry.get("status") in {"completed", "skipped"}
+            entry.get("id") for entry in status.get("slots", []) if entry.get("status") in SLOT_TERMINAL
         }
 
         def heartbeat():
@@ -995,21 +1020,23 @@ def run_night(
                 status["limitations"].append("night deadline reached before all slots started")
                 break
             if paused(HERE):
-                status["status"] = "paused"
+                assert_transition(status["status"], NightState.PAUSED)
+                status["status"] = NightState.PAUSED.value
                 break
             if slot_id in disabled_slot_ids:
-                status.setdefault("slots", []).append(
+                append_attempt(
+                    status.setdefault("slots", []),
                     {
                         "id": slot_id,
                         "problem": slot["problem"],
                         "kind": slot["kind"],
                         "provider": slot.get("provider"),
-                        "status": "skipped",
+                        "status": SlotState.SKIPPED.value,
                         "reason": "mission_disabled_by_user",
                         "started_at": _iso(),
                         "finished_at": _iso(),
                         "stages": {},
-                    }
+                    },
                 )
                 status["limitations"].append(
                     f"{slot['problem']} research skipped because its admitted mission is disabled"
@@ -1021,7 +1048,7 @@ def run_night(
                 "problem": slot["problem"],
                 "kind": slot["kind"],
                 "provider": slot.get("provider"),
-                "status": "running",
+                "status": SlotState.RUNNING.value,
                 "started_at": _iso(),
                 "stages": {},
             }
@@ -1035,7 +1062,7 @@ def run_night(
                     "catalogue_hash": mission.get("catalogue_hash"),
                     "source_revision": mission.get("source_revision"),
                 }
-            status.setdefault("slots", []).append(record)
+            append_attempt(status.setdefault("slots", []), record)
             heartbeat()
             slot_deadline = min(deadline, time.time() + 60 * float(slot["minutes"]))
             retro_seconds = 60 * float(slot.get("retro_minutes", 0))
@@ -1077,7 +1104,7 @@ def run_night(
             else:
                 failed_reason = reason if reason != "exited" else "failed"
             record["stages"]["research"] = {
-                "status": "completed" if research_ok else failed_reason,
+                "status": check_stage_result("completed" if research_ok else failed_reason, slot_id=slot_id),
                 "exit_code": code,
                 "evidence_status": evidence_status,
                 "work_count": work_count,
@@ -1107,39 +1134,45 @@ def run_night(
                 retro_result = read_json(run_root / slot["problem"] / "retro.json", {}) or {}
                 retro_ok = retro_code == 0 and retro_reason == "exited" and retro_result.get("status") == "completed"
                 record["stages"]["retro"] = {
-                    "status": "completed" if retro_ok else retro_reason if retro_reason != "exited" else "failed",
+                    "status": check_stage_result(
+                        "completed" if retro_ok else retro_reason if retro_reason != "exited" else "failed",
+                        slot_id=slot_id,
+                    ),
                     "exit_code": retro_code,
                     "provider": retro_result.get("provider", analyst_provider(slot["provider"], run_id)),
                 }
             if reason == "paused":
-                record["status"] = "paused"
-                status["status"] = "paused"
+                outcome = SlotState.PAUSED
+                assert_transition(status["status"], NightState.PAUSED)
+                status["status"] = NightState.PAUSED.value
             elif research_ok and all(stage["status"] == "completed" for stage in record["stages"].values()):
-                record["status"] = "completed"
+                outcome = SlotState.COMPLETED
             elif reason == "timed_out":
-                record["status"] = "timed_out"
+                outcome = SlotState.TIMED_OUT
             elif evidence_status == "budget_exhausted":
-                record["status"] = "budget_exhausted"
+                outcome = SlotState.BUDGET_EXHAUSTED
             elif research_partial:
-                record["status"] = "partial"
+                outcome = SlotState.PARTIAL
             else:
-                record["status"] = "failed"
+                outcome = SlotState.FAILED
+            assert_transition(record["status"], outcome, slot_id=slot_id)
+            record["status"] = outcome.value
             record["finished_at"] = _iso()
             heartbeat()
             if status["status"] == "paused":
                 break
 
         expected = {slot["id"] for slot in slots}
-        completed = {
-            entry.get("id") for entry in status.get("slots", []) if entry.get("status") in {"completed", "skipped"}
-        }
+        completed = {entry.get("id") for entry in status.get("slots", []) if entry.get("status") in SLOT_TERMINAL}
         if status.get("status") != "paused":
             if completed == expected:
-                status["status"] = "completed"
+                target = NightState.COMPLETED
             elif completed or any(entry.get("status") == "partial" for entry in status.get("slots", [])):
-                status["status"] = "partial"
+                target = NightState.PARTIAL
             else:
-                status["status"] = "failed"
+                target = NightState.FAILED
+            assert_transition(status["status"], target)
+            status["status"] = target.value
         status["finished_at"] = _iso()
         heartbeat()
         return status
@@ -1219,18 +1252,26 @@ def main():
     if not a.dry_run:
         cpu_limit = limit_cpu(float(config["night"].get("cpu_fraction", 0.5)))
         os.environ["DISCOVERY_CPU_LIMIT"] = json.dumps(cpu_limit)
-    status = run_night(
-        config,
-        run_id,
-        resume=resume,
-        dry_run=a.dry_run,
-        deadline_cap=deadline_cap,
-        routing_override=routing_override,
-        invocation_kind="scheduled" if a.scheduled and run_id.endswith("-scheduled") else "manual",
-        scheduled_run_id=logical_scheduled_id if a.scheduled and run_id.endswith("-scheduled") else None,
-    )
+    try:
+        status = run_night(
+            config,
+            run_id,
+            resume=resume,
+            dry_run=a.dry_run,
+            deadline_cap=deadline_cap,
+            routing_override=routing_override,
+            invocation_kind="scheduled" if a.scheduled and run_id.endswith("-scheduled") else "manual",
+            scheduled_run_id=logical_scheduled_id if a.scheduled and run_id.endswith("-scheduled") else None,
+        )
+    except IllegalTransition as exc:
+        # Refused before the write: the checkpoint keeps its last legal state. Exit 2 means refused, like argparse.
+        print(json.dumps(exc.to_dict(), indent=2), file=sys.stderr)
+        return 2
     if cpu_limit is not None and isinstance(status, dict):
         status["cpu_limit"] = cpu_limit
+    if isinstance(status, dict):
+        # Print-only: the checkpoint on disk never carries allowed_next.
+        status = {**status, "allowed_next": next_states(status.get("status"))}
     print(json.dumps(status, indent=2))
     return 0 if a.dry_run or status.get("status") == "completed" else 1
 
