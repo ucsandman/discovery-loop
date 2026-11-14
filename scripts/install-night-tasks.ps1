@@ -62,7 +62,12 @@ if ($arcExisting) {
 
 $nightScript = Join-Path $repo "night.py"
 $morningScript = Join-Path $repo "scripts\morning-research.py"
-$nightArguments = "-u `"$nightScript`" --scheduled"
+# The night run goes through a hidden PowerShell so no console window exists to be closed:
+# a visible python.exe console was closed 2 minutes into the 2026-11-13 run (exit 0xC000013A).
+# Children inherit the hidden console, and the run's exit code passes through.
+$powershell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
+$nightCommand = "& '$python' -u '$nightScript' --scheduled; exit `$LASTEXITCODE"
+$nightArguments = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command `"$nightCommand`""
 $meditationArguments = "-u `"$morningScript`" --mode meditation-context --next-executable `"$bash`" --next-argument `"$meditationRunner`""
 $fleetArguments = "-u `"$morningScript`" --mode fleet --meditation-line `"$meditationLine`" --next-executable `"$bash`" --next-argument `"$fleetRunner`""
 $dashboardScript = Join-Path $repo "dashboard.py"
@@ -89,7 +94,7 @@ $plan = [ordered]@{
         [ordered]@{
             name = "discovery-loop-night"
             trigger = "daily 21:00"
-            action = "$python $nightArguments"
+            action = "$powershell $nightArguments"
             settings = [ordered]@{
                 execution_time_limit = "PT9H15M"
                 multiple_instances = "IgnoreNew"
@@ -169,7 +174,7 @@ if (-not $Apply) {
 }
 
 try {
-    $nightAction = New-ScheduledTaskAction -Execute $python -Argument $nightArguments -WorkingDirectory $repo
+    $nightAction = New-ScheduledTaskAction -Execute $powershell -Argument $nightArguments -WorkingDirectory $repo
     $nightTrigger = New-ScheduledTaskTrigger -Daily -At "21:00"
     $nightSettings = New-ScheduledTaskSettingsSet `
         -ExecutionTimeLimit (New-TimeSpan -Hours 9 -Minutes 15) `
