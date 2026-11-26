@@ -2,6 +2,12 @@
 
     python notary.py check CARD.json [--out DIR] [--date YYYY-MM-DD]
     python notary.py verify-receipt RECEIPT.json CARD.json
+    python notary.py issue claims/<id>/card.json [--date YYYY-MM-DD] [--correction TEXT]
+    python notary.py reverify-all
+    python notary.py index
+
+The public registry is claims/<id>/ (card and file) and receipts/ (JSON, HTML and Markdown receipts, the index and
+the corrections log).
 
 Phase 1 checks circle-packing claims only, and only data: no program from outside runs here. The rules are fixed
 in docs/notary-prereg.md and described in docs/NOTARY.md. Nothing here fetches, sends or publishes anything.
@@ -27,7 +33,23 @@ EXACT_PATH = HERE / "notary_exact.py"
 CARD_SCHEMA = "claim-card-v1"
 RECEIPT_SCHEMA = "claim-receipt-v1"
 PROBLEMS = ("circle_packing",)
-FORMATS = ("pck", "packomania_txt")
+FORMATS = ("pck", "packomania_txt", "json_corner", "txt_corner")
+CLAIMS_DIR = HERE / "claims"
+RECEIPTS_DIR = HERE / "receipts"
+CORRECTIONS = "CORRECTIONS.md"
+OUTCOME_KEYS = (
+    "schema",
+    "claim_id",
+    "issued_on",
+    "claim",
+    "card_sha256",
+    "artifact",
+    "rule",
+    "measured",
+    "volume",
+    "verdict",
+)
+NUMBER = r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][-+]?\d+)?"
 MIN_DECIMALS = 10
 SUM_AGREEMENT = Fraction(1, 10**9)
 GAIN_AGREEMENT_PP = Fraction(1, 100)
@@ -142,13 +164,42 @@ def load_card(path):
     return card, target
 
 
+def _centre(value):
+    """Shift a corner-origin decimal string to the centred square without rounding it."""
+    try:
+        with localcontext(prec=80):
+            return format(Decimal(value) - Decimal("0.5"), "f")
+    except (InvalidOperation, TypeError):
+        return str(value)
+
+
 def read_rows(text, fmt):
     """Rows of (x, y, r) decimal strings, centre-origin, exactly as printed."""
     lines = [line.strip() for line in text.splitlines()]
     if fmt == "pck":  # largest radius, author, then 'x y r'
         return [tuple(line.split()) for line in lines[2:] if line]
-    # packomania_txt: '#' comment lines, then 'index x y r'
-    return [tuple(line.split()[1:]) for line in lines if line and not line.startswith("#")]
+    if fmt == "packomania_txt":  # '#' comment lines, then 'index x y r'
+        return [tuple(line.split()[1:]) for line in lines if line and not line.startswith("#")]
+    if fmt == "json_corner":  # [[x, y, r], ...] or {"circles": [...]} in [0, 1]^2, numbers kept as printed
+        try:
+            data = json.loads(text, parse_float=str, parse_int=str)
+        except ValueError:
+            return [("unreadable JSON",)]
+        circles = data.get("circles") if isinstance(data, dict) else data
+        if not isinstance(circles, list):
+            return [("no circle list",)]
+        return [
+            tuple(c) if not isinstance(c, list) or len(c) != 3 else (_centre(c[0]), _centre(c[1]), str(c[2]))
+            for c in circles
+        ]
+    # txt_corner: one circle per line, 'x y r' in [0, 1]^2, separated by spaces, commas or brackets
+    rows = []
+    for line in lines:
+        if not line or line.startswith("#"):
+            continue
+        values = re.findall(NUMBER, line)
+        rows.append((_centre(values[0]), _centre(values[1]), values[2]) if len(values) == 3 else tuple(values))
+    return rows
 
 
 _PRIMARY = None
@@ -318,10 +369,12 @@ def build_receipt(card_path, issued_on, primary=None, exact=None):
     )
     claimed = _decimal(card["claimed_sum"], "claimed_sum")
     diff = abs(claimed - total)
+    allowed = max(SUM_AGREEMENT, Fraction(1, 2 * 10 ** notary_exact.decimals_of(card["claimed_sum"])))
     add(
         "claimed_sum",
-        "pass" if diff <= SUM_AGREEMENT else "fail",
-        f"Claimed {card['claimed_sum']}, recomputed {_exact_decimal(total)}, difference {_sci(diff)}.",
+        "pass" if diff <= allowed else "fail",
+        f"Claimed {card['claimed_sum']}, recomputed {_exact_decimal(total)}, difference {_sci(diff)} "
+        f"(allowed {_sci(allowed)}: 1e-9, or half a unit in the claim's last printed digit if larger).",
     )
     if "reference" in card:
         ref = _decimal(card["reference"]["value"], "reference value")
@@ -369,6 +422,203 @@ def verify_receipt(receipt, card_path, primary=None, exact=None):
         if fresh.get(key) != receipt.get(key):
             problems.append(f"{key} differs from a fresh check")
     return problems
+
+
+def outcome(receipt):
+    """The parts of a receipt that state a result; wording and program hashes are presentation."""
+    body = {key: receipt.get(key) for key in OUTCOME_KEYS}
+    body["checks"] = [(c["name"], c["result"]) for c in receipt.get("checks", [])]
+    return body
+
+
+def _receipt_paths(claim_id, receipts_dir):
+    stem = Path(receipts_dir) / claim_id
+    return Path(f"{stem}.receipt.json"), Path(f"{stem}.receipt.html"), Path(f"{stem}.md")
+
+
+def write_receipt(receipt, receipts_dir):
+    json_path, html_path, md_path = _receipt_paths(receipt["claim_id"], receipts_dir)
+    json_path.parent.mkdir(parents=True, exist_ok=True)
+    json_path.write_text(json.dumps(receipt, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    html_path.write_text(render_html(receipt), encoding="utf-8")
+    md_path.write_text(render_markdown(receipt), encoding="utf-8")
+    return json_path
+
+
+def issue(card_path, issued_on, receipts_dir=None, correction=None):
+    """Issue a registry receipt. Replacing a receipt whose outcome changes needs a correction, which is logged."""
+    receipts_dir = Path(receipts_dir or RECEIPTS_DIR)
+    receipt = build_receipt(card_path, issued_on)
+    json_path = _receipt_paths(receipt["claim_id"], receipts_dir)[0]
+    if json_path.is_file():
+        old = json.loads(json_path.read_text(encoding="utf-8"))
+        before, after = outcome(old), outcome(receipt)
+        before.pop("issued_on")
+        after.pop("issued_on")
+        if before != after:
+            if not correction:
+                raise CardError(
+                    f"{receipt['claim_id']}: the outcome would change "
+                    f"({old['verdict']} -> {receipt['verdict']}); pass --correction with the reason"
+                )
+            log = receipts_dir / CORRECTIONS
+            text = log.read_text(encoding="utf-8") if log.is_file() else CORRECTIONS_HEADER
+            log.write_text(
+                text.rstrip("\n") + f"\n| {issued_on} | {receipt['claim_id']} | {old['verdict']} | "
+                f"{receipt['verdict']} | {correction.replace('|', '/')} |\n",
+                encoding="utf-8",
+            )
+    write_receipt(receipt, receipts_dir)
+    return receipt
+
+
+CORRECTIONS_HEADER = """# Corrections
+
+Every receipt whose outcome changed after it was issued, and why. A receipt is replaced only through
+`python notary.py issue CARD --correction "reason"`, which writes the line below. Wording changes and new program
+versions that leave every outcome the same are not corrections; the nightly re-check reports them separately.
+
+| Date | Claim | Was | Now | Reason |
+| --- | --- | --- | --- | --- |
+"""
+
+
+def reverify_all(claims_dir=None, receipts_dir=None):
+    """Re-derive every registry receipt from its card. Returns one (claim_id, status, detail) per receipt or card."""
+    claims_dir, receipts_dir = Path(claims_dir or CLAIMS_DIR), Path(receipts_dir or RECEIPTS_DIR)
+    results, seen = [], set()
+    for path in sorted(receipts_dir.glob("*.receipt.json")):
+        receipt = json.loads(path.read_text(encoding="utf-8"))
+        claim_id = receipt.get("claim_id", path.name)
+        seen.add(claim_id)
+        card = claims_dir / claim_id / "card.json"
+        body = {k: v for k, v in receipt.items() if k != "receipt_sha256"}
+        if hashlib.sha256(canonical(body).encode()).hexdigest() != receipt.get("receipt_sha256"):
+            results.append((claim_id, "tampered", "receipt_sha256 does not match the receipt's contents"))
+            continue
+        if not card.is_file():
+            results.append((claim_id, "missing_card", f"no {card.relative_to(claims_dir.parent)}"))
+            continue
+        try:
+            fresh = build_receipt(card, receipt["issued_on"])
+        except CardError as exc:
+            results.append((claim_id, "card_rejected", str(exc)))
+            continue
+        changed = [k for k, v in outcome(fresh).items() if v != outcome(receipt)[k]]
+        if changed:
+            results.append((claim_id, "changed", "differs in " + ", ".join(changed)))
+        elif fresh != receipt:
+            results.append((claim_id, "reworded", "same outcome; wording or program versions are newer"))
+        else:
+            results.append((claim_id, "reproduced", receipt["verdict"]))
+    for card in sorted(claims_dir.glob("*/card.json")):
+        if card.parent.name not in seen:
+            results.append((card.parent.name, "unissued", "card has no receipt yet"))
+    return results
+
+
+def _md(text):
+    return str(text).replace("|", "\\|").replace("\n", " ")
+
+
+def render_markdown(receipt):
+    title, sentence = VERDICT_TEXT[receipt["verdict"]]
+    claim = receipt["claim"]
+    measured = receipt["measured"]
+    ref = claim.get("reference")
+    lines = [
+        f"# {_md(claim['statement'])}",
+        "",
+        f"Claim Notary receipt, issued {receipt['issued_on']}. Claimed by {_md(claim['claimant'])}"
+        + (f" ([source]({claim['source_url']}))." if claim.get("source_url") else "."),
+        "",
+        f"> **{title}.** {sentence}",
+        "",
+        "## The claim",
+        "",
+        "| | |",
+        "| --- | --- |",
+        f"| Circles | {claim['n']} |",
+        f"| Claimed sum of radii | {_md(claim['claimed_sum'])} |",
+    ]
+    if ref:
+        lines.append(f"| Reference it beats | {_md(ref['value'])} ({_md(ref['source'])}) |")
+    if "claimed_gain_pct" in claim:
+        lines.append(f"| Claimed gain | {_md(claim['claimed_gain_pct'])}% |")
+    lines += ["", "## What was checked", "", "| Check | Result | Detail |", "| --- | --- | --- |"]
+    lines += [f"| {LABELS.get(c['name'], c['name'])} | {c['result']} | {_md(c['detail'])} |" for c in receipt["checks"]]
+    lines += [
+        "",
+        "## What was measured",
+        "",
+        "| | |",
+        "| --- | --- |",
+        f"| Recomputed sum of radii (exact) | `{measured.get('sum', 'none')}` |",
+        f"| Smallest gap to a wall | {measured.get('min_wall_slack', 'none')} |",
+        f"| Smallest squared gap between two circles (negative means overlap) | "
+        f"{measured.get('min_pair_slack_sq', 'none')} |",
+        f"| Tolerance, from the file's {receipt['artifact']['decimals']} printed decimals | "
+        f"{receipt['rule']['tolerance']} |",
+        f"| Work done | {receipt['volume']['circles']} circles, {receipt['volume']['pairs_checked']} pairs |",
+        "",
+        "## What this receipt does not show",
+        "",
+    ]
+    lines += [f"- {item}" for item in receipt["does_not_show"]]
+    lines += [
+        "",
+        "## Check it yourself",
+        "",
+        f"From a clone of this repository: `python notary.py verify-receipt receipts/{receipt['claim_id']}.receipt.json "
+        f"claims/{receipt['claim_id']}/card.json`. It re-runs every check and lists any difference.",
+        "",
+        "| | sha256 |",
+        "| --- | --- |",
+        f"| Receipt | `{receipt['receipt_sha256']}` |",
+        f"| Claim card | `{receipt['card_sha256']}` |",
+        f"| File `{receipt['artifact']['path']}` | `{receipt['artifact']['sha256']}` |",
+    ]
+    lines += [f"| Verifier `{v['path']}` | `{v['sha256']}` |" for v in receipt["verifiers"].values()]
+    lines += ["", f"Rules fixed in advance in [{receipt['rule']['prereg']}](../{receipt['rule']['prereg']})."]
+    return "\n".join(lines) + "\n"
+
+
+def render_index(receipts_dir=None):
+    """receipts/README.md: the calibration line and one row per receipt."""
+    receipts_dir = Path(receipts_dir or RECEIPTS_DIR)
+    receipts = [json.loads(p.read_text(encoding="utf-8")) for p in sorted(receipts_dir.glob("*.receipt.json"))]
+    counts = {v: sum(r["verdict"] == v for r in receipts) for v in VERDICT_TEXT}
+    log = receipts_dir / CORRECTIONS
+    corrections = (
+        sum(1 for line in log.read_text(encoding="utf-8").splitlines() if line.startswith("| 2"))
+        if log.is_file()
+        else 0
+    )
+    lines = [
+        "# Claim Notary receipts",
+        "",
+        "Independent re-checks of optimization claims made by others, mostly found with AI. Each receipt was produced",
+        "by two verifiers that share no code, binds the exact file it checked by hash, and can be re-run by anyone",
+        "with `python notary.py verify-receipt`. Every receipt is re-derived from its claim card on every push and",
+        "every night. How it works: [docs/NOTARY.md](../docs/NOTARY.md).",
+        "",
+        f"**Claims checked: {len(receipts)}.** Holds: {counts['holds']}. Does not hold: {counts['does_not_hold']}. "
+        f"Cannot be decided from what was given: {counts['insufficient_spec']}. Outside what we can check: "
+        f"{counts['cannot_check']}. Corrections to our own receipts: {corrections} ([log]({CORRECTIONS})).",
+        "",
+        "| Claim | Claimed by | Verdict | Recomputed sum | Issued |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    for r in sorted(receipts, key=lambda r: (r["claim"]["claimant"], r["claim_id"])):
+        lines.append(
+            f"| [{_md(r['claim_id'])}]({r['claim_id']}.md) | {_md(r['claim']['claimant'])} | "
+            f"{VERDICT_TEXT[r['verdict']][0]} | {r['measured'].get('sum', 'none')} | {r['issued_on']} |"
+        )
+    path = receipts_dir / "README.md"
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    if not log.is_file():
+        log.write_text(CORRECTIONS_HEADER, encoding="utf-8")
+    return path
 
 
 def render_html(receipt):
@@ -449,8 +699,33 @@ def main(argv=None):
     verify = sub.add_parser("verify-receipt", help="re-derive a receipt from its claim card")
     verify.add_argument("receipt")
     verify.add_argument("card")
+    issue_cmd = sub.add_parser("issue", help="issue a registry receipt into receipts/ and refresh the index")
+    issue_cmd.add_argument("card")
+    issue_cmd.add_argument("--date", default=datetime.date.today().isoformat())
+    issue_cmd.add_argument("--correction", help="required when the new receipt changes an issued outcome")
+    sub.add_parser("reverify-all", help="re-derive every registry receipt from its claim card")
+    sub.add_parser("index", help="rewrite receipts/README.md")
     args = parser.parse_args(argv)
     try:
+        if args.command == "issue":
+            receipt = issue(args.card, args.date, correction=args.correction)
+            render_index()
+            print(f"{receipt['claim_id']}: {receipt['verdict']} -> receipts/{receipt['claim_id']}.md")
+            return 0
+        if args.command == "index":
+            print(f"wrote {render_index().relative_to(HERE)}")
+            return 0
+        if args.command == "reverify-all":
+            results = reverify_all()
+            for claim_id, status, detail in results:
+                print(f"{status:13} {claim_id}: {detail}")
+            tally = {s: sum(r[1] == s for r in results) for s in sorted({r[1] for r in results})}
+            bad = sum(n for s, n in tally.items() if s not in ("reproduced", "reworded"))
+            print(
+                f"receipts={sum(r[1] != 'unissued' for r in results)} " + " ".join(f"{s}={n}" for s, n in tally.items())
+            )
+            print("REVERIFY PASS" if results and not bad else "REVERIFY FAIL")
+            return 0 if results and not bad else 1
         if args.command == "check":
             receipt = build_receipt(args.card, args.date)
             out = Path(args.out)

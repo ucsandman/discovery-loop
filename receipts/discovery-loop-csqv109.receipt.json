@@ -1,0 +1,85 @@
+{
+ "artifact": {
+  "decimals": 16,
+  "format": "pck",
+  "path": "csqv109.pck",
+  "sha256": "4a9544663a72b5346fd9b8fb43736d625e08d038cdbdd58bb3aaba56456a406b"
+ },
+ "card_sha256": "c2111fc5cbe2358b982366a3577d8aacd5892cf88ebe26fa3ccd706ab68d5e9b",
+ "checks": [
+  {
+   "detail": "Circle packing in the unit square, maximise the sum of radii.",
+   "name": "scope",
+   "result": "pass"
+  },
+  {
+   "detail": "The claim names no hash; this receipt binds to the file's sha256 listed under Check it yourself.",
+   "name": "artifact_hash",
+   "result": "pass"
+  },
+  {
+   "detail": "Inside the square with no overlaps, by both verifiers.",
+   "name": "feasibility",
+   "result": "pass"
+  },
+  {
+   "detail": "Primary and exact sums differ by 0.0e+00.",
+   "name": "verifiers_agree_on_sum",
+   "result": "pass"
+  },
+  {
+   "detail": "Claimed 5.507925934200, recomputed 5.5079259342042162, difference 4.216e-12 (allowed 1.000e-09: 1e-9, or half a unit in the claim's last printed digit if larger).",
+   "name": "claimed_sum",
+   "result": "pass"
+  }
+ ],
+ "claim": {
+  "claimant": "Discovery Loop (Wes Sander, MoltFire)",
+  "claimed_sum": "5.507925934200",
+  "n": 109,
+  "problem": "circle_packing",
+  "source_url": "https://www.packomania.com/csqv/csqv.html",
+  "statement": "Our submitted file for N=109 is the packing Packomania lists at 5.507925934200"
+ },
+ "claim_id": "discovery-loop-csqv109",
+ "does_not_show": [
+  "That this packing is the best possible. Only that it is valid and has the sum printed here.",
+  "That the reference value is the best known today. It is taken from the claim as stated, with its source.",
+  "Who found the packing or how. The notary checks the file, not its history.",
+  "Anything about a file other than the one whose hash is printed on this receipt."
+ ],
+ "issued_on": "2026-11-26",
+ "measured": {
+  "min_pair_slack_sq": "3.394e-15",
+  "min_wall_slack": "1.010e-14",
+  "sum": "5.5079259342042162"
+ },
+ "receipt_sha256": "03b67785364e94d9d2059df523fb5c707b47194ad8fca0a21e485097e6e143e9",
+ "rule": {
+  "gain_agreement_pp": "0.01",
+  "min_decimals": 10,
+  "prereg": "docs/notary-prereg.md",
+  "sum_agreement": "1e-9",
+  "tolerance": "1e-15"
+ },
+ "schema": "claim-receipt-v1",
+ "verdict": "holds",
+ "verifiers": {
+  "exact": {
+   "path": "notary_exact.py",
+   "sha256": "53cb37ba4c5dfa98de586836b7c467fb90d34bf4f56e5f90951a30580f95ab9e"
+  },
+  "notary": {
+   "path": "notary.py",
+   "sha256": "e25edf565346f084807c84d06afdd7e642d6a53c0c1ca45de9b0eee19fc1bffe"
+  },
+  "primary": {
+   "path": "problems/circle_packing/verify.py",
+   "sha256": "0c482cc699f04511e99ba825399c9d336331798ee7b86d0466023aebb1c68e65"
+  }
+ },
+ "volume": {
+  "circles": 109,
+  "pairs_checked": 5886
+ }
+}

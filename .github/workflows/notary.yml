@@ -1,0 +1,28 @@
+name: Claim Notary re-check
+on:
+  push:
+    paths:
+      - 'notary.py'
+      - 'notary_exact.py'
+      - 'problems/circle_packing/verify.py'
+      - 'claims/**'
+      - 'receipts/**'
+      - '.github/workflows/notary.yml'
+  schedule:
+    - cron: '17 7 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  reverify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Re-derive every receipt from its claim card
+        run: |
+          python notary.py reverify-all | tee reverify.txt
+          { echo '```'; cat reverify.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

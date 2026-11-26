@@ -142,3 +142,71 @@ def test_line_endings_do_not_change_hashes(tmp_path):
     (tmp_path / "lf").write_bytes(b"a\nb\n")
     (tmp_path / "crlf").write_bytes(b"a\r\nb\r\n")
     assert notary.text_sha256(tmp_path / "lf") == notary.text_sha256(tmp_path / "crlf")
+
+
+def test_the_committed_registry_reproduces():
+    results = notary.reverify_all()
+    assert len(results) >= 15
+    assert {status for _, status, _ in results} <= {"reproduced", "reworded"}, results
+
+
+def test_corner_formats_read_the_same_packing_as_pck():
+    pck = notary.read_rows("0.25\nauthor\n-0.25 0 0.25\n0.25 0 0.25\n", "pck")
+    as_json = notary.read_rows('{"circles": [[0.25, 0.5, 0.25], [0.75, 0.5, 0.25]]}', "json_corner")
+    as_txt = notary.read_rows("# x y r\n[0.25, 0.5, 0.25],\n[0.75, 0.5, 0.25]\n", "txt_corner")
+    to_numbers = lambda rows: [tuple(Fraction(v) for v in row) for row in rows]
+    assert to_numbers(as_json) == to_numbers(as_txt) == to_numbers(pck)
+
+
+@pytest.mark.parametrize("claimed, verdict", [("0.50", "holds"), ("0.5000000000", "holds"), ("0.51", "does_not_hold")])
+def test_a_rounded_claim_agrees_at_its_printed_precision(tmp_path, claimed, verdict):
+    assert notary.build_receipt(_card(tmp_path, claimed_sum=claimed), "2026-11-26")["verdict"] == verdict
+
+
+def _registry(tmp_path):
+    claims, receipts = tmp_path / "claims", tmp_path / "receipts"
+    (claims / "two").mkdir(parents=True)
+    return _card(claims / "two"), receipts
+
+
+def test_issue_needs_a_logged_correction_to_change_an_outcome(tmp_path):
+    card, receipts = _registry(tmp_path)
+    data = json.loads(card.read_text(encoding="utf-8"))
+    card.write_text(json.dumps(data), encoding="utf-8")
+    assert notary.issue(card, "2026-11-26", receipts)["verdict"] == "holds"
+    data["claimed_sum"] = "0.6"
+    card.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(notary.CardError, match="outcome would change"):
+        notary.issue(card, "2026-11-27", receipts)
+    notary.issue(card, "2026-11-27", receipts, correction="claimant corrected the sum")
+    log = (receipts / notary.CORRECTIONS).read_text(encoding="utf-8")
+    assert "| 2026-11-27 | two | holds | does_not_hold | claimant corrected the sum |" in log
+
+
+def test_reverify_all_reports_tampering_changes_and_unissued_cards(tmp_path):
+    card, receipts = _registry(tmp_path)
+    claims = card.parent.parent
+    notary.issue(card, "2026-11-26", receipts)
+    assert notary.reverify_all(claims, receipts) == [("two", "reproduced", "holds")]
+    receipt_path = receipts / "two.receipt.json"
+    original = receipt_path.read_text(encoding="utf-8")
+    receipt = json.loads(original)
+    receipt["verdict"] = "does_not_hold"
+    receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+    assert notary.reverify_all(claims, receipts)[0][1] == "tampered"
+    receipt_path.write_text(original, encoding="utf-8")
+    (card.parent / "p.pck").write_text(
+        "0.3\nauthor\n-0.2 0.0000000000 0.3000000000\n0.2500000000 0.0000000000 0.2500000000\n", encoding="utf-8"
+    )
+    assert notary.reverify_all(claims, receipts)[0][1] == "changed"
+    (claims / "new").mkdir()
+    _card(claims / "new")
+    assert ("new", "unissued", "card has no receipt yet") in notary.reverify_all(claims, receipts)
+
+
+def test_index_prints_the_calibration_line(tmp_path):
+    card, receipts = _registry(tmp_path)
+    notary.issue(card, "2026-11-26", receipts)
+    text = notary.render_index(receipts).read_text(encoding="utf-8")
+    assert "**Claims checked: 1.** Holds: 1. Does not hold: 0." in text
+    assert "[two](two.md)" in text and (receipts / notary.CORRECTIONS).is_file()

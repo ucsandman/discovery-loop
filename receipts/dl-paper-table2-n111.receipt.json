@@ -1,0 +1,100 @@
+{
+ "artifact": {
+  "decimals": 16,
+  "format": "pck",
+  "path": "csqv111.pck",
+  "sha256": "229d52154e60f066050be8b759760ab419dbc3b165aa4a424cbebb7748d25eee"
+ },
+ "card_sha256": "377910d621f2148cd8fc1bfd746cbe2702dec760ec560a20eb94d76d58934c0b",
+ "checks": [
+  {
+   "detail": "Circle packing in the unit square, maximise the sum of radii.",
+   "name": "scope",
+   "result": "pass"
+  },
+  {
+   "detail": "The claim names no hash; this receipt binds to the file's sha256 listed under Check it yourself.",
+   "name": "artifact_hash",
+   "result": "pass"
+  },
+  {
+   "detail": "Inside the square with no overlaps, by both verifiers.",
+   "name": "feasibility",
+   "result": "pass"
+  },
+  {
+   "detail": "Primary and exact sums differ by 0.0e+00.",
+   "name": "verifiers_agree_on_sum",
+   "result": "pass"
+  },
+  {
+   "detail": "Claimed 5.554909, recomputed 5.5549085803913789, difference 4.196e-07 (allowed 5.000e-07: 1e-9, or half a unit in the claim's last printed digit if larger).",
+   "name": "claimed_sum",
+   "result": "pass"
+  },
+  {
+   "detail": "Recomputed sum exceeds the reference 5.278427 (paper Table 2 Prior Record; the Wayback Machine copy of Packomania sumradii.txt from 2026-08-09 lists 5.278426556160).",
+   "name": "beats_reference",
+   "result": "pass"
+  },
+  {
+   "detail": "Claimed 5.24%, recomputed 5.2380% against the reference.",
+   "name": "claimed_gain",
+   "result": "pass"
+  }
+ ],
+ "claim": {
+  "claimant": "Discovery Loop (Wes Sander, MoltFire), arXiv:2609.05093",
+  "claimed_gain_pct": "5.24",
+  "claimed_sum": "5.554909",
+  "n": 111,
+  "problem": "circle_packing",
+  "reference": {
+   "source": "paper Table 2 Prior Record; the Wayback Machine copy of Packomania sumradii.txt from 2026-08-09 lists 5.278426556160",
+   "value": "5.278427"
+  },
+  "source_url": "https://arxiv.org/abs/2609.05093",
+  "statement": "Paper Table 2: for N=111 our best sum of radii is 5.554909, a 5.24% improvement over the prior Packomania record 5.278427 (file best/pck/csqv111.pck at commit 9ec32c0)"
+ },
+ "claim_id": "dl-paper-table2-n111",
+ "does_not_show": [
+  "That this packing is the best possible. Only that it is valid and has the sum printed here.",
+  "That the reference value is the best known today. It is taken from the claim as stated, with its source.",
+  "Who found the packing or how. The notary checks the file, not its history.",
+  "Anything about a file other than the one whose hash is printed on this receipt."
+ ],
+ "issued_on": "2026-11-26",
+ "measured": {
+  "min_pair_slack_sq": "2.835e-15",
+  "min_wall_slack": "1.000e-14",
+  "sum": "5.5549085803913789"
+ },
+ "receipt_sha256": "ba580958bbf01e9c24f4f190933cdd94be4068f2cc29f62345f0b82ed21b9dfe",
+ "rule": {
+  "gain_agreement_pp": "0.01",
+  "min_decimals": 10,
+  "prereg": "docs/notary-prereg.md",
+  "sum_agreement": "1e-9",
+  "tolerance": "1e-15"
+ },
+ "schema": "claim-receipt-v1",
+ "verdict": "holds",
+ "verifiers": {
+  "exact": {
+   "path": "notary_exact.py",
+   "sha256": "53cb37ba4c5dfa98de586836b7c467fb90d34bf4f56e5f90951a30580f95ab9e"
+  },
+  "notary": {
+   "path": "notary.py",
+   "sha256": "e25edf565346f084807c84d06afdd7e642d6a53c0c1ca45de9b0eee19fc1bffe"
+  },
+  "primary": {
+   "path": "problems/circle_packing/verify.py",
+   "sha256": "0c482cc699f04511e99ba825399c9d336331798ee7b86d0466023aebb1c68e65"
+  }
+ },
+ "volume": {
+  "circles": 111,
+  "pairs_checked": 6105
+ }
+}

@@ -7,17 +7,28 @@ cheap, and maintainers and benchmark keepers now spend their time checking them.
 
 The pass/fail numbers were fixed before any check ran, in [notary-prereg.md](notary-prereg.md) (commit `7336406`).
 
+## The registry
+
+The public list of receipts is [receipts/README.md](../receipts/README.md). Each claim lives in `claims/<claim_id>/`
+(the card and the exact file it names). Each receipt is in `receipts/` as JSON, a self-contained HTML page and a
+Markdown page that GitHub renders. [receipts/CORRECTIONS.md](../receipts/CORRECTIONS.md) logs every receipt whose
+outcome changed after it was issued.
+
+Every receipt is re-derived from its card by the test suite on every push and by
+`.github/workflows/notary.yml` every night at 07:17 UTC. A receipt whose outcome no longer reproduces fails the run.
+A new wording or program version that leaves every outcome unchanged is reported as `reworded`, not as a failure.
+
 ## Use
 
 ```powershell
-python notary.py check runs/notary/day3/packomania-csqv106.card.json --out runs/notary/day3
-python notary.py verify-receipt runs/notary/day3/packomania-csqv106.receipt.json runs/notary/day3/packomania-csqv106.card.json
-python scripts/notary_planted.py                 # the planted-cheat gate
-python scripts/notary_planted.py --break both    # the same gate with both verifiers broken: must go red
+python notary.py issue claims/<claim_id>/card.json          # add or refresh a registry receipt and the index
+python notary.py issue claims/<claim_id>/card.json --correction "why"   # needed when an issued outcome changes
+python notary.py reverify-all                               # re-derive every receipt; prints the volume
+python notary.py check CARD.json --out DIR                  # one-off check outside the registry
+python notary.py verify-receipt RECEIPT.json CARD.json      # re-run one receipt field by field
+python scripts/notary_planted.py                            # the planted-cheat gate
+python scripts/notary_planted.py --break both               # the same gate with both verifiers broken: must go red
 ```
-
-`check` writes `<claim_id>.receipt.json` and a self-contained `<claim_id>.receipt.html`, and exits 0 only when the
-claim holds. `verify-receipt` re-runs every check from the claim card and lists every field that differs.
 
 ## Claim card
 
@@ -31,7 +42,7 @@ other rule.
 | `problem` | `circle_packing`; anything else gets `cannot_check` |
 | `claimant`, `statement` | Who claims what, in plain words |
 | `source_url` | Optional, `https://` only |
-| `artifact` | `{path, format, sha256?}`: a file inside the card's folder, format `pck` (ours) or `packomania_txt` |
+| `artifact` | `{path, format, sha256?}`: a file inside the card's folder. Formats: `pck` (ours), `packomania_txt`, `json_corner` (`[[x, y, r], ...]` or `{"circles": [...]}` in [0, 1]^2) and `txt_corner` (one `x y r` per line in [0, 1]^2; commas and brackets allowed). Numbers are read as printed, never through floats |
 | `n` | Number of circles |
 | `claimed_sum` | The claimed sum of radii, as a decimal string |
 | `reference` | Optional `{value, source}`: the value the claim says it beats |
@@ -44,7 +55,8 @@ other rule.
 2. Tolerance comes from the file's printed precision only: `10^-(d-1)` for `d` decimals, on the minimum wall slack and
    the minimum squared pair slack. Packomania prints 12 decimals (tolerance `1e-11`); our `.pck` files print 16
    (`1e-15`).
-3. A claimed sum agrees within `1e-9`; a claimed gain within `0.01` percentage points.
+3. A claimed sum agrees within `1e-9`, or within half a unit in its last printed digit when the claim is rounded
+   more coarsely (see the deviations). A claimed gain agrees within `0.01` percentage points.
 4. Hashes are SHA-256 of text with line endings normalised to LF, so a receipt re-derives on every OS.
 5. A receipt binds the claim card, the artifact and the source of all three programs. Changing any of them, or any
    field of the receipt, makes `verify-receipt` fail.
@@ -63,9 +75,30 @@ A finding from day 3: Packomania's published 12-decimal files overlap by up to a
 which rounding to 12 decimals causes. A zero-tolerance checker would wrongly reject the keeper's own files. Our
 16-decimal files have strictly positive gaps.
 
-## Deviation from the preregistration
+## Our own claim, checked first (days 4 and 5)
+
+Before checking anyone else, the notary checked the Discovery Loop paper. On 2026-11-26 we suspected that its
+"2.4% to 5.4% over prior records" was overstated, because `best/submitted.json` compares our final values with much
+closer list values (0.28% to 0.73%). The history settles it:
+
+| Submission | Our N=101 | Packomania's value at that moment |
+| --- | --- | --- |
+| 2026-09-02 06:42 | 5.259794 | 5.163845, the list before us |
+| 2026-09-03 11:56 | 5.291095 | 5.259794, our own entry from the day before |
+
+The 0.28% to 0.73% is our second submission beating our first. The Wayback Machine copy of Packomania's
+`sumradii.txt` from 2026-08-09 lists the prior values in the paper's table exactly (N=101: 5.163845225266). All 10
+rows of the paper's Table 2 hold against the files in Git: N=101 and N=114 match the 2026-09-02 versions, the other
+eight the final files (`claims/dl-paper-table2-n*`). The README stays as it is.
+
+## Deviations from the preregistration
 
 The preregistration lets a file's printed precision set its tolerance, which would let a claimant print few decimals
 to get a loose tolerance. The notary therefore also requires at least 10 printed decimals and returns
 `insufficient_spec` below that (planted case `low_precision`). This is stricter than the preregistered rule, not
 looser.
+
+A rounded claim, such as a paper table printing six decimals, cannot agree with an exact sum to `1e-9`. Rule 3 as
+preregistered would reject every honestly rounded claim. A claimed sum therefore agrees within `1e-9` or half a unit
+in its last printed digit, whichever is larger. This loosens rule 3 only for claims printed with fewer than nine
+decimals, and only by the rounding the claim itself states.
