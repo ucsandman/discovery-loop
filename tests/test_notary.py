@@ -210,3 +210,46 @@ def test_index_prints_the_calibration_line(tmp_path):
     text = notary.render_index(receipts).read_text(encoding="utf-8")
     assert "**Claims checked: 1.** Holds: 1. Does not hold: 0." in text
     assert "[two](two.md)" in text and (receipts / notary.CORRECTIONS).is_file()
+
+
+def _packing(folder, text, claimed):
+    card = _card(folder, claimed_sum=claimed)
+    (folder / "p.pck").write_text(text, encoding="utf-8")
+    return notary.build_receipt(card, "2026-11-26")
+
+
+@pytest.mark.parametrize("claimed, verdict", [("0.4", "holds"), ("0.5", "holds"), ("0.47", "does_not_hold")])
+def test_a_coarse_claim_agrees_when_rounded_or_truncated(tmp_path, claimed, verdict):
+    # two strictly separated circles summing to 0.48: 0.4 truncates it, 0.5 rounds it, 0.47 does neither
+    text = "0.24\nauthor\n-0.2500000000 0.0000000000 0.2400000000\n0.2500000000 0.0000000000 0.2400000000\n"
+    receipt = _packing(tmp_path, text, claimed)
+    assert receipt["verdict"] == verdict
+    if claimed == "0.4":
+        assert "truncated" in next(c["detail"] for c in receipt["checks"] if c["name"] == "claimed_sum")
+
+
+def test_low_precision_matters_only_when_the_packing_needs_the_allowance(tmp_path):
+    separated = "0.24\nauthor\n-0.25 0.00 0.24\n0.25 0.00 0.24\n"
+    assert _packing(tmp_path, separated, "0.48")["verdict"] == "holds"
+    overlapping = "0.27\nauthor\n-0.24 0.00 0.27\n0.25 0.00 0.24\n"  # crosses the edge by 0.01, inside a 0.1 allowance
+    receipt = _packing(tmp_path, overlapping, "0.51")
+    assert receipt["verdict"] == "insufficient_spec"
+    assert [c["name"] for c in receipt["checks"] if c["result"] == "undecided"] == ["precision"]
+
+
+def test_claims_without_coordinates_cannot_be_decided(tmp_path):
+    card = _card(tmp_path, artifact={"published": "none", "note": "Only a screenshot."})
+    receipt = notary.build_receipt(card, "2026-11-26")
+    assert receipt["verdict"] == "insufficient_spec"
+    assert receipt["checks"][-1] == {
+        "name": "artifact",
+        "result": "undecided",
+        "detail": "No coordinates were published with this claim. Only a screenshot.",
+    }
+    assert "Coordinates published" in notary.render_markdown(receipt)
+    assert "<strong>Cannot be decided" in notary.render_html(receipt)
+
+
+def test_centred_json_with_pieces_reads_like_pck():
+    rows = notary.read_rows('{"pieces": [[-0.25, 0, 0.25], [0.25, 0, 0.25]]}', "json_centred")
+    assert rows == [("-0.25", "0", "0.25"), ("0.25", "0", "0.25")]

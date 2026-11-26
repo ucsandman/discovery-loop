@@ -1,0 +1,66 @@
+{
+ "artifact": {
+  "decimals": null,
+  "format": "unpublished",
+  "path": null,
+  "sha256": null
+ },
+ "card_sha256": "ee46811e801cb957651cf825fb2d1aedb37150736d8f645edc142130d376760a",
+ "checks": [
+  {
+   "detail": "Circle packing in the unit square, maximise the sum of radii.",
+   "name": "scope",
+   "result": "pass"
+  },
+  {
+   "detail": "No coordinates were published with this claim. No coordinate file from Sakana was found. A third-party copy in the ThetaEvolve repository (Results/CirclePacking/data.json, entry 'ShinkaEvolve') is a valid packing whose sum is 2.63598282664580639, 1.2e-8 below the claimed value, so it is not the packing this claim describes.",
+   "name": "artifact",
+   "result": "undecided"
+  }
+ ],
+ "claim": {
+  "claimant": "Sakana AI, ShinkaEvolve (arXiv:2509.19349)",
+  "claimed_sum": "2.6359828390115476",
+  "n": 26,
+  "problem": "circle_packing",
+  "source_url": "https://arxiv.org/abs/2509.19349",
+  "statement": "The adjustment from the relaxed to exact formulation reduces the sum of radii for our discovered solution by a negligible amount, from 2.635983099011548 to 2.6359828390115476 (ShinkaEvolve paper)"
+ },
+ "claim_id": "shinkaevolve-n26",
+ "does_not_show": [
+  "That this packing is the best possible. Only that it is valid and has the sum printed here.",
+  "That the reference value is the best known today. It is taken from the claim as stated, with its source.",
+  "Who found the packing or how. The notary checks the file, not its history.",
+  "Anything about a file other than the one whose hash is printed on this receipt."
+ ],
+ "issued_on": "2026-11-26",
+ "measured": {},
+ "receipt_sha256": "d76d54d145fa6cdec63ca7238ab3b4ce7bbbe4191d7db953cd7475a933fd5774",
+ "rule": {
+  "gain_agreement_pp": "0.01",
+  "min_decimals": 10,
+  "prereg": "docs/notary-prereg.md",
+  "sum_agreement": "1e-9",
+  "tolerance": null
+ },
+ "schema": "claim-receipt-v1",
+ "verdict": "insufficient_spec",
+ "verifiers": {
+  "exact": {
+   "path": "notary_exact.py",
+   "sha256": "53cb37ba4c5dfa98de586836b7c467fb90d34bf4f56e5f90951a30580f95ab9e"
+  },
+  "notary": {
+   "path": "notary.py",
+   "sha256": "951d1e3640ac749955d9a12adc22ee4f34d3dec7fe8d2544a1df525a28906c74"
+  },
+  "primary": {
+   "path": "problems/circle_packing/verify.py",
+   "sha256": "0c482cc699f04511e99ba825399c9d336331798ee7b86d0466023aebb1c68e65"
+  }
+ },
+ "volume": {
+  "circles": 0,
+  "pairs_checked": 0
+ }
+}

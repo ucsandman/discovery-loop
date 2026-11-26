@@ -1,0 +1,94 @@
+{
+ "artifact": {
+  "decimals": 7,
+  "format": "txt_corner",
+  "path": "alphaevolve-n26.txt",
+  "sha256": "acb476e262e3b276d2a1ae2869bf00de0997fd2aae95abf3b55b4496fd728a96"
+ },
+ "card_sha256": "b2b709f54c600e50175056e8c1a8822f9d89df990d3420f11098be4823ee303d",
+ "checks": [
+  {
+   "detail": "Circle packing in the unit square, maximise the sum of radii.",
+   "name": "scope",
+   "result": "pass"
+  },
+  {
+   "detail": "The claim names no hash; this receipt binds to the file's sha256 listed under Check it yourself.",
+   "name": "artifact_hash",
+   "result": "pass"
+  },
+  {
+   "detail": "Inside the square with no overlaps, by both verifiers.",
+   "name": "feasibility",
+   "result": "pass"
+  },
+  {
+   "detail": "Primary and exact sums differ by 0.0e+00.",
+   "name": "verifiers_agree_on_sum",
+   "result": "pass"
+  },
+  {
+   "detail": "Claimed 2.635, recomputed 2.63586275641369812, difference 8.628e-04. Agrees with the claim truncated to its printed digits.",
+   "name": "claimed_sum",
+   "result": "pass"
+  },
+  {
+   "detail": "Recomputed sum exceeds the reference 2.634 (the same notebook: 'the SOTA was 2.634').",
+   "name": "beats_reference",
+   "result": "pass"
+  }
+ ],
+ "claim": {
+  "claimant": "Google DeepMind, AlphaEvolve (arXiv:2506.13131)",
+  "claimed_sum": "2.635",
+  "n": 26,
+  "problem": "circle_packing",
+  "reference": {
+   "source": "the same notebook: 'the SOTA was 2.634'",
+   "value": "2.634"
+  },
+  "source_url": "https://github.com/google-deepmind/alphaevolve_results/blob/main/mathematical_results.ipynb",
+  "statement": "For n=26, the SOTA was 2.634, and AlphaEvolve improved it to 2.635 (Construction 1 in the results notebook, section B.12)"
+ },
+ "claim_id": "alphaevolve-n26",
+ "does_not_show": [
+  "That this packing is the best possible. Only that it is valid and has the sum printed here.",
+  "That the reference value is the best known today. It is taken from the claim as stated, with its source.",
+  "Who found the packing or how. The notary checks the file, not its history.",
+  "Anything about a file other than the one whose hash is printed on this receipt."
+ ],
+ "issued_on": "2026-11-26",
+ "measured": {
+  "min_pair_slack_sq": "2.375e-09",
+  "min_wall_slack": "7.852e-09",
+  "sum": "2.63586275641369812"
+ },
+ "receipt_sha256": "1d3aafc7a9693df8b6474ee9020331fe939740a03ac7e0ce01684ef8d79d5f9a",
+ "rule": {
+  "gain_agreement_pp": "0.01",
+  "min_decimals": 10,
+  "prereg": "docs/notary-prereg.md",
+  "sum_agreement": "1e-9",
+  "tolerance": "1e-6"
+ },
+ "schema": "claim-receipt-v1",
+ "verdict": "holds",
+ "verifiers": {
+  "exact": {
+   "path": "notary_exact.py",
+   "sha256": "53cb37ba4c5dfa98de586836b7c467fb90d34bf4f56e5f90951a30580f95ab9e"
+  },
+  "notary": {
+   "path": "notary.py",
+   "sha256": "951d1e3640ac749955d9a12adc22ee4f34d3dec7fe8d2544a1df525a28906c74"
+  },
+  "primary": {
+   "path": "problems/circle_packing/verify.py",
+   "sha256": "0c482cc699f04511e99ba825399c9d336331798ee7b86d0466023aebb1c68e65"
+  }
+ },
+ "volume": {
+  "circles": 26,
+  "pairs_checked": 325
+ }
+}

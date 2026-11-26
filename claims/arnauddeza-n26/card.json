@@ -1,0 +1,14 @@
+{
+ "schema": "claim-card-v1",
+ "claim_id": "arnauddeza-n26",
+ "problem": "circle_packing",
+ "claimant": "ArnaudDeza (OpenEvolve with Gemini)",
+ "statement": "I think I got an even better score of 2.635983 (OpenEvolve issue 156)",
+ "source_url": "https://github.com/algorithmicsuperintelligence/openevolve/issues/156#issuecomment-3156455197",
+ "artifact": {
+  "published": "none",
+  "note": "Only a screenshot was posted."
+ },
+ "n": 26,
+ "claimed_sum": "2.635983"
+}

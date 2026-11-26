@@ -1,0 +1,94 @@
+{
+ "artifact": {
+  "decimals": 15,
+  "format": "json_corner",
+  "path": "thetaevolve-8b-rl65-formal.json",
+  "sha256": "ac902091583be1b307b13772c545d38672808cc888a4a83547e61d01f7bbf085"
+ },
+ "card_sha256": "1ba9f84fd9ad680360e504b8d787bf18509ac68f356fdcbff86c2124384528e4",
+ "checks": [
+  {
+   "detail": "Circle packing in the unit square, maximise the sum of radii.",
+   "name": "scope",
+   "result": "pass"
+  },
+  {
+   "detail": "The claim names no hash; this receipt binds to the file's sha256 listed under Check it yourself.",
+   "name": "artifact_hash",
+   "result": "pass"
+  },
+  {
+   "detail": "Inside the square with no overlaps, by both verifiers.",
+   "name": "feasibility",
+   "result": "pass"
+  },
+  {
+   "detail": "Primary and exact sums differ by 0.0e+00.",
+   "name": "verifiers_agree_on_sum",
+   "result": "pass"
+  },
+  {
+   "detail": "Claimed 2.63598308, recomputed 2.63598307738811934, difference 2.612e-09. Agrees with the claim rounded to its printed digits.",
+   "name": "claimed_sum",
+   "result": "pass"
+  },
+  {
+   "detail": "Recomputed sum exceeds the reference 2.63586276 (the ThetaEvolve README's AlphaEvolve figure).",
+   "name": "beats_reference",
+   "result": "pass"
+  }
+ ],
+ "claim": {
+  "claimant": "Yiping Wang et al., ThetaEvolve (arXiv:2511.23473)",
+  "claimed_sum": "2.63598308",
+  "n": 26,
+  "problem": "circle_packing",
+  "reference": {
+   "source": "the ThetaEvolve README's AlphaEvolve figure",
+   "value": "2.63586276"
+  },
+  "source_url": "https://github.com/ypwang61/ThetaEvolve",
+  "statement": "Ours (R1-Qwen3-8B): 2.63598308, against AlphaEvolve's 2.63586276 (README); file: the zero-tolerance entry '8B-w_RL@65-Formal' of Results/CirclePacking/data.json (sha256 c20023f5a4d3e1408a7ec29ee043dea3c2b8d9711dd21c806008b5a48646e7b8), centres and radii re-joined as [x, y, r] with every digit unchanged"
+ },
+ "claim_id": "thetaevolve-8b-formal-n26",
+ "does_not_show": [
+  "That this packing is the best possible. Only that it is valid and has the sum printed here.",
+  "That the reference value is the best known today. It is taken from the claim as stated, with its source.",
+  "Who found the packing or how. The notary checks the file, not its history.",
+  "Anything about a file other than the one whose hash is printed on this receipt."
+ ],
+ "issued_on": "2026-11-26",
+ "measured": {
+  "min_pair_slack_sq": "4.957e-13",
+  "min_wall_slack": "3.101e-10",
+  "sum": "2.63598307738811934"
+ },
+ "receipt_sha256": "b0666e669199a9057f2f9172927e95c291b33f617eed49610921d2b7be1e283b",
+ "rule": {
+  "gain_agreement_pp": "0.01",
+  "min_decimals": 10,
+  "prereg": "docs/notary-prereg.md",
+  "sum_agreement": "1e-9",
+  "tolerance": "1e-14"
+ },
+ "schema": "claim-receipt-v1",
+ "verdict": "holds",
+ "verifiers": {
+  "exact": {
+   "path": "notary_exact.py",
+   "sha256": "53cb37ba4c5dfa98de586836b7c467fb90d34bf4f56e5f90951a30580f95ab9e"
+  },
+  "notary": {
+   "path": "notary.py",
+   "sha256": "951d1e3640ac749955d9a12adc22ee4f34d3dec7fe8d2544a1df525a28906c74"
+  },
+  "primary": {
+   "path": "problems/circle_packing/verify.py",
+   "sha256": "0c482cc699f04511e99ba825399c9d336331798ee7b86d0466023aebb1c68e65"
+  }
+ },
+ "volume": {
+  "circles": 26,
+  "pairs_checked": 325
+ }
+}

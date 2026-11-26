@@ -1,0 +1,14 @@
+{
+ "schema": "claim-card-v1",
+ "claim_id": "numaro-n36",
+ "problem": "circle_packing",
+ "claimant": "Numaro AI Autoresearch Team (report NUMARO-2026-004)",
+ "statement": "n=36: 3.1210039084, the largest margin in the set",
+ "source_url": "https://numaro.tech/research/circle-packing-unit-square-2026/",
+ "artifact": {
+  "published": "none",
+  "note": "The page draws the layout but offers no coordinate file."
+ },
+ "n": 36,
+ "claimed_sum": "3.1210039084"
+}

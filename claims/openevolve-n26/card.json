@@ -1,0 +1,14 @@
+{
+ "schema": "claim-card-v1",
+ "claim_id": "openevolve-n26",
+ "problem": "circle_packing",
+ "claimant": "OpenEvolve maintainers",
+ "statement": "Sum of radii: 2.635977394746595 for 26 circles (examples/circle_packing README; best_program.py, iteration 206)",
+ "source_url": "https://github.com/algorithmicsuperintelligence/openevolve/blob/main/examples/circle_packing/README.md",
+ "artifact": {
+  "published": "program",
+  "note": "best_program.py must be run to produce the circles."
+ },
+ "n": 26,
+ "claimed_sum": "2.635977394746595"
+}

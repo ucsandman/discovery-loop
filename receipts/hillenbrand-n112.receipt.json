@@ -1,0 +1,94 @@
+{
+ "artifact": {
+  "decimals": 24,
+  "format": "pck",
+  "path": "csqv112.pck",
+  "sha256": "93e3c898049e03c00b89838d5c1c7b58a3b2650ecf5b5376aadb3587d97137c4"
+ },
+ "card_sha256": "0b0dd9fceb6b028fcbd7153136f2d9c0691f01d9896eeed4b708d4dc54ec4648",
+ "checks": [
+  {
+   "detail": "Circle packing in the unit square, maximise the sum of radii.",
+   "name": "scope",
+   "result": "pass"
+  },
+  {
+   "detail": "The claim names no hash; this receipt binds to the file's sha256 listed under Check it yourself.",
+   "name": "artifact_hash",
+   "result": "pass"
+  },
+  {
+   "detail": "Inside the square with no overlaps, by both verifiers.",
+   "name": "feasibility",
+   "result": "pass"
+  },
+  {
+   "detail": "Primary and exact sums differ by 0.0e+00.",
+   "name": "verifiers_agree_on_sum",
+   "result": "pass"
+  },
+  {
+   "detail": "Claimed 5.579854618221, recomputed 5.579854618220678140192165, difference 3.219e-13. Agrees to 1e-9.",
+   "name": "claimed_sum",
+   "result": "pass"
+  },
+  {
+   "detail": "Recomputed sum exceeds the reference 5.579811038411 (RESULTS.csv: Packomania table of 2026-11-01).",
+   "name": "beats_reference",
+   "result": "pass"
+  }
+ ],
+ "claim": {
+  "claimant": "Audrey Hillenbrand (search code built with an OpenAI model)",
+  "claimed_sum": "5.579854618221",
+  "n": 112,
+  "problem": "circle_packing",
+  "reference": {
+   "source": "RESULTS.csv: Packomania table of 2026-11-01",
+   "value": "5.579811038411"
+  },
+  "source_url": "https://github.com/Audrey-makes/Circles-in-a-Square",
+  "statement": "N=112: radius sum 5.579854618221 against Packomania's posted 5.579811038411 as of its 2026-11-01 table (data/RESULTS.csv; file packings/csqv112.pck)"
+ },
+ "claim_id": "hillenbrand-n112",
+ "does_not_show": [
+  "That this packing is the best possible. Only that it is valid and has the sum printed here.",
+  "That the reference value is the best known today. It is taken from the claim as stated, with its source.",
+  "Who found the packing or how. The notary checks the file, not its history.",
+  "Anything about a file other than the one whose hash is printed on this receipt."
+ ],
+ "issued_on": "2026-11-26",
+ "measured": {
+  "min_pair_slack_sq": "3.450e-24",
+  "min_wall_slack": "0.000e+00",
+  "sum": "5.579854618220678140192165"
+ },
+ "receipt_sha256": "b39e10d739fe2a75b944a1580efb9df6ddfe2ee212bdbc0f049a0ec8c7f89bab",
+ "rule": {
+  "gain_agreement_pp": "0.01",
+  "min_decimals": 10,
+  "prereg": "docs/notary-prereg.md",
+  "sum_agreement": "1e-9",
+  "tolerance": "1e-23"
+ },
+ "schema": "claim-receipt-v1",
+ "verdict": "holds",
+ "verifiers": {
+  "exact": {
+   "path": "notary_exact.py",
+   "sha256": "53cb37ba4c5dfa98de586836b7c467fb90d34bf4f56e5f90951a30580f95ab9e"
+  },
+  "notary": {
+   "path": "notary.py",
+   "sha256": "951d1e3640ac749955d9a12adc22ee4f34d3dec7fe8d2544a1df525a28906c74"
+  },
+  "primary": {
+   "path": "problems/circle_packing/verify.py",
+   "sha256": "0c482cc699f04511e99ba825399c9d336331798ee7b86d0466023aebb1c68e65"
+  }
+ },
+ "volume": {
+  "circles": 112,
+  "pairs_checked": 6216
+ }
+}

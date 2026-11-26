@@ -1,0 +1,85 @@
+{
+ "artifact": {
+  "decimals": 15,
+  "format": "json_centred",
+  "path": "cirRsqu_n38.json",
+  "sha256": "dd980c717c5ab3c27007d59d05671325acff006ef9623418246a08e5b0b9b50e"
+ },
+ "card_sha256": "6dea63d585a90125fdeda6305b2c87e7074995d1e69322d4a7fd614982fd23dc",
+ "checks": [
+  {
+   "detail": "Circle packing in the unit square, maximise the sum of radii.",
+   "name": "scope",
+   "result": "pass"
+  },
+  {
+   "detail": "The claim names no hash; this receipt binds to the file's sha256 listed under Check it yourself.",
+   "name": "artifact_hash",
+   "result": "pass"
+  },
+  {
+   "detail": "Both verifiers reject the packing: a circle crosses the square's edge by 5.816e-10 and two circles overlap (squared distance short by 4.255e-10), about 58,163 times what rounding to the printed digits can cause (allowance 1e-14).",
+   "name": "feasibility",
+   "result": "fail"
+  },
+  {
+   "detail": "Primary and exact sums differ by 0.0e+00.",
+   "name": "verifiers_agree_on_sum",
+   "result": "pass"
+  },
+  {
+   "detail": "Claimed 3.205945642435773, recomputed 3.205945642435772996, difference 4.000e-18. Agrees to 1e-9.",
+   "name": "claimed_sum",
+   "result": "pass"
+  }
+ ],
+ "claim": {
+  "claimant": "Tencent Hunyuan, Hyra (AI4Science packing_records)",
+  "claimed_sum": "3.205945642435773",
+  "n": 38,
+  "problem": "circle_packing",
+  "source_url": "https://github.com/Tencent-Hunyuan/Hyra-results/blob/main/AI4Science/packing_records/records/cirRsqu_n38.json",
+  "statement": "Full-precision sum of radii 3.205945642435773 for 38 circles in the unit square (sum_s_full in cirRsqu_n38.json)"
+ },
+ "claim_id": "hyra-n38",
+ "does_not_show": [
+  "That this packing is the best possible. Only that it is valid and has the sum printed here.",
+  "That the reference value is the best known today. It is taken from the claim as stated, with its source.",
+  "Who found the packing or how. The notary checks the file, not its history.",
+  "Anything about a file other than the one whose hash is printed on this receipt."
+ ],
+ "issued_on": "2026-11-26",
+ "measured": {
+  "min_pair_slack_sq": "-4.255e-10",
+  "min_wall_slack": "-5.816e-10",
+  "sum": "3.205945642435772996"
+ },
+ "receipt_sha256": "868b885624eb1fca99aa4ffa2ca35a3d5fa30da6214b4fcfde64d9f25aa1a875",
+ "rule": {
+  "gain_agreement_pp": "0.01",
+  "min_decimals": 10,
+  "prereg": "docs/notary-prereg.md",
+  "sum_agreement": "1e-9",
+  "tolerance": "1e-14"
+ },
+ "schema": "claim-receipt-v1",
+ "verdict": "does_not_hold",
+ "verifiers": {
+  "exact": {
+   "path": "notary_exact.py",
+   "sha256": "53cb37ba4c5dfa98de586836b7c467fb90d34bf4f56e5f90951a30580f95ab9e"
+  },
+  "notary": {
+   "path": "notary.py",
+   "sha256": "951d1e3640ac749955d9a12adc22ee4f34d3dec7fe8d2544a1df525a28906c74"
+  },
+  "primary": {
+   "path": "problems/circle_packing/verify.py",
+   "sha256": "0c482cc699f04511e99ba825399c9d336331798ee7b86d0466023aebb1c68e65"
+  }
+ },
+ "volume": {
+  "circles": 38,
+  "pairs_checked": 703
+ }
+}

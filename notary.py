@@ -33,7 +33,11 @@ EXACT_PATH = HERE / "notary_exact.py"
 CARD_SCHEMA = "claim-card-v1"
 RECEIPT_SCHEMA = "claim-receipt-v1"
 PROBLEMS = ("circle_packing",)
-FORMATS = ("pck", "packomania_txt", "json_corner", "txt_corner")
+FORMATS = ("pck", "packomania_txt", "json_corner", "json_centred", "txt_corner")
+UNPUBLISHED = {
+    "none": "No coordinates were published with this claim.",
+    "program": "The result was published as a program, not coordinates. Phase 1 runs no outside code.",
+}
 CLAIMS_DIR = HERE / "claims"
 RECEIPTS_DIR = HERE / "receipts"
 CORRECTIONS = "CORRECTIONS.md"
@@ -51,6 +55,7 @@ OUTCOME_KEYS = (
 )
 NUMBER = r"[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[eE][-+]?\d+)?"
 MIN_DECIMALS = 10
+FLOAT_FLOOR = 1e-14  # the float verifier cannot resolve slacks finer than this
 SUM_AGREEMENT = Fraction(1, 10**9)
 GAIN_AGREEMENT_PP = Fraction(1, 100)
 VERIFIER_SUM_AGREEMENT = 1e-12
@@ -78,6 +83,7 @@ DOES_NOT_SHOW = (
 )
 LABELS = {
     "scope": "Within what the notary can check",
+    "artifact": "Coordinates published",
     "artifact_hash": "File matches the claim",
     "precision": "Enough printed precision to check",
     "feasibility": "Valid packing (inside the square, no overlaps)",
@@ -138,17 +144,22 @@ def load_card(path):
     if "source_url" in card and not (isinstance(card["source_url"], str) and card["source_url"].startswith("https://")):
         raise CardError("source_url must be an https:// address")
     artifact = card["artifact"]
-    if (
-        not isinstance(artifact, dict)
-        or set(artifact) - {"path", "format", "sha256"}
-        or not {"path", "format"} <= set(artifact)
-    ):
-        raise CardError("artifact must be {path, format, optional sha256}")
-    target = (path.parent / str(artifact["path"])).resolve()
-    if path.parent.resolve() not in target.parents or not target.is_file():
-        raise CardError("artifact path must name a file inside the claim card's folder")
-    if "sha256" in artifact and not re.fullmatch(r"[0-9a-f]{64}", str(artifact["sha256"])):
-        raise CardError("artifact sha256 must be 64 lowercase hex characters")
+    if isinstance(artifact, dict) and "published" in artifact:
+        if set(artifact) - {"published", "note"} or artifact["published"] not in UNPUBLISHED:
+            raise CardError("an unpublished artifact is {published: none or program, optional note}")
+        target = None
+    else:
+        if (
+            not isinstance(artifact, dict)
+            or set(artifact) - {"path", "format", "sha256"}
+            or not {"path", "format"} <= set(artifact)
+        ):
+            raise CardError("artifact must be {path, format, optional sha256} or {published, note}")
+        target = (path.parent / str(artifact["path"])).resolve()
+        if path.parent.resolve() not in target.parents or not target.is_file():
+            raise CardError("artifact path must name a file inside the claim card's folder")
+        if "sha256" in artifact and not re.fullmatch(r"[0-9a-f]{64}", str(artifact["sha256"])):
+            raise CardError("artifact sha256 must be 64 lowercase hex characters")
     if not isinstance(card["n"], int) or isinstance(card["n"], bool) or card["n"] < 1:
         raise CardError("n must be a positive integer")
     _decimal(card["claimed_sum"], "claimed_sum")
@@ -180,17 +191,23 @@ def read_rows(text, fmt):
         return [tuple(line.split()) for line in lines[2:] if line]
     if fmt == "packomania_txt":  # '#' comment lines, then 'index x y r'
         return [tuple(line.split()[1:]) for line in lines if line and not line.startswith("#")]
-    if fmt == "json_corner":  # [[x, y, r], ...] or {"circles": [...]} in [0, 1]^2, numbers kept as printed
+    if fmt in ("json_corner", "json_centred"):  # [[x, y, r], ...] or {"circles"|"pieces"|"solution": [...]}
         try:
             data = json.loads(text, parse_float=str, parse_int=str)
         except ValueError:
             return [("unreadable JSON",)]
-        circles = data.get("circles") if isinstance(data, dict) else data
-        if not isinstance(circles, list):
+        if isinstance(data, dict):
+            data = next((data[k] for k in ("circles", "pieces", "solution") if k in data), None)
+        if not isinstance(data, list):
             return [("no circle list",)]
+        shift = _centre if fmt == "json_corner" else str
         return [
-            tuple(c) if not isinstance(c, list) or len(c) != 3 else (_centre(c[0]), _centre(c[1]), str(c[2]))
-            for c in circles
+            (shift(c[0]), shift(c[1]), str(c[2]))
+            if isinstance(c, list) and len(c) == 3
+            else tuple(map(str, c))
+            if isinstance(c, list)
+            else (str(c),)
+            for c in data
         ]
     # txt_corner: one circle per line, 'x y r' in [0, 1]^2, separated by spaces, commas or brackets
     rows = []
@@ -251,13 +268,13 @@ def build_receipt(card_path, issued_on, primary=None, exact=None):
     primary = primary or primary_check()
     exact = exact or notary_exact.check_exact
     n = card["n"]
-    fmt = card["artifact"]["format"]
+    fmt = card["artifact"].get("format", "unpublished")
     checks = []
 
     def add(name, result, detail):
         checks.append({"name": name, "result": result, "detail": detail})
 
-    artifact_sha = text_sha256(artifact_path)
+    artifact_sha = text_sha256(artifact_path) if artifact_path else None
     body = {
         "schema": RECEIPT_SCHEMA,
         "claim_id": card["claim_id"],
@@ -277,7 +294,7 @@ def build_receipt(card_path, issued_on, primary=None, exact=None):
             if key in card
         },
         "card_sha256": text_sha256(card_path),
-        "artifact": {"path": card["artifact"]["path"], "format": fmt, "sha256": artifact_sha, "decimals": None},
+        "artifact": {"path": card["artifact"].get("path"), "format": fmt, "sha256": artifact_sha, "decimals": None},
         "verifiers": {
             "primary": {"path": "problems/circle_packing/verify.py", "sha256": text_sha256(PRIMARY_PATH)},
             "exact": {"path": "notary_exact.py", "sha256": text_sha256(EXACT_PATH)},
@@ -294,6 +311,11 @@ def build_receipt(card_path, issued_on, primary=None, exact=None):
         "volume": {"circles": 0, "pairs_checked": 0},
         "does_not_show": list(DOES_NOT_SHOW),
     }
+    if card["problem"] in PROBLEMS and artifact_path is None:
+        add("scope", "pass", "Circle packing in the unit square, maximise the sum of radii.")
+        note = card["artifact"].get("note")
+        add("artifact", "undecided", UNPUBLISHED[card["artifact"]["published"]] + (f" {note}" if note else ""))
+        return _seal(body, checks, "insufficient_spec")
     if card["problem"] not in PROBLEMS or fmt not in FORMATS:
         add("scope", "fail", f"No verifier for problem {card['problem']!r} in format {fmt!r}.")
         return _seal(body, checks, "cannot_check")
@@ -315,15 +337,25 @@ def build_receipt(card_path, issued_on, primary=None, exact=None):
     tolerance = Fraction(1, 10 ** (decimals - 1)) if decimals else Fraction(0)
     body["artifact"]["decimals"] = decimals
     body["rule"]["tolerance"] = _power_text(tolerance)
-    if decimals is not None and decimals < MIN_DECIMALS:
+    p = run_primary(primary, rows, n)
+    e = exact(rows, n, tolerance)
+    strict = (  # both verifiers see the packing fit with no allowance for rounding at all
+        "error" not in e
+        and "error" not in p
+        and e["min_wall_slack"] >= 0
+        and (e["min_pair_slack_sq"] or 0) >= 0
+        and p["min_wall_slack"] >= -FLOAT_FLOOR
+        and p["min_pair_slack_sq"] >= -FLOAT_FLOOR
+    )
+    if decimals is not None and decimals < MIN_DECIMALS and not strict:
         add(
             "precision",
             "undecided",
-            f"Values are printed to {decimals} decimals; at least {MIN_DECIMALS} are needed to check a sum to 1e-9.",
+            f"Values are printed to {decimals} decimals and the packing fits only after allowing for that rounding; "
+            f"at least {MIN_DECIMALS} decimals are needed to decide.",
         )
-    p = run_primary(primary, rows, n)
-    e = exact(rows, n, tolerance)
-    p_ok = "error" not in p and p["min_wall_slack"] >= -float(tolerance) and p["min_pair_slack_sq"] >= -float(tolerance)
+    float_tol = max(float(tolerance), FLOAT_FLOOR)
+    p_ok = "error" not in p and p["min_wall_slack"] >= -float_tol and p["min_pair_slack_sq"] >= -float_tol
     e_ok = bool(e.get("feasible")) and "error" not in e
     if p_ok and e_ok and "error" not in e and min(e["min_wall_slack"], e["min_pair_slack_sq"] or 0) < 0:
         add(
@@ -335,14 +367,7 @@ def build_receipt(card_path, issued_on, primary=None, exact=None):
     elif p_ok and e_ok:
         add("feasibility", "pass", "Inside the square with no overlaps, by both verifiers.")
     elif not p_ok and not e_ok:
-        reason = (
-            e.get("error")
-            or p.get("error")
-            or (
-                f"minimum wall slack {_sci(e['min_wall_slack'])}, minimum squared pair slack "
-                f"{_sci(e['min_pair_slack_sq'])}, tolerance {_power_text(tolerance)}"
-            )
-        )
+        reason = e.get("error") or p.get("error") or _violation(e, tolerance)
         add("feasibility", "fail", f"Both verifiers reject the packing: {reason}.")
     else:
         add(
@@ -369,12 +394,22 @@ def build_receipt(card_path, issued_on, primary=None, exact=None):
     )
     claimed = _decimal(card["claimed_sum"], "claimed_sum")
     diff = abs(claimed - total)
-    allowed = max(SUM_AGREEMENT, Fraction(1, 2 * 10 ** notary_exact.decimals_of(card["claimed_sum"])))
+    unit = Fraction(1, 10 ** notary_exact.decimals_of(card["claimed_sum"]))
+    rounded = diff <= max(SUM_AGREEMENT, unit / 2)
+    truncated = unit > SUM_AGREEMENT and 0 <= total - claimed < unit
     add(
         "claimed_sum",
-        "pass" if diff <= allowed else "fail",
-        f"Claimed {card['claimed_sum']}, recomputed {_exact_decimal(total)}, difference {_sci(diff)} "
-        f"(allowed {_sci(allowed)}: 1e-9, or half a unit in the claim's last printed digit if larger).",
+        "pass" if rounded or truncated else "fail",
+        f"Claimed {card['claimed_sum']}, recomputed {_exact_decimal(total)}, difference {_sci(diff)}. "
+        + (
+            "Agrees to 1e-9."
+            if diff <= SUM_AGREEMENT
+            else "Agrees with the claim rounded to its printed digits."
+            if rounded
+            else "Agrees with the claim truncated to its printed digits."
+            if truncated
+            else "Neither rounding nor truncating the recomputed sum gives the claimed value."
+        ),
     )
     if "reference" in card:
         ref = _decimal(card["reference"]["value"], "reference value")
@@ -393,6 +428,21 @@ def build_receipt(card_path, issued_on, primary=None, exact=None):
                 f"Claimed {card['claimed_gain_pct']}%, recomputed {float(gain):.4f}% against the reference.",
             )
     return _seal(body, checks, _verdict(checks))
+
+
+def _violation(e, tolerance):
+    """Plain words for how far a packing breaks the square or overlaps, against the rounding allowance."""
+    parts = []
+    if e["min_wall_slack"] < -tolerance:
+        parts.append(f"a circle crosses the square's edge by {_sci(-e['min_wall_slack'])}")
+    if e["min_pair_slack_sq"] is not None and e["min_pair_slack_sq"] < -tolerance:
+        parts.append(f"two circles overlap (squared distance short by {_sci(-e['min_pair_slack_sq'])})")
+    worst = max(-e["min_wall_slack"], -(e["min_pair_slack_sq"] or 0))
+    times = f"about {float(worst / tolerance):,.0f} times" if tolerance else "beyond"
+    return (
+        " and ".join(parts) + f", {times} what rounding to the printed digits can cause "
+        f"(allowance {_power_text(tolerance)})"
+    )
 
 
 def _verdict(checks):
@@ -576,8 +626,9 @@ def render_markdown(receipt):
         "| --- | --- |",
         f"| Receipt | `{receipt['receipt_sha256']}` |",
         f"| Claim card | `{receipt['card_sha256']}` |",
-        f"| File `{receipt['artifact']['path']}` | `{receipt['artifact']['sha256']}` |",
     ]
+    if receipt["artifact"]["sha256"]:
+        lines.append(f"| File `{receipt['artifact']['path']}` | `{receipt['artifact']['sha256']}` |")
     lines += [f"| Verifier `{v['path']}` | `{v['sha256']}` |" for v in receipt["verifiers"].values()]
     lines += ["", f"Rules fixed in advance in [{receipt['rule']['prereg']}](../{receipt['rule']['prereg']})."]
     return "\n".join(lines) + "\n"
@@ -636,8 +687,9 @@ def render_html(receipt):
     hashes = [
         ("Receipt", receipt["receipt_sha256"]),
         ("Claim card", receipt["card_sha256"]),
-        (f"File ({receipt['artifact']['path']})", receipt["artifact"]["sha256"]),
     ]
+    if receipt["artifact"]["sha256"]:
+        hashes.append((f"File ({receipt['artifact']['path']})", receipt["artifact"]["sha256"]))
     hashes += [(f"Verifier {v['path']}", v["sha256"]) for v in receipt["verifiers"].values()]
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">

@@ -1,0 +1,14 @@
+{
+ "schema": "claim-card-v1",
+ "claim_id": "hyra-n39",
+ "problem": "circle_packing",
+ "claimant": "Tencent Hunyuan, Hyra (AI4Science packing_records)",
+ "statement": "Full-precision sum of radii 3.2481108110444517 for 39 circles in the unit square (sum_s_full in cirRsqu_n39.json)",
+ "source_url": "https://github.com/Tencent-Hunyuan/Hyra-results/blob/main/AI4Science/packing_records/records/cirRsqu_n39.json",
+ "artifact": {
+  "path": "cirRsqu_n39.json",
+  "format": "json_centred"
+ },
+ "n": 39,
+ "claimed_sum": "3.2481108110444517"
+}

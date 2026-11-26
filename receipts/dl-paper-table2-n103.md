@@ -21,7 +21,7 @@ Claim Notary receipt, issued 2026-11-26. Claimed by Discovery Loop (Wes Sander, 
 | File matches the claim | pass | The claim names no hash; this receipt binds to the file's sha256 listed under Check it yourself. |
 | Valid packing (inside the square, no overlaps) | pass | Inside the square with no overlaps, by both verifiers. |
 | Two independent verifiers agree | pass | Primary and exact sums differ by 0.0e+00. |
-| Claimed sum of radii | pass | Claimed 5.345481, recomputed 5.3454809759973976, difference 2.400e-08 (allowed 5.000e-07: 1e-9, or half a unit in the claim's last printed digit if larger). |
+| Claimed sum of radii | pass | Claimed 5.345481, recomputed 5.3454809759973976, difference 2.400e-08. Agrees with the claim rounded to its printed digits. |
 | Beats the stated reference | pass | Recomputed sum exceeds the reference 5.085509 (paper Table 2 Prior Record; the Wayback Machine copy of Packomania sumradii.txt from 2026-08-09 lists 5.085509313239). |
 | Claimed gain | pass | Claimed 5.11%, recomputed 5.1120% against the reference. |
 
@@ -48,11 +48,11 @@ From a clone of this repository: `python notary.py verify-receipt receipts/dl-pa
 
 | | sha256 |
 | --- | --- |
-| Receipt | `18d7950a0070c7067be64641c267889f2a07379c0dc67d5e0a8284fa40f948f0` |
+| Receipt | `9af58b65cdf215bae9d7e67064c7cf2fba9ac1cf886b571b3063ade8d5318d36` |
 | Claim card | `b74b165919bfb3427d3a83cf1f765d9b749c1af8a87b3e6139f2719b18bb04fb` |
 | File `csqv103.pck` | `593fbd396c281cec8e1044f9994ff93508a38ed54fb7bc6557a8b59139295725` |
 | Verifier `problems/circle_packing/verify.py` | `0c482cc699f04511e99ba825399c9d336331798ee7b86d0466023aebb1c68e65` |
 | Verifier `notary_exact.py` | `53cb37ba4c5dfa98de586836b7c467fb90d34bf4f56e5f90951a30580f95ab9e` |
-| Verifier `notary.py` | `e25edf565346f084807c84d06afdd7e642d6a53c0c1ca45de9b0eee19fc1bffe` |
+| Verifier `notary.py` | `951d1e3640ac749955d9a12adc22ee4f34d3dec7fe8d2544a1df525a28906c74` |
 
 Rules fixed in advance in [docs/notary-prereg.md](../docs/notary-prereg.md).

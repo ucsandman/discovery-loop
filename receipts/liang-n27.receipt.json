@@ -1,0 +1,94 @@
+{
+ "artifact": {
+  "decimals": 12,
+  "format": "pck",
+  "path": "csqv27.pck",
+  "sha256": "c3bc7255e6215a8244e42a31ea24662ade340b92f11e822b4fd87ad62ea4db8e"
+ },
+ "card_sha256": "41ff90c2d1fa89d9ec094c04e98415f312cb0b0edafa2be1544c6517863cfb6b",
+ "checks": [
+  {
+   "detail": "Circle packing in the unit square, maximise the sum of radii.",
+   "name": "scope",
+   "result": "pass"
+  },
+  {
+   "detail": "The claim names no hash; this receipt binds to the file's sha256 listed under Check it yourself.",
+   "name": "artifact_hash",
+   "result": "pass"
+  },
+  {
+   "detail": "Inside the square with no overlaps, by both verifiers.",
+   "name": "feasibility",
+   "result": "pass"
+  },
+  {
+   "detail": "Primary and exact sums differ by 0.0e+00.",
+   "name": "verifiers_agree_on_sum",
+   "result": "pass"
+  },
+  {
+   "detail": "Claimed 2.685978684198, recomputed 2.685978684198, difference 0.000e+00. Agrees to 1e-9.",
+   "name": "claimed_sum",
+   "result": "pass"
+  },
+  {
+   "detail": "Recomputed sum exceeds the reference 2.685350025228 (README: the 2011/12 entry by D. W. Cantrell).",
+   "name": "beats_reference",
+   "result": "pass"
+  }
+ ],
+ "claim": {
+  "claimant": "Jason Liang, Cognizant AI Lab (self-improving AI agent)",
+  "claimed_sum": "2.685978684198",
+  "n": 27,
+  "problem": "circle_packing",
+  "reference": {
+   "source": "README: the 2011/12 entry by D. W. Cantrell",
+   "value": "2.685350025228"
+  },
+  "source_url": "https://github.com/jasonzliang/circle-packing-sota",
+  "statement": "The original n27 solver found N=27 sum of radii 2.685978684198, beating the 2011/12 entry 2.685350025228 (README; file sota/sm-radical-v6-n27/pck/csqv27.pck)"
+ },
+ "claim_id": "liang-n27",
+ "does_not_show": [
+  "That this packing is the best possible. Only that it is valid and has the sum printed here.",
+  "That the reference value is the best known today. It is taken from the claim as stated, with its source.",
+  "Who found the packing or how. The notary checks the file, not its history.",
+  "Anything about a file other than the one whose hash is printed on this receipt."
+ ],
+ "issued_on": "2026-11-26",
+ "measured": {
+  "min_pair_slack_sq": "2.762e-13",
+  "min_wall_slack": "1.000e-12",
+  "sum": "2.685978684198"
+ },
+ "receipt_sha256": "dd9be4dc92146d33e575d01acfa5ff19c422f416f9a7e621e7ce714f2406cb08",
+ "rule": {
+  "gain_agreement_pp": "0.01",
+  "min_decimals": 10,
+  "prereg": "docs/notary-prereg.md",
+  "sum_agreement": "1e-9",
+  "tolerance": "1e-11"
+ },
+ "schema": "claim-receipt-v1",
+ "verdict": "holds",
+ "verifiers": {
+  "exact": {
+   "path": "notary_exact.py",
+   "sha256": "53cb37ba4c5dfa98de586836b7c467fb90d34bf4f56e5f90951a30580f95ab9e"
+  },
+  "notary": {
+   "path": "notary.py",
+   "sha256": "951d1e3640ac749955d9a12adc22ee4f34d3dec7fe8d2544a1df525a28906c74"
+  },
+  "primary": {
+   "path": "problems/circle_packing/verify.py",
+   "sha256": "0c482cc699f04511e99ba825399c9d336331798ee7b86d0466023aebb1c68e65"
+  }
+ },
+ "volume": {
+  "circles": 27,
+  "pairs_checked": 351
+ }
+}

@@ -28,7 +28,7 @@
    "result": "pass"
   },
   {
-   "detail": "Claimed 5.289154, recomputed 5.2891535563580789, difference 4.436e-07 (allowed 5.000e-07: 1e-9, or half a unit in the claim's last printed digit if larger).",
+   "detail": "Claimed 5.289154, recomputed 5.2891535563580789, difference 4.436e-07. Agrees with the claim rounded to its printed digits.",
    "name": "claimed_sum",
    "result": "pass"
   },
@@ -69,7 +69,7 @@
   "min_wall_slack": "1.000e-14",
   "sum": "5.2891535563580789"
  },
- "receipt_sha256": "fe9c5346f1504892fd4161d5a9615347f97471c025ef0f6ea2188b5c83cac120",
+ "receipt_sha256": "005bb81b9d83e83ab940aeaa077ad69f41d2853852e8f6372d882a1aaf80a847",
  "rule": {
   "gain_agreement_pp": "0.01",
   "min_decimals": 10,
@@ -86,7 +86,7 @@
   },
   "notary": {
    "path": "notary.py",
-   "sha256": "e25edf565346f084807c84d06afdd7e642d6a53c0c1ca45de9b0eee19fc1bffe"
+   "sha256": "951d1e3640ac749955d9a12adc22ee4f34d3dec7fe8d2544a1df525a28906c74"
   },
   "primary": {
    "path": "problems/circle_packing/verify.py",

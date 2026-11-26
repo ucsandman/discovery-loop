@@ -19,7 +19,7 @@ Claim Notary receipt, issued 2026-11-26. Claimed by Packomania csqv list (fetche
 | File matches the claim | pass | The claim names no hash; this receipt binds to the file's sha256 listed under Check it yourself. |
 | Valid packing (inside the square, no overlaps) | pass | Inside the square, by both verifiers. The smallest gaps are slightly negative, within what rounding to 12 printed decimals can cause (tolerance 1e-11). |
 | Two independent verifiers agree | pass | Primary and exact sums differ by 0.0e+00. |
-| Claimed sum of radii | pass | Claimed 5.429079100881, recomputed 5.429079100881, difference 0.000e+00 (allowed 1.000e-09: 1e-9, or half a unit in the claim's last printed digit if larger). |
+| Claimed sum of radii | pass | Claimed 5.429079100881, recomputed 5.429079100881, difference 0.000e+00. Agrees to 1e-9. |
 
 ## What was measured
 
@@ -44,11 +44,11 @@ From a clone of this repository: `python notary.py verify-receipt receipts/packo
 
 | | sha256 |
 | --- | --- |
-| Receipt | `1a16f0f5f774e96cde38964b2134ff36d8d31d330cf2a46b8f3fd3631dfc0286` |
+| Receipt | `2c59c6bffb90d93c8c4917e2ad2e09c9b40b8f12d831648e12b736b2c76440a7` |
 | Claim card | `dab3d349b7b30ba1391b914aaf31acd02a28537773f0fbe0533051da9604a2ae` |
 | File `csqv106.txt` | `2b3360b1ced4c99a534dd03a5642a6269a365a19c4bc0915aac38af7adb63a8e` |
 | Verifier `problems/circle_packing/verify.py` | `0c482cc699f04511e99ba825399c9d336331798ee7b86d0466023aebb1c68e65` |
 | Verifier `notary_exact.py` | `53cb37ba4c5dfa98de586836b7c467fb90d34bf4f56e5f90951a30580f95ab9e` |
-| Verifier `notary.py` | `e25edf565346f084807c84d06afdd7e642d6a53c0c1ca45de9b0eee19fc1bffe` |
+| Verifier `notary.py` | `951d1e3640ac749955d9a12adc22ee4f34d3dec7fe8d2544a1df525a28906c74` |
 
 Rules fixed in advance in [docs/notary-prereg.md](../docs/notary-prereg.md).

@@ -91,6 +91,25 @@ The 0.28% to 0.73% is our second submission beating our first. The Wayback Machi
 rows of the paper's Table 2 hold against the files in Git: N=101 and N=114 match the 2026-09-02 versions, the other
 eight the final files (`claims/dl-paper-table2-n*`). The README stays as it is.
 
+## The first outside claims (days 6 and 7, 2026-11-26)
+
+23 public claims about this problem, made in 2025 and 2026 mostly by or about AI systems, were collected from
+papers, READMEs, issue threads and Packomania. Each card quotes the claim as written, and every quote and number was
+checked against its source the same day. 15 published coordinates; 8 published only a program, a screenshot or
+nothing.
+
+| Gate (preregistered) | Result |
+| --- | --- |
+| Correctness: agreement with the keeper's published value | 8 of 8 comparisons of the same packing agree (exactly, or within 4.2e-12 for our 16-decimal files). Two more rows compare different packings: Packomania has since listed a better N=84 than Arnold Castro's, and Hyra's N=26 claims 1.0e-8 more than the list's N=26, the amount its overlaps buy. No gap is a verifier disagreement |
+| Discrimination: at least 1 real claim does not hold | 9 do not hold: 8 of Hyra's 9 records (N=26, 33, 35-40), whose circles cross the square's edge and each other by up to 7.7e-10, about 50,000 to 77,000 times what rounding their 15-16 printed decimals can cause, and Rasim Abiyev's N=104, which overlaps by up to 2.1e-12, about 21 times its rounding allowance |
+| Breadth: at most 8 of 13 in `cannot_check` | 0 out of scope. 9 claims are `insufficient_spec` because the claimant published no coordinates (OpenEvolve, two OpenEvolve issue comments, HELIX, FlowBoost, Pokutta et al., Numaro twice, ShinkaEvolve) |
+| Demand: 2 useful replies from 5 recipients | Not started. Nothing has been sent |
+
+Claims that hold include AlphaEvolve's N=26 and N=32, ThetaEvolve's zero-tolerance N=26, Jason Liang's N=27 and N=51,
+Arnold Castro's N=84, Audrey Hillenbrand's N=112, ocelopus, blankline and Hyra's N=34. The ShinkaEvolve claim has no
+Sakana coordinate file; the copy in the ThetaEvolve repository is a valid packing 1.2e-8 below the claimed sum, so
+it was not used as Sakana's.
+
 ## Deviations from the preregistration
 
 The preregistration lets a file's printed precision set its tolerance, which would let a claimant print few decimals
@@ -102,3 +121,19 @@ A rounded claim, such as a paper table printing six decimals, cannot agree with 
 preregistered would reject every honestly rounded claim. A claimed sum therefore agrees within `1e-9` or half a unit
 in its last printed digit, whichever is larger. This loosens rule 3 only for claims printed with fewer than nine
 decimals, and only by the rounding the claim itself states.
+
+Three more rules changed after the first run on outside claims. Each is listed with the receipts it changed, so the
+change can be judged by the cases that prompted it.
+
+1. A claimed sum printed with few digits also agrees when it is the recomputed sum truncated to those digits.
+   AlphaEvolve writes 2.635 for 2.6358627564; under rounding alone that claim failed. Truncation is a common
+   convention (Hyra and Packomania write values like "2.634+"). Changed: `alphaevolve-n26`, `alphaevolve-n32`.
+2. The 10-decimal minimum applies only when a packing fits because of the rounding allowance. AlphaEvolve's files
+   print 7 decimals but fit with no allowance at all in exact arithmetic, so their precision decides nothing. Both
+   verifiers must see the strict fit; with either one broken, the planted `low_precision` cheat is still caught.
+   Changed: `alphaevolve-n26`, `alphaevolve-n32`.
+3. The float verifier cannot resolve slacks below about 1e-14, so it is never held to a tighter tolerance than that;
+   the exact verifier still applies the file's own allowance. Audrey Hillenbrand's file prints 24 decimals, and the
+   float verifier rejected a contact that the exact verifier measured at 0. Changed: `hillenbrand-n112`.
+
+None of the three changed a `does_not_hold` into `holds` for a packing with an overlap or a wall crossing.
