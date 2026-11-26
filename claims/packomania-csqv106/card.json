@@ -1,0 +1,14 @@
+{
+ "schema": "claim-card-v1",
+ "claim_id": "packomania-csqv106",
+ "problem": "circle_packing",
+ "claimant": "Packomania csqv list (fetched 2026-11-26)",
+ "statement": "Packomania lists a packing of 106 unequal circles in the unit square with sum of radii 5.429079100881",
+ "source_url": "https://www.packomania.com/csqv/csqv.html",
+ "artifact": {
+  "path": "csqv106.txt",
+  "format": "packomania_txt"
+ },
+ "n": 106,
+ "claimed_sum": "5.429079100881"
+}

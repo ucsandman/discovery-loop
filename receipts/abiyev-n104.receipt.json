@@ -1,0 +1,85 @@
+{
+ "artifact": {
+  "decimals": 14,
+  "format": "pck",
+  "path": "csqv104.pck",
+  "sha256": "75e3002af8aa7d1475547d8a01e058c9dd27c883fd15357bfcf583e77137738b"
+ },
+ "card_sha256": "01b33cc4b3255fdff52d006e4a75dac04505d82029580e51e4cc11190b79fe6b",
+ "checks": [
+  {
+   "detail": "Circle packing in the unit square, maximise the sum of radii.",
+   "name": "scope",
+   "result": "pass"
+  },
+  {
+   "detail": "The claim names no hash; this receipt binds to the file's sha256 listed under Check it yourself.",
+   "name": "artifact_hash",
+   "result": "pass"
+  },
+  {
+   "detail": "Both verifiers reject the packing: a circle crosses the square's edge by 5.700e-13 and two circles overlap (squared distance short by 2.053e-12), about 21 times what rounding to the printed digits can cause (allowance 1e-13).",
+   "name": "feasibility",
+   "result": "fail"
+  },
+  {
+   "detail": "Primary and exact sums differ by 0.0e+00.",
+   "name": "verifiers_agree_on_sum",
+   "result": "pass"
+  },
+  {
+   "detail": "Claimed 5.312597, recomputed 5.31259698042292, difference 1.958e-08. Agrees with the claim rounded to its printed digits.",
+   "name": "claimed_sum",
+   "result": "pass"
+  }
+ ],
+ "claim": {
+  "claimant": "Rasim Abiyev (SLSQP and basin hopping, code written by Claude)",
+  "claimed_sum": "5.312597",
+  "n": 104,
+  "problem": "circle_packing",
+  "source_url": "https://github.com/RasimAbiyev/circle-packing-explorations",
+  "statement": "N=104: 5.312597, one of 11 configurations accepted into the database (README; file results/csqv104.pck)"
+ },
+ "claim_id": "abiyev-n104",
+ "does_not_show": [
+  "That this packing is the best possible. Only that it is valid and has the sum printed here.",
+  "That the reference value is the best known today. It is taken from the claim as stated, with its source.",
+  "Who found the packing or how. The notary checks the file, not its history.",
+  "Anything about a file other than the one whose hash is printed on this receipt."
+ ],
+ "issued_on": "2026-11-26",
+ "measured": {
+  "min_pair_slack_sq": "-2.053e-12",
+  "min_wall_slack": "-5.700e-13",
+  "sum": "5.31259698042292"
+ },
+ "receipt_sha256": "9c29b146fcf6855961023951a5fc9489ee1603cf542686193f83dced8032bcf7",
+ "rule": {
+  "gain_agreement_pp": "0.01",
+  "min_decimals": 10,
+  "prereg": "docs/notary-prereg.md",
+  "sum_agreement": "1e-9",
+  "tolerance": "1e-13"
+ },
+ "schema": "claim-receipt-v1",
+ "verdict": "does_not_hold",
+ "verifiers": {
+  "exact": {
+   "path": "notary_exact.py",
+   "sha256": "53cb37ba4c5dfa98de586836b7c467fb90d34bf4f56e5f90951a30580f95ab9e"
+  },
+  "notary": {
+   "path": "notary.py",
+   "sha256": "951d1e3640ac749955d9a12adc22ee4f34d3dec7fe8d2544a1df525a28906c74"
+  },
+  "primary": {
+   "path": "problems/circle_packing/verify.py",
+   "sha256": "0c482cc699f04511e99ba825399c9d336331798ee7b86d0466023aebb1c68e65"
+  }
+ },
+ "volume": {
+  "circles": 104,
+  "pairs_checked": 5356
+ }
+}

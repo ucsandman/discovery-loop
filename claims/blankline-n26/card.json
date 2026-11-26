@@ -1,0 +1,14 @@
+{
+ "schema": "claim-card-v1",
+ "claim_id": "blankline-n26",
+ "problem": "circle_packing",
+ "claimant": "blankline-org (frozen LLM with an external memory loop)",
+ "statement": "sum of radii 2.635917599028, max violation 2.776e-17, valid at 1e-9 (README); explicitly not a record",
+ "source_url": "https://github.com/blankline-org/extrapolation-n26",
+ "artifact": {
+  "path": "gen3b-best.json",
+  "format": "json_corner"
+ },
+ "n": 26,
+ "claimed_sum": "2.635917599028"
+}

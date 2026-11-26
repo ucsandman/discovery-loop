@@ -1,0 +1,18 @@
+{
+ "schema": "claim-card-v1",
+ "claim_id": "liang-n27",
+ "problem": "circle_packing",
+ "claimant": "Jason Liang, Cognizant AI Lab (self-improving AI agent)",
+ "statement": "The original n27 solver found N=27 sum of radii 2.685978684198, beating the 2011/12 entry 2.685350025228 (README; file sota/sm-radical-v6-n27/pck/csqv27.pck)",
+ "source_url": "https://github.com/jasonzliang/circle-packing-sota",
+ "artifact": {
+  "path": "csqv27.pck",
+  "format": "pck"
+ },
+ "n": 27,
+ "claimed_sum": "2.685978684198",
+ "reference": {
+  "value": "2.685350025228",
+  "source": "README: the 2011/12 entry by D. W. Cantrell"
+ }
+}

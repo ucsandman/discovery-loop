@@ -1,0 +1,18 @@
+{
+ "schema": "claim-card-v1",
+ "claim_id": "liang-n51",
+ "problem": "circle_packing",
+ "claimant": "Jason Liang, Cognizant AI Lab (self-improving AI agent)",
+ "statement": "N=51: 3.729658093746 against the reference 3.727021028707 fetched on 2026-08-10, a WIN (sota/sm-radical-v6-n54/comparison.md; file pck/csqv51.pck)",
+ "source_url": "https://github.com/jasonzliang/circle-packing-sota",
+ "artifact": {
+  "path": "csqv51.pck",
+  "format": "pck"
+ },
+ "n": 51,
+ "claimed_sum": "3.729658093746",
+ "reference": {
+  "value": "3.727021028707",
+  "source": "comparison.md: Packomania table fetched 2026-08-10"
+ }
+}

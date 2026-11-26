@@ -1,0 +1,66 @@
+{
+ "artifact": {
+  "decimals": null,
+  "format": "unpublished",
+  "path": null,
+  "sha256": null
+ },
+ "card_sha256": "4da37a198b1120e0a16ce988209f26c8dd6abffb1c14f178fd81dfac23d10543",
+ "checks": [
+  {
+   "detail": "Circle packing in the unit square, maximise the sum of radii.",
+   "name": "scope",
+   "result": "pass"
+  },
+  {
+   "detail": "No coordinates were published with this claim. The repository has recipe scripts and no coordinate file.",
+   "name": "artifact",
+   "result": "undecided"
+  }
+ ],
+ "claim": {
+  "claimant": "HELIX authors (arXiv:2603.07642)",
+  "claimed_sum": "2.63598308",
+  "n": 26,
+  "problem": "circle_packing",
+  "source_url": "https://arxiv.org/abs/2603.07642",
+  "statement": "HELIX achieves state-of-the-art result with a sum of radii of 2.63598308 using only a 14B model"
+ },
+ "claim_id": "helix-n26",
+ "does_not_show": [
+  "That this packing is the best possible. Only that it is valid and has the sum printed here.",
+  "That the reference value is the best known today. It is taken from the claim as stated, with its source.",
+  "Who found the packing or how. The notary checks the file, not its history.",
+  "Anything about a file other than the one whose hash is printed on this receipt."
+ ],
+ "issued_on": "2026-11-26",
+ "measured": {},
+ "receipt_sha256": "2f502891b4043f97c972d491a471b5431727e7874967c7bacf65eda2a751c050",
+ "rule": {
+  "gain_agreement_pp": "0.01",
+  "min_decimals": 10,
+  "prereg": "docs/notary-prereg.md",
+  "sum_agreement": "1e-9",
+  "tolerance": null
+ },
+ "schema": "claim-receipt-v1",
+ "verdict": "insufficient_spec",
+ "verifiers": {
+  "exact": {
+   "path": "notary_exact.py",
+   "sha256": "53cb37ba4c5dfa98de586836b7c467fb90d34bf4f56e5f90951a30580f95ab9e"
+  },
+  "notary": {
+   "path": "notary.py",
+   "sha256": "951d1e3640ac749955d9a12adc22ee4f34d3dec7fe8d2544a1df525a28906c74"
+  },
+  "primary": {
+   "path": "problems/circle_packing/verify.py",
+   "sha256": "0c482cc699f04511e99ba825399c9d336331798ee7b86d0466023aebb1c68e65"
+  }
+ },
+ "volume": {
+  "circles": 0,
+  "pairs_checked": 0
+ }
+}

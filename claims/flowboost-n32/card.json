@@ -1,0 +1,14 @@
+{
+ "schema": "claim-card-v1",
+ "claim_id": "flowboost-n32",
+ "problem": "circle_packing",
+ "claimant": "Berczig et al., FlowBoost (arXiv:2601.18005)",
+ "statement": "For circle packings, we improve the best known lower bounds, surpassing the LLM-based system AlphaEvolve (abstract); the paper reports 2.939349 for n=32",
+ "source_url": "https://arxiv.org/abs/2601.18005",
+ "artifact": {
+  "published": "none",
+  "note": "The repository has code and no coordinate files."
+ },
+ "n": 32,
+ "claimed_sum": "2.939349"
+}

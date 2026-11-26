@@ -1,0 +1,19 @@
+{
+ "schema": "claim-card-v1",
+ "claim_id": "dl-paper-table2-n101",
+ "problem": "circle_packing",
+ "claimant": "Discovery Loop (Wes Sander, MoltFire), arXiv:2609.05093",
+ "statement": "Paper Table 2: for N=101 our best sum of radii is 5.289154, a 2.43% improvement over the prior Packomania record 5.163845 (file best/pck/csqv101.pck at commit e160602)",
+ "source_url": "https://arxiv.org/abs/2609.05093",
+ "artifact": {
+  "path": "csqv101.pck",
+  "format": "pck"
+ },
+ "n": 101,
+ "claimed_sum": "5.289154",
+ "reference": {
+  "value": "5.163845",
+  "source": "paper Table 2 Prior Record; the Wayback Machine copy of Packomania sumradii.txt from 2026-08-09 lists 5.163845225266"
+ },
+ "claimed_gain_pct": "2.43"
+}

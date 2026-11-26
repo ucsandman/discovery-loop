@@ -1,0 +1,14 @@
+{
+ "schema": "claim-card-v1",
+ "claim_id": "discovery-loop-csqv109",
+ "problem": "circle_packing",
+ "claimant": "Discovery Loop (Wes Sander, MoltFire)",
+ "statement": "Our submitted file for N=109 is the packing Packomania lists at 5.507925934200",
+ "source_url": "https://www.packomania.com/csqv/csqv.html",
+ "artifact": {
+  "path": "csqv109.pck",
+  "format": "pck"
+ },
+ "n": 109,
+ "claimed_sum": "5.507925934200"
+}

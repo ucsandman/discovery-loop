@@ -1,0 +1,14 @@
+{
+ "schema": "claim-card-v1",
+ "claim_id": "pokutta-n32",
+ "problem": "circle_packing",
+ "claimant": "Pokutta et al. (Xpress and SCIP global solvers, arXiv:2601.05943)",
+ "statement": "Circle packing, square n = 32: 2.93957 against 2.93794 (AlphaEvolve 2025)",
+ "source_url": "https://www.pokutta.com/blog/not-every-discovery-needs-an-llm/",
+ "artifact": {
+  "published": "none",
+  "note": "No coordinate file was found."
+ },
+ "n": 32,
+ "claimed_sum": "2.93957"
+}

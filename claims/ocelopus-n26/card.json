@@ -1,0 +1,14 @@
+{
+ "schema": "claim-card-v1",
+ "claim_id": "ocelopus-n26",
+ "problem": "circle_packing",
+ "claimant": "ocelopus (YOLO ReAct agent on DeepSeek-V4.1-Flash)",
+ "statement": "Reproduces the SOTA of 26 circles packing inside unit square, sum of radii 2.6359830849014761 (certified feasible); file: best_certified.npz",
+ "source_url": "https://github.com/ocelopus/reproduce_sota_26_circle_packing",
+ "artifact": {
+  "path": "best_certified.txt",
+  "format": "txt_corner"
+ },
+ "n": 26,
+ "claimed_sum": "2.6359830849014761"
+}

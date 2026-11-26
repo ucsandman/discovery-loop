@@ -1,0 +1,18 @@
+{
+ "schema": "claim-card-v1",
+ "claim_id": "thetaevolve-8b-formal-n26",
+ "problem": "circle_packing",
+ "claimant": "Yiping Wang et al., ThetaEvolve (arXiv:2511.23473)",
+ "statement": "Ours (R1-Qwen3-8B): 2.63598308, against AlphaEvolve's 2.63586276 (README); file: the zero-tolerance entry '8B-w_RL@65-Formal' of Results/CirclePacking/data.json (sha256 c20023f5a4d3e1408a7ec29ee043dea3c2b8d9711dd21c806008b5a48646e7b8), centres and radii re-joined as [x, y, r] with every digit unchanged",
+ "source_url": "https://github.com/ypwang61/ThetaEvolve",
+ "artifact": {
+  "path": "thetaevolve-8b-rl65-formal.json",
+  "format": "json_corner"
+ },
+ "n": 26,
+ "claimed_sum": "2.63598308",
+ "reference": {
+  "value": "2.63586276",
+  "source": "the ThetaEvolve README's AlphaEvolve figure"
+ }
+}

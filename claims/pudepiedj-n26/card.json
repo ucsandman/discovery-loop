@@ -1,0 +1,14 @@
+{
+ "schema": "claim-card-v1",
+ "claim_id": "pudepiedj-n26",
+ "problem": "circle_packing",
+ "claimant": "pudepiedj (OpenEvolve with local Qwen2.5-Coder)",
+ "statement": "Snap! 2.635983 after 233 iterations (OpenEvolve issue 156)",
+ "source_url": "https://github.com/algorithmicsuperintelligence/openevolve/issues/156#issuecomment-3419750877",
+ "artifact": {
+  "published": "none",
+  "note": "Only a console line was posted."
+ },
+ "n": 26,
+ "claimed_sum": "2.635983"
+}

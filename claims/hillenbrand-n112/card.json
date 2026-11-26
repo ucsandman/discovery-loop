@@ -1,0 +1,18 @@
+{
+ "schema": "claim-card-v1",
+ "claim_id": "hillenbrand-n112",
+ "problem": "circle_packing",
+ "claimant": "Audrey Hillenbrand (search code built with an OpenAI model)",
+ "statement": "N=112: radius sum 5.579854618221 against Packomania's posted 5.579811038411 as of its 2026-11-01 table (data/RESULTS.csv; file packings/csqv112.pck)",
+ "source_url": "https://github.com/Audrey-makes/Circles-in-a-Square",
+ "artifact": {
+  "path": "csqv112.pck",
+  "format": "pck"
+ },
+ "n": 112,
+ "claimed_sum": "5.579854618221",
+ "reference": {
+  "value": "5.579811038411",
+  "source": "RESULTS.csv: Packomania table of 2026-11-01"
+ }
+}

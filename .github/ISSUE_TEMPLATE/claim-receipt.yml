@@ -1,0 +1,58 @@
+name: Ask for a claim receipt
+description: Ask the Claim Notary to re-check a circle-packing result with two independent verifiers.
+title: "Receipt request: "
+labels: ["claim-receipt"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The Claim Notary re-checks optimization claims and publishes a receipt anyone can re-run
+        ([how it works](https://github.com/ucsandman/discovery-loop/blob/master/docs/NOTARY.md),
+        [all receipts](https://github.com/ucsandman/discovery-loop/blob/master/receipts/README.md)).
+        Phase 1 checks one problem: N circles of any size inside the unit square, maximising the sum of radii
+        (Packomania csqv). It reads coordinates only and never runs your code. A person reads every request
+        before anything is published, and you see the receipt before it goes into the registry.
+  - type: input
+    id: claimant
+    attributes:
+      label: Who makes the claim
+      description: A name, team or project, as it should appear on the receipt.
+    validations:
+      required: true
+  - type: input
+    id: n
+    attributes:
+      label: Number of circles (N)
+    validations:
+      required: true
+  - type: input
+    id: claimed_sum
+    attributes:
+      label: Claimed sum of radii
+      description: Exactly as you state it, with all the digits you claim.
+    validations:
+      required: true
+  - type: input
+    id: coordinates
+    attributes:
+      label: Link to the coordinates
+      description: A public https:// link to a plain file with one circle per line (x y r), JSON [[x, y, r], ...], or Packomania's format. Say which square you use ([0, 1] or centred).
+    validations:
+      required: true
+  - type: input
+    id: reference
+    attributes:
+      label: The value you say it beats (optional)
+      description: The number and where it comes from, for example the Packomania list on a given date.
+  - type: input
+    id: claim_link
+    attributes:
+      label: Where the claim is made (optional)
+      description: A paper, README or post that states the claim.
+  - type: checkboxes
+    id: consent
+    attributes:
+      label: Publication
+      options:
+        - label: I agree that the receipt, my claim as stated here and the coordinates may be published in this repository.
+          required: true

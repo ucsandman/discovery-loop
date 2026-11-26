@@ -1,0 +1,18 @@
+{
+ "schema": "claim-card-v1",
+ "claim_id": "alphaevolve-n26",
+ "problem": "circle_packing",
+ "claimant": "Google DeepMind, AlphaEvolve (arXiv:2506.13131)",
+ "statement": "For n=26, the SOTA was 2.634, and AlphaEvolve improved it to 2.635 (Construction 1 in the results notebook, section B.12)",
+ "source_url": "https://github.com/google-deepmind/alphaevolve_results/blob/main/mathematical_results.ipynb",
+ "artifact": {
+  "path": "alphaevolve-n26.txt",
+  "format": "txt_corner"
+ },
+ "n": 26,
+ "claimed_sum": "2.635",
+ "reference": {
+  "value": "2.634",
+  "source": "the same notebook: 'the SOTA was 2.634'"
+ }
+}

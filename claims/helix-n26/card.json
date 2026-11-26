@@ -1,0 +1,14 @@
+{
+ "schema": "claim-card-v1",
+ "claim_id": "helix-n26",
+ "problem": "circle_packing",
+ "claimant": "HELIX authors (arXiv:2603.07642)",
+ "statement": "HELIX achieves state-of-the-art result with a sum of radii of 2.63598308 using only a 14B model",
+ "source_url": "https://arxiv.org/abs/2603.07642",
+ "artifact": {
+  "published": "none",
+  "note": "The repository has recipe scripts and no coordinate file."
+ },
+ "n": 26,
+ "claimed_sum": "2.63598308"
+}

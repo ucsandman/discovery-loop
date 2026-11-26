@@ -1,0 +1,14 @@
+{
+ "schema": "claim-card-v1",
+ "claim_id": "packomania-csqv27",
+ "problem": "circle_packing",
+ "claimant": "Packomania csqv list (fetched 2026-11-26)",
+ "statement": "Packomania lists a packing of 27 unequal circles in the unit square with sum of radii 2.685978684198",
+ "source_url": "https://www.packomania.com/csqv/csqv.html",
+ "artifact": {
+  "path": "csqv27.txt",
+  "format": "packomania_txt"
+ },
+ "n": 27,
+ "claimed_sum": "2.685978684198"
+}

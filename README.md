@@ -11,7 +11,7 @@
 ![Subscription CLI](https://img.shields.io/badge/Models-Subscription_CLI-526B4E)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
-[Paper](https://arxiv.org/abs/2609.05093) · [Quick start](#developer-setup) · [How it works](#how-an-experiment-works) · [Results](#published-result-circle-packing) · [Nightly routine](#nightly-integration) · [Prize Hunt](#prize-hunt) · [Documentation](docs/README.md) · [Contributing](CONTRIBUTING.md)
+[Paper](https://arxiv.org/abs/2609.05093) · [Quick start](#developer-setup) · [How it works](#how-an-experiment-works) · [Results](#published-result-circle-packing) · [Claim Notary](#claim-notary) · [Nightly routine](#nightly-integration) · [Prize Hunt](#prize-hunt) · [Documentation](docs/README.md) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -46,6 +46,20 @@ The solutions were submitted to and accepted by [Packomania](https://www.packoma
 | Accepted solutions | [`best/`](best/) (Packomania `.pck` submission files) |
 
 This is the only domain in the repository with an externally accepted, published result. The other problem plugins (`miplib_heur`, `miplib_open`, `pglib_opf`, `cvrp`) remain benchmark-only and are explicitly treated as unvalidated; see [Problems](#problems) and the [research portfolio](docs/RESEARCH-PORTFOLIO.md).
+
+## Claim Notary
+
+AI now produces optimization claims faster than anyone checks them. The [Claim Notary](docs/NOTARY.md) re-checks
+other people's circle-packing claims with two verifiers that share no code (the plugin's float verifier and an exact
+integer-arithmetic one), and publishes a receipt for each: what was claimed, every check, the exact file by hash,
+and what the receipt does not show. Anyone can re-run a receipt with `python notary.py verify-receipt`, and every
+receipt is re-derived on every push and every night.
+
+The [registry](receipts/README.md) holds 45 receipts. Our own paper was checked first: all 10 rows of its results
+table hold. Of 23 outside claims, 9 do not hold (8 of Hyra's records cross the square's edge and overlap by up to
+7.7e-10, and one N=104 file overlaps by 2.1e-12), and 9 cannot be decided because no coordinates were published.
+The pass/fail bars were [committed before the first check](docs/notary-prereg.md). To ask for a receipt, open a
+[receipt request](https://github.com/ucsandman/discovery-loop/issues/new?template=claim-receipt.yml).
 
 ## Morning review
 
