@@ -56,8 +56,8 @@ and what the receipt does not show. Anyone can re-run a receipt with `python not
 receipt is re-derived on every push and every night.
 
 The [registry](receipts/README.md) holds 45 receipts. Our own paper was checked first: all 10 rows of its results
-table hold. Of 23 outside claims, 9 do not hold (8 of Hyra's records cross the square's edge and overlap by up to
-7.7e-10, and one N=104 file overlaps by 2.1e-12), and 9 cannot be decided because no coordinates were published.
+table hold. Of 23 outside claims, 9 do not hold (8 of Hyra's records cross the square's edge by up to 7.7e-10 and
+overlap, and one N=104 file misses by 2.1e-12 in squared distance), and 9 cannot be decided because no coordinates were published.
 The pass/fail bars were [committed before the first check](docs/notary-prereg.md). To ask for a receipt, open a
 [receipt request](https://github.com/ucsandman/discovery-loop/issues/new?template=claim-receipt.yml).
 

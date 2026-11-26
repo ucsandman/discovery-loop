@@ -101,7 +101,7 @@ nothing.
 | Gate (preregistered) | Result |
 | --- | --- |
 | Correctness: agreement with the keeper's published value | 8 of 8 comparisons of the same packing agree (exactly, or within 4.2e-12 for our 16-decimal files). Two more rows compare different packings: Packomania has since listed a better N=84 than Arnold Castro's, and Hyra's N=26 claims 1.0e-8 more than the list's N=26, the amount its overlaps buy. No gap is a verifier disagreement |
-| Discrimination: at least 1 real claim does not hold | 9 do not hold: 8 of Hyra's 9 records (N=26, 33, 35-40), whose circles cross the square's edge and each other by up to 7.7e-10, about 50,000 to 77,000 times what rounding their 15-16 printed decimals can cause, and Rasim Abiyev's N=104, which overlaps by up to 2.1e-12, about 21 times its rounding allowance |
+| Discrimination: at least 1 real claim does not hold | 9 do not hold: 8 of Hyra's 9 records (N=26, 33, 35-40), whose circles cross the square's edge by up to 7.7e-10 and overlap each other (squared distance short by up to 4.9e-10), 58,000 to 614,000 times what rounding their 15-16 printed decimals can cause, and Rasim Abiyev's N=104, which crosses the edge by 5.7e-13 and overlaps (squared distance short by 2.1e-12), about 21 times its rounding allowance |
 | Breadth: at most 8 of 13 in `cannot_check` | 0 out of scope. 9 claims are `insufficient_spec` because the claimant published no coordinates (OpenEvolve, two OpenEvolve issue comments, HELIX, FlowBoost, Pokutta et al., Numaro twice, ShinkaEvolve) |
 | Demand: 2 useful replies from 5 recipients | Not started. Nothing has been sent |
 
